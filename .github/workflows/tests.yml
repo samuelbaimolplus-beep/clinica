@@ -6,8 +6,6 @@ on:
       - main
       - '*.x'
   pull_request:
-  schedule:
-    - cron: '0 0 * * *'
 
 permissions:
   contents: read
@@ -19,7 +17,30 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        php: [8.3, 8.4, 8.5]
+        php: [8.4]
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: clinica_vida_salud_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: clinica_vida_salud_test
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
 
     name: PHP ${{ matrix.php }}
 
@@ -42,6 +63,21 @@ jobs:
 
       - name: Generate app key
         run: php artisan key:generate
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Build frontend
+        run: npm ci && npm run build
+
+      - name: Test frontend session client
+        run: npm test
+
+      - name: Prepare isolated test database
+        run: php artisan clinica:preparar-pruebas
 
       - name: Execute tests
         run: php artisan test
