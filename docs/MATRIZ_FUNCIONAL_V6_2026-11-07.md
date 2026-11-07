@@ -2,6 +2,8 @@
 
 Complementa el [informe de entrega](REVISION_FUNCIONAL_Y_SUPERADMIN_2026-11-07.md). Los sufijos `.1`, `.2`, etc. sirven para rastrear funciones dentro del CU; no cambian la numeración del Word.
 
+La [revisión final contra V6 Integrada Limpia](REVISION_FINAL_CODIGO_Y_WORD_2026-11-07.md) actualiza las evidencias y corrige la referencia visible de pago/exención y la identificación del bloqueo en CU09, además de exigir los filtros específicos de REP02, REP03 y REP07 en CU16. Recoge también las ampliaciones de acceso solicitadas después del Word.
+
 **I:** implementado en el código revisado. **I/E:** implementado, con verificación externa pendiente. **O:** operación externa de la clínica prevista por el documento. Las suites citadas comprueban escenarios concretos; no equivalen a una certificación exhaustiva de cada rama posible. La prueba de navegador usa API simulada; Feature utiliza PostgreSQL aislado y simula únicamente servicios externos cuando corresponde.
 
 ## CU01 — Iniciar sesión

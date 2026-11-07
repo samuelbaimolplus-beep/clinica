@@ -18,6 +18,10 @@ export function installClinicalViews(ui) {
             ['Paciente',esc(full(a.patient))],['Especialidad',esc(a.specialty.name)],['Médico',esc(full(a.doctor))],
             ['Fecha',esc(a.date)],['Horario',esc(`${time(a.start_time)}–${time(a.end_time)}`)],['Estado',badge(a.status)],
             ['Pago',esc(a.complimentary ? 'Exención válida de seguimiento' : `${money(a.payment?.amount_minor)} · ${status(a.payment?.status)}`)],
+            ['Medio de pago',esc(a.complimentary ? 'Seguimiento gratuito' : ({cash:'Efectivo',qr:'QR presencial',transfer:'Transferencia',wizpay:'WizPay de pruebas'}[a.payment?.method] || '—'))],
+            ['Referencia de pago o exención',esc(a.complimentary
+                ? (a.parent_appointment_id ? `Consulta original ${code('CIT',a.parent_appointment_id)}` : 'Exención de seguimiento validada')
+                : (a.payment?.bank_reference || a.payment?.reference || (a.payment?.id ? `Pago n.º ${a.payment.id}` : '—')))],
         ]) + notice('Conserve el código de la cita para sus consultas.') + button('Imprimir ficha','id="print-ficha"'));
         on('#print-ficha','click',()=>{document.body.classList.add('printing-ficha');try{window.print();}finally{document.body.classList.remove('printing-ficha');}});
     };
@@ -70,7 +74,7 @@ export function installClinicalViews(ui) {
                 const result = await api('medical-availability?'+new URLSearchParams({specialty_id:$('#specialty_id').value,date:$('#date').value,doctor_id:$('#preferred_doctor').value,modality:online?'online':'presential',...(!online?{include_demand:'1'}:{})}));
                 if (version!==queryVersion || !$('#clinical-slots')) return;
                 blocks = result.blocks;
-                $('#clinical-slots').innerHTML = blocks.length ? table(['Médico','Inicio','Fin','Elegir'],blocks.map((b,i)=>[esc(b.doctor_name),esc(b.start_time),esc(b.end_time),button('Seleccionar',`data-choose="${i}"`)])) : notice(result.message || 'No hay cupos libres. Consulte otra fecha o profesional.');
+                $('#clinical-slots').innerHTML = blocks.length ? table(['Médico','Inicio','Fin','Estado del cupo','Elegir'],blocks.map((b,i)=>[esc(b.doctor_name),esc(b.start_time),esc(b.end_time),esc(b.demand_blocked?'Bloqueo provisional de esta especialidad':'Libre'),button('Seleccionar',`data-choose="${i}"`)])) : notice(result.message || 'No hay cupos libres. Consulte otra fecha o profesional.');
                 on('[data-choose]','click',e=>{selected=blocks[Number(e.currentTarget.dataset.choose)]; document.querySelectorAll('[data-choose]').forEach(b=>b.classList.toggle('selected',b===e.currentTarget));updatePayment();});
             };
             on('#specialty_id','change',async()=>{

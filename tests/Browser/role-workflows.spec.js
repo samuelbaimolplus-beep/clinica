@@ -19,7 +19,7 @@ async function mockClinic(page, role, options={}) {
     const state = {calls:[],pending:0,confirmed:false,authenticated:!options.initiallyGuest};
     const booking = {id:1,date:'2030-11-11',start_time:'10:30',end_time:'11:00',status:'processing',attempt:1,amount_minor:10000,expires_at:new Date(Date.now()+300000).toISOString()};
     const payment = {id:1,status:'pending',amount_minor:10000};
-    const appointment = {id:1,patient,doctor,specialty,date:booking.date,start_time:booking.start_time,end_time:booking.end_time,status:'Programada',payment:{...payment,status:'confirmed'}};
+    const appointment = {id:1,patient,doctor,specialty,date:booking.date,start_time:booking.start_time,end_time:booking.end_time,status:'Programada',payment:{...payment,method:'wizpay',reference:'WP-PRUEBA-001',status:'confirmed'},...options.appointmentOverrides};
     await page.route('**/api/**', async route => {
         const url = new URL(route.request().url()), path=url.pathname.slice(5);
         state.calls.push({path,method:route.request().method(),data:route.request().postDataJSON()});
@@ -35,7 +35,8 @@ async function mockClinic(page, role, options={}) {
             data={doctors:[doctor],specialties:[specialty],patients:[patient]};
         }
         else if(path==='medical-availability/options')data={online_payment_available:options.paymentAvailable!==false,doctors:[doctor],specialties:[specialty]};
-        else if(path==='medical-availability')data={blocks:[slot],modality:url.searchParams.get('modality')||'online'};
+        else if(path==='medical-availability')data={blocks:[{...slot,...options.slotOverrides}],modality:url.searchParams.get('modality')||'online'};
+        else if(path==='appointments'&&route.request().method()==='POST')data=appointment;
         else if(path==='online-bookings'&&route.request().method()==='POST')data={booking,payment,qr_image:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='};
         else if(path==='online-bookings/1/status')data={booking,payment,appointment:state.confirmed?appointment:null};
         else if(path==='online-bookings/1/cancel')data={booking:{...booking,status:'cancelled'},payment:{...payment,status:'failed'}};
@@ -181,8 +182,28 @@ test('Paciente consulta, retiene y obtiene ficha únicamente después de la conf
     expect(request.data.doctor_id).toBe(1);expect(request.data.patient_id).toBeUndefined();expect(request.data.idempotency_key).toMatch(/^[a-f0-9-]{36}$/);
     state.confirmed=true;await page.getByRole('button',{name:'Consultar estado',exact:true}).click();
     await expect(page.getByRole('dialog')).toContainText('Ficha CIT-0001');
+    await expect(page.getByRole('dialog')).toContainText('WP-PRUEBA-001');
     await expect(page.getByRole('button',{name:'Imprimir ficha'})).toBeVisible();
 });
+
+for (const [name,appointmentOverrides,expected] of [
+    ['efectivo',{payment:{id:17,method:'cash',status:'confirmed',amount_minor:10000}},'Pago n.º 17'],
+    ['transferencia',{payment:{id:18,method:'transfer',status:'confirmed',amount_minor:10000,bank_reference:'BANCO-PRUEBA-018'}},'BANCO-PRUEBA-018'],
+    ['exención',{payment:null,complimentary:true,parent_appointment_id:9},'Consulta original CIT-0009'],
+]) {
+    test(`ficha de ${name} muestra su referencia y distingue un bloqueo provisional`,async({page})=>{
+        await mockClinic(page,'Recepcionista',{appointmentOverrides,slotOverrides:{modality:'presential',demand_blocked:true}});
+        await page.goto('/#CU09');
+        await page.locator('#patient_id').selectOption('1');
+        await page.locator('#specialty_id').selectOption('1');
+        await page.locator('#date').fill('2030-11-11');
+        await expect(page.locator('#clinical-slots')).toContainText('Bloqueo provisional de esta especialidad');
+        await page.getByRole('button',{name:'Seleccionar',exact:true}).click();
+        await page.locator('[name="payment_confirmed"]').check();
+        await page.getByRole('button',{name:'Verificar y emitir ficha',exact:true}).click();
+        await expect(page.getByRole('dialog')).toContainText(expected);
+    });
+}
 
 test('sin pasarela hay horarios y aviso pero no un botón para iniciar un cobro', async ({page}) => {
     const state=await mockClinic(page,'Paciente',{paymentAvailable:false});await page.goto('/');

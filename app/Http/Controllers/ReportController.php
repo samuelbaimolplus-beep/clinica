@@ -17,7 +17,8 @@ class ReportController extends Controller
             'date' => ['nullable', 'date_format:Y-m-d', Rule::requiredIf(fn () => $r->input('type') === 'REP07' || ($r->input('type') === 'REP01' && ! $r->filled('from')))],
             'from' => 'required_if:type,REP02,REP03,REP04,REP06|nullable|date_format:Y-m-d',
             'to' => 'required_with:from|nullable|date_format:Y-m-d|after_or_equal:from',
-            'doctor_id' => 'nullable|integer|exists:doctors,id', 'specialty_id' => 'nullable|integer|exists:specialties,id',
+            'doctor_id' => 'required_if:type,REP02,REP07|nullable|integer|exists:doctors,id',
+            'specialty_id' => 'required_if:type,REP03|nullable|integer|exists:specialties,id',
             'status' => ['nullable', Rule::in(Appointment::STATES)], 'format' => ['nullable', Rule::in(['json', 'csv'])],
         ]);
         if ($d['type'] === 'REP05') {

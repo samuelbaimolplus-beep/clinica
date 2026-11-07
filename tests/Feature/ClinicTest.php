@@ -226,7 +226,8 @@ class ClinicTest extends TestCase
         $a = $this->book();
         $this->actingAs($this->admin)->getJson('/api/appointments?mode=history&q=TEST-0&status=Programada&date=2026-10-26')->assertOk()->assertJsonCount(1)->assertJsonPath('0.events.0.action', 'Creación');
         foreach (range(1, 7) as $i) {
-            $query = http_build_query(['type' => 'REP0'.$i, 'date' => '2026-10-26', 'from' => '2026-10-01', 'to' => '2026-10-31']);
+            $query = http_build_query(['type' => 'REP0'.$i, 'date' => '2026-10-26', 'from' => '2026-10-01', 'to' => '2026-10-31',
+                'doctor_id' => $this->doctor->id, 'specialty_id' => $this->specialty->id]);
             $this->getJson('/api/reports?'.$query)->assertOk()->assertJsonPath('summary.total', $i === 5 ? 2 : 1);
         }
         $this->getJson('/api/reports?type=REP06&from=2027-01-01&to=2027-01-02')->assertOk()->assertJsonPath('summary.Atendida.percentage', 0);
@@ -234,5 +235,14 @@ class ClinicTest extends TestCase
         $csv = $this->get('/api/reports?type=REP05&format=csv')->assertOk()->streamedContent();
         $this->assertStringContainsString("'=HYPERLINK", $csv);
         $this->getJson('/api/reports?type=REP06&from=2026-10-30&to=2026-10-01')->assertUnprocessable();
+    }
+
+    public function test_reports_for_a_specific_doctor_or_specialty_require_the_corresponding_filter(): void
+    {
+        $this->actingAs($this->admin);
+        foreach (['REP02' => 'doctor_id', 'REP03' => 'specialty_id', 'REP07' => 'doctor_id'] as $type => $field) {
+            $query = http_build_query(['type' => $type, 'date' => '2026-10-26', 'from' => '2026-10-01', 'to' => '2026-10-31']);
+            $this->getJson('/api/reports?'.$query)->assertUnprocessable()->assertJsonValidationErrors($field);
+        }
     }
 }

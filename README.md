@@ -1,6 +1,6 @@
 # Clínica Vida Salud
 
-Sistema académico en Laravel 13, PostgreSQL, Blade y JavaScript. La referencia funcional definitiva es `../Clinica_Vida_Salud_V6_26CU_Revision_Final.docx`, entregada por el equipo el 7 de noviembre de 2026. El desarrollo se ajusta a sus 26 casos de uso y acuerdos definitivos.
+Sistema académico en Laravel 13, PostgreSQL, Blade y JavaScript. La referencia funcional disponible y revisada actualmente es `../Clinica_Vida_Salud_V6_Integrada_Limpia.docx`, del 7 de noviembre de 2026, con 26 casos de uso. La [revisión final de código y Word](docs/REVISION_FINAL_CODIGO_Y_WORD_2026-11-07.md) identifica correcciones, correspondencia por CU, actualizaciones del documento y verificaciones externas pendientes.
 
 El [informe de implementación integrada V6](docs/IMPLEMENTACION_INTEGRADA_V6_2026-11-07.md) documenta los flujos programados, su trazabilidad y la configuración externa necesaria. El [registro previo de adecuación](docs/ADECUACION_WORD_V6_2026-11-07.md), los informes V3 y V5 y los demás documentos anteriores conservan valor histórico; sus preguntas y propuestas no sustituyen los acuerdos finales de V6.
 
