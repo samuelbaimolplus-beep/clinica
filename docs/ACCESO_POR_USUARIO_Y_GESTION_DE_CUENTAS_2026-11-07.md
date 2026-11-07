@@ -50,3 +50,11 @@ El contrato de login conserva la clave de entrada `email` por compatibilidad con
 - 18 pruebas de navegador correctas, con datos y API simulados para comprobar formularios. Incluyen login por usuario, consulta global y cambio de contraseña de paciente desde Superadmin. No cambian contraseñas reales ni realizan cobros o envíos de correo.
 
 La migración se aplicó en la base local y en la base de pruebas, sin vaciar tablas ni cambiar contraseñas existentes. Las credenciales y los archivos privados de acceso permanecen fuera de Git.
+
+## Corrección posterior: credenciales aceptadas sin abrir el panel
+
+Se reprodujo un fallo de una pestaña abierta antes de incorporar un rol: conservaba la matriz de permisos obtenida al cargar la página. El servidor aceptaba el login, pero la navegación consultaba esos permisos antiguos y podía permanecer en el formulario mostrando una bienvenida.
+
+Después del login se vuelve a consultar la sesión persistida, se actualizan usuario, permisos y CSRF y se abre el panel correspondiente. Si ya existía una sesión autenticada, se recupera su identidad real sin intentar crear otra. Una sesión que no se conserva o cuyos permisos no se pueden cargar produce un error explícito; no una bienvenida. Si falla la carga de referencias del panel, el botón Reintentar vuelve a cargarlo sin reenviar las credenciales. Las respuestas de login y sesión indican `Cache-Control: no-store`.
+
+La regresión se comprobó primero fallando con el código anterior y después pasando con la corrección. Pasaron las 22 pruebas de navegador, las 10 pruebas Node del cliente/navegación y las 14 pruebas del servidor seleccionadas de autenticación por usuario y seguridad de cuentas. Las pruebas del servidor usan la base aislada y las de interfaz simulan las respuestas de API. La compilación de los recursos quedó actualizada.

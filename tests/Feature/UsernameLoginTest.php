@@ -32,6 +32,8 @@ class UsernameLoginTest extends TestCase
         $user = $this->account();
         foreach (['samuel', '  SAMUEL  ', 'SAMUEL@USERNAME.TEST'] as $identifier) {
             $this->postJson('/api/login', ['email' => $identifier, 'password' => 'PruebaSegura2026'])->assertOk()->assertJsonPath('user.id', $user->id);
+            $session = $this->getJson('/api/session')->assertOk()->assertJsonPath('user.id', $user->id);
+            $this->assertStringContainsString('no-store', $session->headers->get('Cache-Control'));
             $this->postJson('/api/logout')->assertOk();
         }
     }

@@ -30,6 +30,13 @@ test('envía CSRF y adopta el token renovado después de iniciar sesión', async
     assert.equal(context.calls[1].options.cache, 'no-store');
 });
 
+test('conserva el estado HTTP para recuperar una sesión que ya estaba autenticada', async () => {
+    const context = client([[409, {message: 'Ya tiene una sesión activa.'}]]);
+    await assert.rejects(context.api('login', 'POST', {email: 'superadmin', password: 'EjemploDePrueba'}), error => error.status === 409);
+    assert.equal(context.calls.length, 1);
+    assert.equal(context.signOuts(), 0);
+});
+
 test('401 limpia la sesión local y conserva el CSRF recibido para volver a ingresar', async () => {
     const context = client([[401, {message: 'Sesión revocada', csrf: 'guest-token'}]]);
     await assert.rejects(context.api('references'), /Sesión revocada/);

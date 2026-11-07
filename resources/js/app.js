@@ -126,7 +126,12 @@ function loginView() {
     on('#register-patient', 'click', () => views.registration());
     $('#login-form').insertAdjacentHTML('afterend', button('Recuperar acceso o verificar correo', 'id="recover-account"', 'link'));
     on('#recover-account', 'click', () => views.recovery());
-    bindForm('login-form', async data=>{const result=await api('login','POST',data);state.user=result.user;await references();await navigate(home());toast(`Bienvenido, ${state.user.name}.`);});
+    bindForm('login-form', async data=>{
+        try { await api('login','POST',data); }
+        catch(error) { if(error.status!==409)throw error; }
+        // Leer la sesión ya persistida renueva también los permisos de pestañas antiguas.
+        if(await boot({requireAuthentication:true}))toast(`Bienvenido, ${state.user.name}.`);
+    });
 }
 const views = {};
 views.CU02 = async()=>({html:panel('Sesión activa',details([['Usuario',esc(state.user.name)],['Nombre de usuario',esc(state.user.username || '')],['Correo',esc(state.user.email)],['Rol',badge(state.user.role)]])+`<div class="actions">${button('Cerrar sesión','id="session-logout"','danger')}</div>`),bind:()=>on('#session-logout','click',logout)});
@@ -162,5 +167,21 @@ refreshInbox = installReceptionInbox(ui);
 $('#close-modal').addEventListener('click',closeModal);
 $('#modal').addEventListener('click',e=>{if(e.target===$('#modal')){const rect=$('#modal').getBoundingClientRect();if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)closeModal();}});
 $('#menu-toggle').addEventListener('click',()=>{const open=$('#sidebar').classList.toggle('open');$('#menu-toggle').setAttribute('aria-expanded',String(open));});
-async function boot(){try {const result=await api('session');state.user=result.user;access=result.access;termsVersion=result.terms_version;if(state.user)await references();await navigate(state.user && access[state.user.role]?.includes(location.hash.slice(1)) ? location.hash.slice(1) : state.user?home():'CU01');}catch(e){main.innerHTML=notice(e.message,'error')+button('Reintentar','id="boot-retry"');on('#boot-retry','click',boot);}}
+async function boot({requireAuthentication=false}={}) {
+    try {
+        const result=await api('session');
+        state.user=result.user;access=result.access||{};termsVersion=result.terms_version;
+        if(requireAuthentication&&!state.user)throw new Error(result.message||'No se pudo conservar la sesión. Permita las cookies de esta página e intente nuevamente.');
+        if(state.user&&!access[state.user.role]?.includes('CU02'))throw new Error('No se pudieron cargar los permisos de su cuenta. Recargue la página o reintente la carga del panel.');
+        if(state.user)await references();
+        await navigate(state.user&&access[state.user.role]?.includes(location.hash.slice(1))?location.hash.slice(1):state.user?home():'CU01');
+        return Boolean(state.user);
+    } catch(error) {
+        shell();
+        main.innerHTML=notice(error.message,'error')+button('Reintentar','id="boot-retry"')+(!state.user?button('Volver al inicio de sesión','id="boot-login"',''):'');
+        on('#boot-retry','click',()=>boot({requireAuthentication}));
+        on('#boot-login','click',()=>navigate('CU01'));
+        return false;
+    }
+}
 boot();

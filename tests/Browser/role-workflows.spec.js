@@ -24,9 +24,16 @@ async function mockClinic(page, role, options={}) {
         const url = new URL(route.request().url()), path=url.pathname.slice(5);
         state.calls.push({path,method:route.request().method(),data:route.request().postDataJSON()});
         let data;
-        if(path==='session')data={user:state.authenticated?user:null,access,csrf:'browser-test-csrf',terms_version:'2026-11-02'};
-        else if(path==='login') {state.authenticated=true;data={user,csrf:'browser-test-csrf'};}
-        else if(path==='references')data={doctors:[doctor],specialties:[specialty],patients:[patient]};
+        if(path==='session')data={user:state.authenticated?user:null,access:options.staleAccessBeforeLogin&&!state.authenticated?{}:access,csrf:'browser-test-csrf',terms_version:'2026-11-02'};
+        else if(path==='login') {
+            state.authenticated=!options.sessionNotPersisted;
+            if(options.alreadyActive) {await route.fulfill({status:409,json:{message:'Ya tiene una sesión activa.'}});return;}
+            data={user,csrf:'browser-test-csrf'};
+        }
+        else if(path==='references') {
+            if(options.referencesFailOnce && !state.failedReferences) {state.failedReferences=true;await route.fulfill({status:503,json:{message:'No se pudo cargar el panel.'}});return;}
+            data={doctors:[doctor],specialties:[specialty],patients:[patient]};
+        }
         else if(path==='medical-availability/options')data={online_payment_available:options.paymentAvailable!==false,doctors:[doctor],specialties:[specialty]};
         else if(path==='medical-availability')data={blocks:[slot],modality:url.searchParams.get('modality')||'online'};
         else if(path==='online-bookings'&&route.request().method()==='POST')data={booking,payment,qr_image:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='};
@@ -99,6 +106,40 @@ test('el acceso admite un nombre de usuario sin formato de correo electrónico',
     await page.getByRole('button',{name:'Iniciar sesión',exact:true}).click();
     await expect(page.locator('.nav-btn.selected')).toHaveAttribute('data-view','CU18');
     expect(state.calls.find(c=>c.path==='login').data.email).toBe('ana.paciente');
+});
+
+async function submitLogin(page) {
+    await page.locator('#email').fill('superadmin');
+    await page.locator('#password').fill('ClaveDePrueba2026');
+    await page.getByRole('button',{name:'Iniciar sesión',exact:true}).click();
+}
+
+test('el login actualiza los permisos de una pestaña abierta antes de agregar el rol', async ({page}) => {
+    await mockClinic(page,'Superadmin',{initiallyGuest:true,staleAccessBeforeLogin:true});await page.goto('/');
+    await submitLogin(page);
+    await expect(page.locator('.nav-btn.selected')).toHaveAttribute('data-view','CU03');
+    await expect(page.locator('#login-form')).toHaveCount(0);
+});
+
+test('el login recupera la sesión activa sin atascarse en el formulario', async ({page}) => {
+    await mockClinic(page,'Superadmin',{initiallyGuest:true,alreadyActive:true});await page.goto('/');
+    await submitLogin(page);
+    await expect(page.locator('.nav-btn.selected')).toHaveAttribute('data-view','CU03');
+});
+
+test('si no se conserva la sesión no se muestra bienvenida y se explica el fallo', async ({page}) => {
+    await mockClinic(page,'Superadmin',{initiallyGuest:true,sessionNotPersisted:true});await page.goto('/');
+    await submitLogin(page);
+    await expect(page.locator('#main')).toContainText('No se pudo conservar la sesión');
+    await expect(page.locator('#toasts')).not.toContainText('Bienvenido');
+});
+
+test('un fallo al cargar el panel se puede reintentar sin volver a enviar credenciales', async ({page}) => {
+    const state=await mockClinic(page,'Superadmin',{initiallyGuest:true,referencesFailOnce:true});await page.goto('/');
+    await submitLogin(page);
+    await page.locator('#boot-retry').click();
+    await expect(page.locator('.nav-btn.selected')).toHaveAttribute('data-view','CU03');
+    expect(state.calls.filter(c=>c.path==='login')).toHaveLength(1);
 });
 
 test('Superadmin puede cambiar la contraseña de un paciente sin consultar la contraseña anterior', async ({page}) => {

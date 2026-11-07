@@ -45,7 +45,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'No fue posible iniciar sesión. Intente nuevamente.', 'csrf' => csrf_token()], 503);
         }
 
-        return response()->json(['user' => $user, 'csrf' => csrf_token()]);
+        return response()->json(['user' => $user, 'csrf' => csrf_token()])->header('Cache-Control', 'no-store');
     }
 
     public function session(Request $request)
@@ -55,7 +55,7 @@ class AuthController extends Controller
 
         return response()->json(['user' => $user, 'csrf' => csrf_token(), 'today' => now()->toDateString(),
             'access' => collect(array_keys(ClinicAccess::VIEWS))->mapWithKeys(fn ($role) => [$role => ClinicAccess::views($role)]),
-            'terms_version' => config('clinic.terms_version'), 'message' => $message]);
+            'terms_version' => config('clinic.terms_version'), 'message' => $message])->header('Cache-Control', 'no-store');
     }
 
     public function logout(Request $request)

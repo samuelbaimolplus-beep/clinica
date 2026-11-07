@@ -38,6 +38,7 @@ export function createApiClient({getToken, setToken, onUnauthorized, fetchImpl =
         if (response.status === 401) await onUnauthorized(data.message || 'Debe iniciar sesión.');
         if (!response.ok) {
             const error = new Error(data.message || 'No se pudo completar la operación.');
+            error.status = response.status;
             error.errors = data.errors;
             throw error;
         }
