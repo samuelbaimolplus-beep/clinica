@@ -4,7 +4,7 @@ export function installAvailabilityViews(ui) {
         const options = await api('medical-availability/options');
         const doctors = specialty => options.doctors.filter(doctor => doctor.specialties.some(item => String(item.id) === String(specialty))).map(doctor => [doctor.id, full(doctor)]);
         return {
-            html: notice('Consulta provisional de horarios. Consultar no retiene un cupo ni genera una cita. Las reservas y los pagos todavía no están habilitados.')
+            html: notice('Consultar disponibilidad no retiene un cupo. Para obtener una ficha utilice Programar cita o Reservar cita online, según su rol.')
                 + panel('Disponibilidad médica', `<form id="medical-availability-form">${formErrors}<div class="grid two">
                 ${select('Especialidad', 'specialty_id', [['', 'Seleccione…'], ...options.specialties.map(item => [item.id, item.name])], '', 'required')}
                 ${select('Preferencia de médico', 'doctor_id', [['', 'Disponibles según carga']], '')}

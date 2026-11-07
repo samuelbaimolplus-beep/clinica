@@ -19,9 +19,10 @@ final class ClinicAccess
         $views = self::VIEWS[$role] ?? [];
         if (config('clinic.appointments_enabled')) {
             $views = array_merge($views, match ($role) {
-                'Administrador' => ['CU15', 'CU16'],
-                'Recepcionista' => ['CU09', 'CU10', 'CU11', 'CU12', 'CU13', 'CU15'],
+                'Administrador' => ['CU15', 'CU16', 'CU26'],
+                'Recepcionista' => ['CU09', 'CU10', 'CU11', 'CU12', 'CU13', 'CU15', 'CU20', 'CU21'],
                 'Médico' => ['CU12', 'CU14'],
+                'Paciente' => ['CU10', 'CU15', 'CU18', 'CU20'],
                 default => [],
             });
         }

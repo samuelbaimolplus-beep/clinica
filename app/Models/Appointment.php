@@ -14,6 +14,16 @@ class Appointment extends Model
 
     protected $guarded = ['id'];
 
+    protected function casts(): array
+    {
+        return ['complimentary' => 'boolean'];
+    }
+
+    public function payment(): BelongsTo
+    {
+        return $this->belongsTo(Payment::class);
+    }
+
     public function patient(): BelongsTo
     {
         return $this->belongsTo(Patient::class);

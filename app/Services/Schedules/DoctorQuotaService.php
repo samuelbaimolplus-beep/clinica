@@ -3,6 +3,7 @@
 namespace App\Services\Schedules;
 
 use App\Models\AgendaAdjustment;
+use App\Models\BookingRequest;
 use App\Models\Doctor;
 use App\Models\DoctorQuota;
 use App\Models\Unavailability;
@@ -20,6 +21,9 @@ class DoctorQuotaService
 
         return DB::transaction(function () use ($data) {
             $doctor = Doctor::whereKey($data['doctor_id'])->lockForUpdate()->firstOrFail();
+            if (BookingRequest::where('doctor_id', $doctor->id)->whereIn('status', ['held', 'processing'])->exists()) {
+                throw ValidationException::withMessages(['quota' => 'Concilie los pagos online retenidos antes de cambiar la distribución.']);
+            }
             if ($doctor->status !== 'Activo') {
                 throw ValidationException::withMessages(['doctor_id' => 'El médico debe estar activo.']);
             }

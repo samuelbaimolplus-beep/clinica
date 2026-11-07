@@ -4,9 +4,13 @@ namespace App\Providers;
 
 use App\Models\AgendaAdjustment;
 use App\Models\Appointment;
+use App\Models\BookingRequest;
 use App\Models\Doctor;
 use App\Models\DoctorQuota;
 use App\Models\Patient;
+use App\Models\Payment;
+use App\Models\RefundRequest;
+use App\Models\RescheduleRequest;
 use App\Models\Schedule;
 use App\Models\Specialty;
 use App\Models\Unavailability;
@@ -37,7 +41,8 @@ class AppServiceProvider extends ServiceProvider
         foreach ([User::class, Doctor::class,
             Specialty::class, Patient::class,
             Schedule::class, Unavailability::class,
-            Appointment::class, DoctorQuota::class, AgendaAdjustment::class] as $model) {
+            Appointment::class, DoctorQuota::class, AgendaAdjustment::class,
+            BookingRequest::class, Payment::class, RescheduleRequest::class, RefundRequest::class] as $model) {
             $model::observe(ClinicAuditObserver::class);
         }
         foreach (['users' => 'Administrador', 'doctors' => 'Administrador',

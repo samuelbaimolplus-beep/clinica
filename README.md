@@ -2,7 +2,7 @@
 
 Sistema académico en Laravel 13, PostgreSQL, Blade y JavaScript. La referencia funcional definitiva es `../Clinica_Vida_Salud_V6_26CU_Revision_Final.docx`, entregada por el equipo el 7 de noviembre de 2026. El desarrollo se ajusta a sus 26 casos de uso y acuerdos definitivos.
 
-El [registro de adecuación a V6](docs/ADECUACION_WORD_V6_2026-11-07.md) documenta las correcciones efectivas, funciones retiradas, trazabilidad y verificación. Los informes V3 y V5 y los demás documentos anteriores conservan valor histórico; sus preguntas y propuestas no sustituyen los acuerdos finales de V6.
+El [informe de implementación integrada V6](docs/IMPLEMENTACION_INTEGRADA_V6_2026-11-07.md) documenta los flujos programados, su trazabilidad y la configuración externa necesaria. El [registro previo de adecuación](docs/ADECUACION_WORD_V6_2026-11-07.md), los informes V3 y V5 y los demás documentos anteriores conservan valor histórico; sus preguntas y propuestas no sustituyen los acuerdos finales de V6.
 
 ## Ejecutar el proyecto
 
@@ -22,9 +22,10 @@ Los accesos iniciales y de demostración permanecen en archivos privados locales
 
 ## Funciones disponibles
 
-- Administrador: usuarios del personal, médicos, especialidades, turnos, indisponibilidades, porcentajes y consulta de auditoría.
-- Recepción: pacientes, vinculación verificada de cuentas, consulta presencial de disponibilidad, citas afectadas, CU24 para bloqueos de hoy y CU25 para habilitar franjas protegidas online.
-- Paciente: registro, verificación de correo, recuperación de acceso y consulta de disponibilidad online.
+- Administrador: personal, médicos, especialidades y tarifas, horarios y porcentajes, historial, siete reportes, auditoría y resolución de reembolsos.
+- Recepción: pacientes y vinculación de cuentas, disponibilidad, cobro presencial y ficha, reprogramación acordada, cancelación, asistencia, solicitudes de cambio y devolución, seguimiento, citas afectadas y operación de bloques CU24/CU25.
+- Médico: agenda propia, ausencia al llamado, finalización de consulta y recomendación de seguimiento.
+- Paciente: registro y verificación, recuperación de acceso, disponibilidad, reserva y pago online de pruebas, historial propio, solicitud de reprogramación y solicitud de reembolso de citas canceladas por Recepción.
 - Acceso: sesión por rol, estado activo y revocación ante cambios de credenciales o permisos.
 
 Los turnos protegen los primeros 120 minutos para presencial. El resto usa porcentajes enteros por médico, 50/50 inicial, mayor resto y desempate presencial, alternando modalidades mientras ambas conservan cupos. Los minutos sobrantes al final del turno quedan sin consulta; no se generan citas más cortas.
@@ -37,11 +38,20 @@ El registro de Paciente envía un enlace firmado de verificación. El inicio de 
 
 El entorno local usa `MAIL_MAILER=log`: registra el mensaje en el log privado para desarrollo y no lo entrega a una bandeja real. Para entrega real se configura el transporte SMTP mediante las variables de correo de Laravel en `.env`. Las pruebas simulan las notificaciones y no envían correos externos. No copiar enlaces de recuperación ni credenciales a los informes o al repositorio.
 
-## Estado de los demás módulos
+## Pagos online y conciliación
 
-Las decisiones funcionales se toman de V6. La implementación económica de citas, retenciones, pago inmediato, WizPay, reembolsos, seguimiento y solicitudes de reprogramación aún no está completada. El código histórico de citas y reportes se conserva deshabilitado por defecto con `CLINIC_APPOINTMENTS_ENABLED=false`; habilitar ese indicador no implementa las reglas económicas de V6.
+Los módulos clínicos se habilitan con `CLINIC_APPOINTMENTS_ENABLED=true` (valor inicial de esta entrega). Antes de emitir fichas con cobro, Administración registra la tarifa en la especialidad. No se asignan tarifas ni pagos ficticios a registros preexistentes.
 
-Este estado de implementación no representa nuevas preguntas de negocio ni autoriza funciones adicionales. El registro de adecuación indica el alcance comprobado de la entrega.
+WizPay utiliza exclusivamente `https://api-test.wizpay.app`. Configurar `WIZPAY_TEST_API_KEY` y `WIZPAY_TEST_WEBHOOK_KEY` en `.env`, y el receptor público `/webhooks/wizpay` en el panel sandbox del proveedor, para los eventos `payment.qr.success` y `payment.qr.failed`, con el mismo secreto Bearer. Mantener en ejecución:
+
+```powershell
+php artisan queue:work
+php artisan schedule:work
+```
+
+El webhook encola la conciliación. Como respaldo, el programador revisa operaciones pendientes con espera creciente; también puede ejecutarse `php artisan clinica:conciliar-pagos`. Una respuesta del navegador nunca confirma un pago. Una transacción pendiente o desconocida conserva su retención hasta ser conciliada, incluso si vence el reloj local. La aprobación de un reembolso no marca la devolución como completada: se registra después la ejecución externa declarada conforme a CU26.
+
+La integración está cubierta mediante respuestas HTTP simuladas en pruebas automatizadas; no se acredita un cobro real en el sandbox sin configurar y probar las credenciales del comercio. La documentación de configuración y las comprobaciones figuran en el informe enlazado.
 
 ## Organización del código
 

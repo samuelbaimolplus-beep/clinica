@@ -14,13 +14,17 @@ export function installImpactViews(ui) {
             + panel('Citas futuras afectadas', table(['Cita', ...(reception ? ['Paciente', 'Teléfono'] : []), 'Médico', 'Especialidad', 'Fecha', 'Horario', 'Estado', 'Motivo', 'Detalle'], affected.map(appointment => [
                 esc(code('CIT', appointment.id)), ...(reception ? [esc(full(appointment.patient)), esc(appointment.patient?.phone)] : []), esc(full(state.refs.doctors.find(doctor => doctor.id === appointment.doctor_id))),
                 esc(appointment.specialty?.name), esc(appointment.date), esc(`${time(appointment.start_time)}–${time(appointment.end_time)}`),
-                badge(appointment.status), esc(appointment.reasons.join(', ')), button('Consultar origen', `data-impact="${appointment.id}"`, 'link'),
-            ]))), bind: () => on('[data-impact]', 'click', event => {
+                badge(appointment.status), esc(appointment.reasons.join(', ')), button('Consultar origen', `data-impact="${appointment.id}"`, 'link')+(reception?button('Reprogramar',`data-impact-change="${appointment.id}"`)+button('Cancelar',`data-impact-cancel="${appointment.id}"`):''),
+            ]))), bind: () => {
+                const complete=async id=>(await api('appointments?mode=active')).find(a=>a.id===Number(id));
+                on('[data-impact-change]','click',async e=>ui.clinicalActions.reschedule(await complete(e.currentTarget.dataset.impactChange)));
+                on('[data-impact-cancel]','click',async e=>ui.clinicalActions.cancel(await complete(e.currentTarget.dataset.impactCancel)));
+                on('[data-impact]', 'click', event => {
                 const appointment = affected.find(item => item.id === Number(event.currentTarget.dataset.impact));
                 modal('Origen de la afectación', details([
                     ['Cita', esc(code('CIT', appointment.id))], ['Motivos', esc(appointment.reasons.join(', '))],
                     ['Registros de origen', appointment.origins.map(origin => esc(originText(origin))).join('<br>')],
                 ]));
-            })};
+            });}};
     };
 }

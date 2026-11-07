@@ -11,6 +11,7 @@ use App\Http\Controllers\Catalog\PatientController;
 use App\Http\Controllers\Catalog\SpecialtyController;
 use App\Http\Controllers\Catalog\StatusController;
 use App\Http\Controllers\Catalog\UserController;
+use App\Http\Controllers\ClinicalWorkflowController;
 use App\Http\Controllers\MedicalAvailabilityController;
 use App\Http\Controllers\PatientAccountInvitationController;
 use App\Http\Controllers\PatientRegistrationController;
@@ -18,6 +19,8 @@ use App\Http\Controllers\ReferenceController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\ScheduleImpactController;
+use App\Http\Controllers\WizPayWebhookController;
+use App\Http\Middleware\ClinicalAccessAudit;
 use App\Http\Middleware\ClinicSession;
 use App\Http\Middleware\ReceptionAgendaAccess;
 use App\Http\Middleware\RequireAppointments;
@@ -27,6 +30,7 @@ Route::get('/', function () {
     return view('clinic');
 });
 Route::view('/terms', 'terms')->name('terms');
+Route::post('/webhooks/wizpay', WizPayWebhookController::class)->middleware('throttle:60,1');
 Route::get('/account/verify/{id}/{hash}', [AccountRecoveryController::class, 'verify'])->middleware(['signed', 'throttle:6,1'])->name('clinic.email.verify');
 Route::get('/password/reset/{token}', fn (string $token) => view('auth.reset-password', ['token' => $token]));
 
@@ -97,8 +101,20 @@ Route::prefix('api')->group(function () {
             Route::post('unavailabilities/preview', [ScheduleController::class, 'preview']);
         });
 
-        // Implementación anterior conservada; pendiente integrar pago obligatorio y cupos.
-        Route::middleware(RequireAppointments::class)->group(function () {
+        // Los coordinadores clínicos verifican permisos, cupos y pago antes de emitir ficha.
+        Route::middleware([RequireAppointments::class, ClinicalAccessAudit::class])->group(function () {
+            $workflow = ClinicalWorkflowController::class;
+            Route::get('online-bookings', [$workflow, 'onlineList']);
+            Route::post('online-bookings', [$workflow, 'onlineStart'])->middleware('throttle:12,1');
+            Route::post('online-bookings/{id}/status', [$workflow, 'onlineStatus'])->whereNumber('id')->middleware('throttle:6,1');
+            Route::post('online-bookings/{id}/retry', [$workflow, 'onlineRetry'])->whereNumber('id')->middleware('throttle:6,1');
+            Route::get('reschedule-requests', [$workflow, 'rescheduleList']);
+            Route::post('reschedule-requests/{id}/reject', [$workflow, 'rejectReschedule'])->whereNumber('id');
+            Route::post('appointments/{id}/reschedule-request', [$workflow, 'requestReschedule'])->whereNumber('id');
+            Route::get('refunds', [$workflow, 'refunds']);
+            Route::post('appointments/{id}/refund', [$workflow, 'requestRefund'])->whereNumber('id');
+            Route::post('refunds/{id}/decision', [$workflow, 'decideRefund'])->whereNumber('id');
+            Route::post('refunds/{id}/complete', [$workflow, 'completeRefund'])->whereNumber('id');
             Route::get('availability', [ScheduleController::class, 'availability']);
             Route::get('appointments', [AppointmentController::class, 'index']);
             Route::post('appointments', [AppointmentController::class, 'store']);

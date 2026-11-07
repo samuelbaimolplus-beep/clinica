@@ -4,6 +4,7 @@ namespace App\Services\Schedules;
 
 use App\Models\AgendaAdjustment;
 use App\Models\Appointment;
+use App\Models\BookingRequest;
 use App\Models\Doctor;
 use App\Models\Schedule;
 use App\Models\Unavailability;
@@ -23,6 +24,9 @@ class ScheduleService
 
         return DB::transaction(function () use ($data, $id) {
             $this->lockActiveDoctor($data['doctor_id']);
+            if (BookingRequest::where('doctor_id', $data['doctor_id'])->whereIn('status', ['held', 'processing'])->exists()) {
+                throw ValidationException::withMessages(['schedule' => 'Hay pagos online retenidos. Concilie esas operaciones antes de cambiar el turno.']);
+            }
             $schedule = $id ? Schedule::whereKey($id)->where('doctor_id', $data['doctor_id'])->lockForUpdate()->firstOrFail() : new Schedule;
             if (Schedule::where('doctor_id', $data['doctor_id'])->where('weekday', $data['weekday'])
                 ->when($id, fn ($q) => $q->whereKeyNot($id))
@@ -49,6 +53,10 @@ class ScheduleService
     {
         return DB::transaction(function () use ($data, $preview) {
             $this->lockActiveDoctor($data['doctor_id']);
+            if (! $preview && BookingRequest::where('doctor_id', $data['doctor_id'])->whereIn('status', ['held', 'processing'])
+                ->whereRaw('(date + start_time) < ?::timestamp AND (date + end_time) > ?::timestamp', [$data['ends_at'], $data['starts_at']])->exists()) {
+                throw ValidationException::withMessages(['schedule' => 'El período contiene un pago online pendiente de conciliación.']);
+            }
             $affected = Appointment::with('patient', 'doctor', 'specialty')->where('doctor_id', $data['doctor_id'])
                 ->whereIn('status', Appointment::ACTIVE)->whereRaw('(date + start_time) >= ?::timestamp', [now()->format('Y-m-d H:i:s')])
                 ->whereRaw('(date + start_time) < ?::timestamp AND (date + end_time) > ?::timestamp', [$data['ends_at'], $data['starts_at']])->get();

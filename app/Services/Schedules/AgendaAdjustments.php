@@ -4,6 +4,7 @@ namespace App\Services\Schedules;
 
 use App\Models\AgendaAdjustment;
 use App\Models\Appointment;
+use App\Models\BookingRequest;
 use App\Models\Doctor;
 use App\Models\Specialty;
 use App\Models\User;
@@ -19,8 +20,10 @@ class AgendaAdjustments
     {
         $capacity = app(DoctorQuotaService::class)->capacity($doctorId, $date);
         $busy = Appointment::where('doctor_id', $doctorId)->where('date', $date)->whereIn('status', Appointment::ACTIVE)->get();
+        $holds = BookingRequest::where('doctor_id', $doctorId)->where('date', $date)->whereIn('status', ['held', 'processing'])->get();
 
         return array_values(array_filter($capacity['blocks'], fn ($block) => ! $block['demand_blocked']
+            && ! $holds->contains(fn ($hold) => $hold->start_time < $block['end_time'].':00' && $hold->end_time > $block['start_time'].':00')
             && CarbonImmutable::parse($date.' '.$block['start_time']) >= now()
             && ! $busy->contains(fn ($appointment) => $appointment->start_time < $block['end_time'].':00' && $appointment->end_time > $block['start_time'].':00')));
     }

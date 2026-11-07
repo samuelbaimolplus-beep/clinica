@@ -28,7 +28,7 @@ class DemoDataSeeder extends Seeder
                 ['Pediatría', 'Atención y seguimiento infantil.'],
                 ['Ginecología', 'Controles de salud de la mujer.'],
                 ['Odontología', 'Prevención y salud bucal.'],
-            ])->map(fn ($s) => Specialty::firstOrCreate(['name' => $s[0]], ['description' => $s[1], 'status' => 'Activo']));
+            ])->map(fn ($s) => Specialty::firstOrCreate(['name' => $s[0]], ['description' => $s[1], 'status' => 'Activo', 'fee_minor' => 10000]));
 
             $doctors = collect([
                 ['Carlos', 'Rojas Vaca', [0]], ['Lucía', 'Fernández Soliz', [1]],
@@ -92,7 +92,7 @@ class DemoDataSeeder extends Seeder
             // Future appointments go through the same availability rules as the application.
             foreach (range(0, 9) as $i) {
                 $reason = '[DEMO-'.str_pad($i + 1, 2, '0', STR_PAD_LEFT).'] '.['Control general', 'Consulta de seguimiento', 'Control preventivo', 'Revisión de rutina', 'Consulta inicial'][$i % 5];
-                if (Appointment::where('reason', $reason)->exists()) {
+                if (Appointment::where('reason', 'like', $reason.'%')->exists()) {
                     continue;
                 }
                 $doctor = $doctors[$i % 5];
@@ -104,16 +104,18 @@ class DemoDataSeeder extends Seeder
                 if (! $slot) {
                     continue;
                 }
+                $specialty = $doctor->specialties()->where('status', 'Activo')->firstOrFail();
+                if (! $specialty->fee_minor) {
+                    continue;
+                } // No inventar tarifas para registros preexistentes.
                 $a = $service->book(['patient_id' => $patients[$i]->id, 'doctor_id' => $doctor->id,
-                    'specialty_id' => $doctor->specialties()->where('status', 'Activo')->firstOrFail()->id,
-                    'date' => $date->toDateString(), 'start_time' => $slot['start'], 'reason' => $reason], $reception);
-                if ($i % 2 === 0) {
-                    $service->transition($a->id, 'confirm', $reception);
-                }
+                    'specialty_id' => $specialty->id, 'idempotency_key' => (string) Str::uuid(),
+                    'payment_method' => 'cash', 'payment_amount_minor' => $specialty->fee_minor, 'payment_confirmed' => true,
+                    'date' => $date->toDateString(), 'start_time' => $slot['start'], 'reason' => $reason.' · Cobro ficticio de demostración'], $reception);
                 if ($i === 9) {
                     $newSlot = collect($service->slots($doctor->id, $date->toDateString()))->firstWhere('status', 'Disponible');
                     if ($newSlot) {
-                        $service->book(['doctor_id' => $doctor->id, 'date' => $date->toDateString(), 'start_time' => $newSlot['start']], $reception, $a->id);
+                        $service->book(['doctor_id' => $doctor->id, 'date' => $date->toDateString(), 'start_time' => $newSlot['start'], 'cause' => 'clinic', 'patient_accepted' => true, 'change_reason' => 'Cambio ficticio acordado para demostración'], $reception, $a->id);
                     }
                 }
             }

@@ -28,6 +28,13 @@ class SpecialtyController extends Controller
     {
         $record = $id ? Specialty::findOrFail($id) : new Specialty;
 
-        return response()->json($service->save($record, $request->validated(), $request->user()), $id ? 200 : 201);
+        $data = $request->validated();
+        if (array_key_exists('fee_amount', $data)) {
+            [$whole, $fraction] = array_pad(explode('.', (string) $data['fee_amount'], 2), 2, '');
+            $data['fee_minor'] = $data['fee_amount'] === null ? null : (int) $whole * 100 + (int) str_pad($fraction, 2, '0');
+            unset($data['fee_amount']);
+        }
+
+        return response()->json($service->save($record, $data, $request->user()), $id ? 200 : 201);
     }
 }

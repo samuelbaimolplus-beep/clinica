@@ -6,6 +6,7 @@ import { installImpactViews } from './modules/impacts';
 import { installAvailabilityViews } from './modules/availability';
 import { installAgendaAdjustmentViews } from './modules/agenda-adjustments';
 import { createApiClient } from './lib/api';
+import { installClinicalViews } from './modules/clinical';
 
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -23,6 +24,7 @@ const cycles = [
     ['Ciclo III · Historial y reportes', [['CU15','Consultar historial de citas'],['CU16','Generar reportes administrativos'],['CU22','Consultar auditoría']]],
 ];
 cycles.push(['Operación de Recepción', [['CU24', 'Bloqueos provisionales'], ['CU25', 'Habilitar cupos online']]]);
+cycles.push(['Reservas, seguimiento y reembolsos', [['CU18','Reservar cita online'],['CU20','Solicitar reembolso'],['CU21','Registrar seguimiento'],['CU26','Resolver reembolsos']]]);
 const titles = Object.fromEntries(cycles.flatMap(c => c[1]));
 let access = {};
 let termsVersion = '';
@@ -121,91 +123,6 @@ function loginView() {
 const views = {};
 views.CU02 = async()=>({html:panel('Sesión activa',details([['Usuario',esc(state.user.name)],['Identificador',esc(state.user.email)],['Rol',badge(state.user.role)]])+`<div class="actions">${button('Cerrar sesión','id="session-logout"','danger')}</div>`),bind:()=>on('#session-logout','click',logout)});
 
-// CU08–CU09: bloques reales, duración calculada y confirmación por el servidor.
-function slotsHtml(slots, selectable=false, selected=''){
-    return `<div class="legend"><span>● Disponible</span><span>● Ocupado</span><span>● Bloqueado</span><span>● Pasado</span></div><div class="slots">${slots.length?slots.map(s=>selectable?`<button type="button" class="slot ${esc(s.status)} ${selected===s.start?'selected':''}" data-slot="${s.start}" ${s.status!=='Disponible'?'disabled':''}>${s.start}–${s.end}<small>${esc(s.status)}</small></button>`:`<div class="slot ${esc(s.status)}"><b>${s.start}–${s.end}</b><small>${esc(s.status)} ${esc(s.detail)}</small></div>`).join(''):'<p class="empty">El médico no tiene bloques de atención en esa fecha.</p>'}</div>`;
-}
-let availabilityFilter={specialty_id:'',doctor_id:'',date:''};
-views.CU08=async()=>{
-    const f=availabilityFilter;f.date ||= localDate();f.specialty_id ||= specOptions()[0]?.[0]||'';
-    const doctors=doctorOptions(f.specialty_id);if(!doctors.some(([id])=>String(id)===String(f.doctor_id)))f.doctor_id=doctors[0]?.[0]||'';
-    const slots=f.doctor_id?await api('availability?'+new URLSearchParams({doctor_id:f.doctor_id,date:f.date})):[];
-    return{html:panel('Filtros de búsqueda',`<form id="availability-form">${formErrors}<div class="grid three">${select('Especialidad','specialty_id',[['','Seleccione…'],...specOptions()],f.specialty_id)}${select('Médico','doctor_id',[['','Seleccione…'],...doctors],f.doctor_id,'required')}${field('Fecha','date','date',f.date,'required')}</div>${submit('Consultar disponibilidad')}</form>`)+panel('Disponibilidad médica',slotsHtml(slots)),bind:()=>{
-        on('#specialty_id','change',e=>{$('#doctor_id').innerHTML=doctorOptions(e.target.value).map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');});
-        bindForm('availability-form',async d=>{availabilityFilter=d;await navigate('CU08');});
-    }};
-};
-views.CU09=async()=>({html:panel('Programar nueva cita',`<form id="booking-form">${formErrors}<div class="grid two">${field('Código de cita','code','text','Automático al guardar','readonly')}${field('Fecha de creación','created','text',localDate(),'readonly')}</div><h3 class="step">Paso 1. Paciente</h3>${select('Paciente activo (CI — nombre)','patient_id',[['','Seleccione un paciente…'],...state.refs.patients.filter(p=>p.status==='Activo').map(p=>[p.id,`${p.identity} — ${full(p)}`])],'','required')}<h3 class="step">Paso 2. Especialidad y médico</h3><div class="grid two">${select('Especialidad','specialty_id',[['','Seleccione…'],...specOptions()],'','required')}${select('Médico habilitado','doctor_id',[['','Seleccione una especialidad…']],'','required')}</div><h3 class="step">Paso 3. Fecha y horario</h3><div class="grid two">${field('Fecha de atención','date','date',localDate(),`required min="${localDate()}"`)}${field('Hora de finalización (calculada)','end_time','text','','readonly')}</div><input type="hidden" name="start_time" id="chosen-slot"><div id="booking-slots">${notice('Seleccione especialidad, médico y fecha para consultar los horarios.')}</div><h3 class="step">Paso 4. Motivo y confirmación</h3>${textarea('Motivo de consulta (opcional)','reason','','maxlength="3000"')}<p style="margin-top:16px">Estado inicial: ${badge('Programada')}</p>${submit('Guardar cita')}</form>`),bind:()=>{
-    on('#specialty_id','change',()=>{const opts=doctorOptions($('#specialty_id').value);$('#doctor_id').innerHTML='<option value="">Seleccione…</option>'+opts.map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('');$('#chosen-slot').value='';$('#booking-slots').innerHTML=notice('Seleccione un médico.');$('#end_time').value='';});
-    let version=0;
-    const load=async()=>{const v=++version;$('#chosen-slot').value='';$('#end_time').value='';if(!$('#doctor_id').value||!$('#date').value)return;const slots=await api('availability?'+new URLSearchParams({doctor_id:$('#doctor_id').value,date:$('#date').value}));if(v!==version||state.view!=='CU09')return;$('#booking-slots').innerHTML=slotsHtml(slots,true);on('[data-slot]','click',e=>{$('#chosen-slot').value=e.currentTarget.dataset.slot;$('#end_time').value=slots.find(s=>s.start===e.currentTarget.dataset.slot).end;$$('[data-slot]').forEach(el=>el.classList.toggle('selected',el===e.currentTarget));});};
-    on('#doctor_id,#date','change',load);
-    bindForm('booking-form',async d=>{if(!d.start_time)throw new Error('Seleccione un bloque horario disponible.');delete d.code;delete d.created;delete d.end_time;const a=await api('appointments','POST',d);await navigate('CU09');toast(`Cita ${code('CIT',a.id)} programada correctamente.`);});
-}});
-
-// CU10–CU15 y CU17: agenda, transiciones e historial.
-let appointmentFilters={};
-function appointmentDetails(a){return details([['Código',code('CIT',a.id)],['Paciente',esc(full(a.patient))],['Médico',esc(full(a.doctor))],['Especialidad',esc(a.specialty.name)],['Fecha',esc(a.date)],['Horario',`${time(a.start_time)}–${time(a.end_time)}`],['Estado',badge(a.status)],['Fecha de creación',esc(a.created_at?.replace('T',' ').slice(0,19))],['Motivo de consulta',esc(a.reason||'—')],['Asistencia',esc(a.attendance_at||'Sin registrar')],['Cancelación',esc(a.cancellation_reason||'No aplica')]]);}
-function showHistory(a){
-    const eventRows=a.events.map(e=>{
-        let info='';const d=e.details;
-        if(e.action==='Reprogramación'){
-            const oldDoctor=state.refs.doctors.find(m=>m.id===d.before.doctor_id),newDoctor=state.refs.doctors.find(m=>m.id===d.after.doctor_id);
-            info=`Anterior: ${d.before.date} ${time(d.before.start_time)} · ${full(oldDoctor)}. Nuevo: ${d.after.date} ${time(d.after.start_time)} · ${full(newDoctor)}.`;
-        }else info=[d.before,d.after,d.reason,d.attendance_at].filter(v=>v&&typeof v==='string').join(' · ');
-        return[esc(e.created_at),esc(e.action),esc(info)];
-    });
-    modal(`Detalle de ${code('CIT',a.id)}`,appointmentDetails(a)+`<h3 class="step">Historial de cambios</h3>`+table(['Fecha','Acción','Detalle'],eventRows));
-}
-function cancelAppointment(a){
-    modal('Cancelar cita médica',appointmentDetails(a)+`<form id="cancel-form" style="margin-top:20px">${formErrors}${textarea('Motivo de cancelación (obligatorio)','reason','','required maxlength="3000"')}${actionButtons(button('Volver','data-dismiss','')+'<button type="submit" class="btn danger">Confirmar cancelación</button>')}</form>`);
-    on('[data-dismiss]','click',closeModal);bindForm('cancel-form',async d=>{await api(`appointments/${a.id}/cancel`,'POST',d);closeModal();await navigate(state.view);toast('Cita cancelada. El horario quedó libre.');});
-}
-function rescheduleAppointment(a){
-    modal('Reprogramar cita médica',panel('Programación anterior',appointmentDetails(a))+`<form id="reschedule-form">${formErrors}<div class="grid two">${select('Médico (misma especialidad)','doctor_id',doctorOptions(a.specialty_id),a.doctor_id,'required')}${field('Nueva fecha','date','date',a.date<localDate()?localDate():a.date,`required min="${localDate()}"`)}</div><input type="hidden" name="start_time" id="reschedule-slot"><div id="reschedule-slots"></div>${submit('Guardar cambios')}</form>`);
-    let version=0;
-    const load=async()=>{const v=++version;$('#reschedule-slot').value='';const d=Object.fromEntries(new FormData($('#reschedule-form')));if(!d.doctor_id||!d.date)return;const slots=await api('availability?'+new URLSearchParams({doctor_id:d.doctor_id,date:d.date,exclude:a.id}));if(v!==version||!$('#reschedule-slots'))return;$('#reschedule-slots').innerHTML=slotsHtml(slots,true);on('[data-slot]','click',e=>{$('#reschedule-slot').value=e.currentTarget.dataset.slot;$$('[data-slot]',$('#modal')).forEach(el=>el.classList.toggle('selected',el===e.currentTarget));},$('#modal'));};
-    on('#reschedule-form #doctor_id,#reschedule-form #date','change',load);safe(load)();
-    bindForm('reschedule-form',async d=>{if(!d.start_time)throw new Error('Seleccione la nueva hora.');await api(`appointments/${a.id}/reschedule`,'PUT',d);closeModal();await navigate(state.view);toast('Cita reprogramada correctamente.');});
-}
-async function appointmentView(view,mode){
-    const defaults={agenda:{date:localDate()},history:{},active:{},today:{},attend:{},affected:{}};
-    const f=appointmentFilters[view]||defaults[mode];
-    const rows=await api('appointments?'+new URLSearchParams({mode,...f}));
-    let filters='';
-    if(!['today','attend','affected'].includes(mode))filters=panel('Filtros de búsqueda',`<form id="appointment-filters">${formErrors}<div class="grid four">${field('Código, CI, paciente o médico','q','search',f.q)}${state.user.role!=='Médico'?select('Médico','doctor_id',[['','Todos los médicos'],...personOptions(state.refs.doctors)],f.doctor_id):field('Médico','own','text',full(state.refs.doctors.find(d=>d.id===state.user.doctor_id)),'readonly')}${field('Fecha','date','date',f.date)}${mode==='history'?select('Estado','status',[['','Todos los estados'],...states],f.status):''}</div>${submit(mode==='agenda'?'Consultar agenda':'Buscar citas')}</form>`);
-    const headers=['Código','Paciente','Médico','Especialidad','Fecha','Horario','Estado'];
-    if(mode==='today')headers.push('Asistencia');
-    if(mode==='affected')headers.push('Indisponibilidad relacionada');
-    headers.push('Acciones');
-    const body=table(headers,rows.map(a=>{
-        let buttons=button('Ver detalle',`data-detail="${a.id}"`,'link');
-        if(active(a)) {
-            if(view==='CU10'||mode==='affected')buttons+=button('Reprogramar',`data-reschedule="${a.id}"`,'small primary');
-            if(view==='CU11'||mode==='affected')buttons+=button('Cancelar',`data-cancel="${a.id}"`,'small danger');
-            if(mode==='today')buttons+=(!a.attendance_at?button('Registrar asistencia',`data-transition="attendance" data-id="${a.id}"`,'small success')+button('Inasistencia',`data-transition="absent" data-id="${a.id}"`,'small warning'):'');
-            if(mode==='attend')buttons+=button('Registrar como atendida',`data-transition="attend" data-id="${a.id}"`,'small success');
-            if(mode==='agenda'&&state.user.role==='Recepcionista'&&a.status==='Programada')buttons+=button('Confirmar cita',`data-transition="confirm" data-id="${a.id}"`,'small primary');
-        }
-        const cells=[code('CIT',a.id),esc(full(a.patient)),esc(full(a.doctor)),esc(a.specialty.name),esc(a.date),`${time(a.start_time)}–${time(a.end_time)}`,badge(a.status)];
-        if(mode==='today')cells.push(esc(a.attendance_at?time(a.attendance_at.slice(11)):'Sin registrar'));
-        if(mode==='affected')cells.push(a.blocks.map(b=>`${esc(b.reason)}<br><small>${esc(b.starts_at)} → ${esc(b.ends_at)}</small>`).join('<br>'));
-        return [...cells,`<div class="actions" style="margin:0;min-width:140px">${buttons}</div>`];
-    }));
-    let intro='';
-    if(mode==='affected')intro=notice(`Se detectaron ${rows.length} cita(s) vigentes afectadas por indisponibilidad médica.`,'warning');
-    if(mode==='agenda'&&state.user.role==='Médico')intro=notice('La agenda se limita a su propia identificación profesional (RN18).');
-    if(mode==='today')intro=notice(`Citas de hoy, ${localDate()}. La asistencia no cambia el estado de la cita. La inasistencia solo puede registrarse después de su finalización.`);
-    return {html:filters+intro+panel(mode==='attend'?'Mi agenda de hoy':titles[view],body),bind:()=>{
-        if($('#appointment-filters'))bindForm('appointment-filters',async d=>{delete d.own;appointmentFilters[view]=Object.fromEntries(Object.entries(d).filter(([,v])=>v));await navigate(view);});
-        on('[data-detail]','click',e=>showHistory(rows.find(a=>a.id===Number(e.currentTarget.dataset.detail))));
-        on('[data-cancel]','click',e=>cancelAppointment(rows.find(a=>a.id===Number(e.currentTarget.dataset.cancel))));
-        on('[data-reschedule]','click',e=>rescheduleAppointment(rows.find(a=>a.id===Number(e.currentTarget.dataset.reschedule))));
-        on('[data-transition]','click',e=>{const {transition,id}=e.currentTarget.dataset;const labels={attendance:'registrar asistencia',absent:'registrar inasistencia',attend:'registrar como atendida',confirm:'confirmar la cita'};confirmAction('Confirmar operación',`¿Confirma que desea ${labels[transition]} para ${code('CIT',id)}?`,async()=>{await api(`appointments/${id}/${transition}`,'POST',{});await navigate(view);toast('Cita actualizada correctamente.');});});
-    }};
-}
-views.CU10=()=>appointmentView('CU10','active');views.CU11=()=>appointmentView('CU11','active');views.CU12=()=>appointmentView('CU12','agenda');views.CU13=()=>appointmentView('CU13','today');views.CU14=()=>appointmentView('CU14','attend');views.CU15=()=>appointmentView('CU15','history');views.CU17=()=>appointmentView('CU17','affected');
-
 // CU16: siete reportes, porcentajes, impresión y exportación CSV.
 const reportTypes=[['REP01','Citas por fecha'],['REP02','Citas por médico'],['REP03','Citas por especialidad'],['REP04','Citas por estado'],['REP05','Pacientes registrados'],['REP06','Resumen de atenciones por período'],['REP07','Agenda diaria por médico']];
 let reportFilter={type:'REP01',date:localDate(),from:localDate().slice(0,8)+'01',to:localDate()};
@@ -229,6 +146,7 @@ installAuditViews(ui);
 installImpactViews(ui);
 installAvailabilityViews(ui);
 installAgendaAdjustmentViews(ui);
+installClinicalViews(ui);
 
 $('#close-modal').addEventListener('click',closeModal);
 $('#modal').addEventListener('click',e=>{if(e.target===$('#modal')){const rect=$('#modal').getBoundingClientRect();if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)closeModal();}});

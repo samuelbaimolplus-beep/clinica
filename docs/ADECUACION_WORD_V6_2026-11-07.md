@@ -1,5 +1,7 @@
 # Adecuación del programa al Word V6
 
+> Registro de la adecuación inicial. El estado posterior, que integra citas, cobros, reserva online, seguimiento y reembolsos, figura en [Implementación integrada V6](IMPLEMENTACION_INTEGRADA_V6_2026-11-07.md). Sus apartados de módulos todavía sin programar se conservan como historial de esta primera entrega.
+
 Fecha: 7 de noviembre de 2026.
 
 La V6 se adopta como referencia funcional definitiva. Este registro describe correcciones efectivamente programadas y su verificación. Los acuerdos del Word se consideran decisiones de implementación, no preguntas por volver a validar ni propuestas de casos de uso adicionales.

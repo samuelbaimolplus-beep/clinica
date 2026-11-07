@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AgendaAdjustment;
 use App\Models\Appointment;
+use App\Models\BookingRequest;
 use App\Models\Doctor;
 use App\Models\Specialty;
 use App\Services\Schedules\DoctorQuotaService;
@@ -10,7 +12,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
-/** CU08 provisional: consulta sin reservar ni formalizar citas. */
+/** CU08 consulta disponibilidad; los coordinadores revalidan antes de formalizar. */
 class MedicalAvailabilityController extends Controller
 {
     private function authorizeRole(Request $request): void
@@ -22,7 +24,7 @@ class MedicalAvailabilityController extends Controller
     {
         $this->authorizeRole($request);
 
-        return ['specialties' => Specialty::where('status', 'Activo')->orderBy('name')->get(['id', 'name']),
+        return ['specialties' => Specialty::where('status', 'Activo')->orderBy('name')->get(['id', 'name', 'fee_minor']),
             'doctors' => Doctor::where('status', 'Activo')->whereHas('specialties', fn ($q) => $q->where('status', 'Activo'))
                 ->with(['specialties' => fn ($q) => $q->where('status', 'Activo')->select('specialties.id', 'name')])
                 ->orderBy('last_name')->get(['id', 'first_name', 'last_name'])];
@@ -33,6 +35,7 @@ class MedicalAvailabilityController extends Controller
         $this->authorizeRole($request);
         $data = $request->validate([
             'doctor_id' => 'nullable|integer|exists:doctors,id',
+            'include_demand' => 'sometimes|boolean',
             'specialty_id' => 'required|integer|exists:specialties,id',
             'date' => 'required|date_format:Y-m-d|after_or_equal:today',
             'modality' => ['sometimes', Rule::in([$request->user()->role === 'Paciente' ? 'online' : 'presential'])],
@@ -44,8 +47,11 @@ class MedicalAvailabilityController extends Controller
         foreach ($doctors as $doctor) {
             $appointments = Appointment::where('doctor_id', $doctor->id)->where('date', $data['date'])->whereIn('status', Appointment::ACTIVE)->get(['start_time', 'end_time']);
             $capacity = $service->capacity($doctor->id, $data['date']);
+            $holds = BookingRequest::where('doctor_id', $doctor->id)->where('date', $data['date'])->whereIn('status', ['held', 'processing'])->get();
+            $demands = AgendaAdjustment::where('doctor_id', $doctor->id)->where('date', $data['date'])->where('kind', 'presential_block')->where('status', 'active')->get();
             $blocks = array_values(array_filter($capacity['blocks'], fn ($block) => $block['modality'] === $modality
-                && ! $block['demand_blocked']
+                && (! $block['demand_blocked'] || (! empty($data['include_demand']) && $modality === 'presential' && $demands->contains(fn ($d) => $d->specialty_id === (int) $data['specialty_id'] && substr($d->start_time, 0, 5) === $block['start_time'])))
+                && ! $holds->contains(fn ($hold) => $hold->start_time < $block['end_time'].':00' && $hold->end_time > $block['start_time'].':00')
                 && CarbonImmutable::parse($data['date'].' '.$block['start_time']) >= now()
                 && ! $appointments->contains(fn ($appointment) => $appointment->start_time < $block['end_time'].':00' && $appointment->end_time > $block['start_time'].':00')));
             if ($blocks) {

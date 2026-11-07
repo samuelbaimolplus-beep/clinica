@@ -1,5 +1,7 @@
 # Clínica Vida Salud
 
+> Estado actual: [Implementación integrada de los 26 CU de V6](docs/IMPLEMENTACION_INTEGRADA_V6_2026-11-07.md). El texto siguiente describe entregas históricas, no el comportamiento actual de pagos, asistencia y reservas.
+
 > **Referencia histórica de la implementación anterior.** El alcance vigente, la estructura modular y su correspondencia con `Nuevo parcial angelica.docx` están en [docs/ARQUITECTURA_Y_TRAZABILIDAD.md](docs/ARQUITECTURA_Y_TRAZABILIDAD.md). Ahora existen rol Paciente, registro online, vinculación verificada y auditoría. Citas y reportes están deshabilitados por defecto hasta integrar pagos. Las descripciones y resultados siguientes se conservan como antecedentes y no representan el estado actual.
 
 Implementación Laravel / PostgreSQL de los 17 casos de uso de `../GUIA.html`. La guía se conserva como referencia; la aplicación no utiliza sus arreglos de prueba, selector libre de roles ni fechas simuladas.

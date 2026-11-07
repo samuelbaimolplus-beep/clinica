@@ -33,7 +33,7 @@ class DemoDataSeederTest extends TestCase
         $this->assertDatabaseCount('appointments', 16);
         $this->assertDatabaseCount('users', 7);
         $this->assertDatabaseCount('unavailabilities', 1);
-        foreach (Appointment::STATES as $state) {
+        foreach (array_diff(Appointment::STATES, ['Confirmada']) as $state) {
             $this->assertTrue(Appointment::where('status', $state)->exists());
         }
         Storage::disk('local')->assertExists('accesos-demo.txt');

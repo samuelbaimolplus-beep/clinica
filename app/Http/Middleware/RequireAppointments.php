@@ -9,7 +9,7 @@ class RequireAppointments
 {
     public function handle(Request $request, Closure $next)
     {
-        abort_unless(config('clinic.appointments_enabled'), 404, 'El módulo de citas está pendiente de integrar pagos y cupos.');
+        abort_unless(config('clinic.appointments_enabled'), 404, 'El módulo de citas está deshabilitado en la configuración del servidor.');
 
         return $next($request);
     }

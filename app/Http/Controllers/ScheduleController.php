@@ -18,9 +18,9 @@ class ScheduleController extends Controller
     public function availability(Request $r, AppointmentService $service)
     {
         abort_unless($r->user()->role === 'Recepcionista', 403);
-        $d = $r->validate(['doctor_id' => 'required|integer|exists:doctors,id', 'date' => 'required|date_format:Y-m-d', 'exclude' => 'nullable|integer|exists:appointments,id']);
+        $d = $r->validate(['doctor_id' => 'required|integer|exists:doctors,id', 'date' => 'required|date_format:Y-m-d', 'exclude' => 'nullable|integer|exists:appointments,id', 'modality' => 'nullable|in:presential,online']);
 
-        return $service->slots($d['doctor_id'], $d['date'], $d['exclude'] ?? null);
+        return $service->slots($d['doctor_id'], $d['date'], $d['exclude'] ?? null, $d['modality'] ?? 'presential');
     }
 
     public function index(Request $r)

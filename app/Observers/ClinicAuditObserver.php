@@ -25,6 +25,7 @@ class ClinicAuditObserver
         $module = match (class_basename($model)) {
             'User' => 'users', 'Patient' => 'patients', 'Doctor' => 'doctors',
             'Specialty' => 'specialties', 'Schedule', 'Unavailability', 'DoctorQuota', 'AgendaAdjustment' => 'schedules',
+            'Payment' => 'payments', 'RefundRequest' => 'refunds',
             default => 'appointments',
         };
         app(AuditLogger::class)->record($module, $action, $model, details: [
