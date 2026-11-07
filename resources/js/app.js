@@ -12,6 +12,7 @@ import { navigationGroups, rolePanels, visibleNavigation, homeView } from './lib
 import { installSupervisionViews } from './modules/supervision';
 import { installReceptionInbox } from './modules/reception-inbox';
 import { installAccountManagementViews } from './modules/accounts';
+import { installSessionViews } from './modules/session';
 
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -134,7 +135,6 @@ function loginView() {
     });
 }
 const views = {};
-views.CU02 = async()=>({html:panel('Sesión activa',details([['Usuario',esc(state.user.name)],['Nombre de usuario',esc(state.user.username || '')],['Correo',esc(state.user.email)],['Rol',badge(state.user.role)]])+`<div class="actions">${button('Cerrar sesión','id="session-logout"','danger')}</div>`),bind:()=>on('#session-logout','click',logout)});
 
 // CU16: siete reportes, porcentajes, impresión y exportación CSV.
 const reportTypes=[['REP01','Citas por fecha'],['REP02','Citas por médico'],['REP03','Citas por especialidad'],['REP04','Citas por estado'],['REP05','Pacientes registrados'],['REP06','Resumen de atenciones por período'],['REP07','Agenda diaria por médico']];
@@ -151,7 +151,8 @@ views.CU16=async()=>({html:panel('Generador de reportes administrativos',`<form 
 }});
 
 
-const ui = { $, state, views, api, esc, full, code, badge, field, select, textarea, personOptions, localDate, table, button, modal, formErrors, actionButtons, on, closeModal, bindForm, references, navigate, toast, confirmAction, panel, time, days, doctorOptions, notice, submit, main, details, loginView, heading, home, getTermsVersion: () => termsVersion };
+const ui = { $, state, views, api, esc, full, code, badge, field, select, textarea, personOptions, localDate, table, button, modal, formErrors, actionButtons, on, closeModal, bindForm, references, navigate, toast, confirmAction, panel, time, days, doctorOptions, notice, submit, main, details, loginView, heading, home, logout, getTermsVersion: () => termsVersion };
+installSessionViews(ui);
 installCatalogViews(ui);
 installScheduleViews(ui);
 installPatientViews(ui);

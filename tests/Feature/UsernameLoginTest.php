@@ -116,4 +116,36 @@ class UsernameLoginTest extends TestCase
         }
         $this->assertSame('otro', $other->fresh()->username);
     }
+
+    public function test_user_chooses_own_login_name_without_changing_password_permissions_or_other_accounts(): void
+    {
+        $user = $this->account(['role' => 'Recepcionista']);
+        $other = $this->account(['username' => 'otro', 'email' => 'otro@username.test']);
+        $oldHash = $user->password;
+        $this->postJson('/api/login', ['email' => 'samuel', 'password' => 'PruebaSegura2026'])->assertOk();
+        $this->patchJson('/api/account/username', ['username' => '  MI.USUARIO  ', 'current_password' => 'PruebaSegura2026', 'id' => $other->id, 'role' => 'Superadmin', 'password' => 'OtraClave2026'])
+            ->assertOk()->assertJsonPath('user.username', 'mi.usuario')->assertJsonPath('user.role', 'Recepcionista')->assertJsonMissingPath('user.password');
+        $this->assertSame($oldHash, $user->fresh()->password);
+        $this->assertSame('otro', $other->fresh()->username);
+        $this->getJson('/api/session')->assertOk()->assertJsonPath('user.username', 'mi.usuario');
+        $this->postJson('/api/logout')->assertOk();
+        $this->postJson('/api/login', ['email' => 'samuel', 'password' => 'PruebaSegura2026'])->assertUnprocessable();
+        $this->postJson('/api/login', ['email' => 'mi.usuario', 'password' => 'PruebaSegura2026'])->assertOk();
+    }
+
+    public function test_choosing_login_name_requires_authentication_current_password_and_availability(): void
+    {
+        $user = $this->account();
+        $this->account(['username' => 'ocupado', 'email' => 'otro@username.test']);
+        $this->patchJson('/api/account/username', ['username' => 'nuevo', 'current_password' => 'PruebaSegura2026'])->assertUnauthorized();
+        $this->actingAs($user)->patchJson('/api/account/username', ['username' => 'nuevo', 'current_password' => 'Incorrecta'])->assertUnprocessable()->assertJsonValidationErrors('current_password');
+        $this->patchJson('/api/account/username', ['username' => 'OCUPADO', 'current_password' => 'PruebaSegura2026'])->assertUnprocessable()->assertJsonValidationErrors('username');
+        $this->patchJson('/api/account/username', ['username' => 'con espacios', 'current_password' => 'PruebaSegura2026'])->assertUnprocessable()->assertJsonValidationErrors('username');
+        $this->assertSame('samuel', $user->fresh()->username);
+    }
+
+    public function test_keeping_the_same_login_name_is_allowed(): void
+    {
+        $this->actingAs($this->account())->patchJson('/api/account/username', ['username' => 'SAMUEL', 'current_password' => 'PruebaSegura2026'])->assertOk()->assertJsonPath('user.username', 'samuel');
+    }
 }

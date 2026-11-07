@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AccountManagementController;
 use App\Http\Controllers\AccountRecoveryController;
+use App\Http\Controllers\AccountUsernameController;
 use App\Http\Controllers\AgendaAdjustmentController;
 use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\AuditController;
@@ -44,6 +45,7 @@ Route::prefix('api')->group(function () {
     Route::post('account/reset', [AccountRecoveryController::class, 'reset'])->middleware('throttle:6,1');
     Route::post('logout', [AuthController::class, 'logout']);
     Route::middleware(ClinicSession::class)->group(function () {
+        Route::patch('account/username', AccountUsernameController::class)->middleware('throttle:6,1');
         Route::get('supervision/accounts', [AccountManagementController::class, 'index']);
         Route::post('supervision/accounts/{id}/password', [AccountManagementController::class, 'password'])->whereNumber('id')->middleware('throttle:6,1');
         Route::get('references', ReferenceController::class);

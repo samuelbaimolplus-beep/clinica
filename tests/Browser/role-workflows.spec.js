@@ -47,6 +47,7 @@ async function mockClinic(page, role, options={}) {
         else if(path==='entities/users')data=[{...user,id:1}];
         else if(path==='supervision/accounts')data=[{...user,id:1},{id:2,name:'Ana paciente',username:'ana.paciente',email:'ana@example.test',role:'Paciente',status:'Activo'}];
         else if(path==='supervision/accounts/2/password')data={message:'Contraseña cambiada.'};
+        else if(path==='account/username') {user.username=route.request().postDataJSON().username;data={user,csrf:'renewed-username-csrf',message:'Tu usuario de acceso se actualizó correctamente.'};}
         else if(path==='entities/doctors')data=[doctor];
         else if(path==='entities/specialties')data=[specialty];
         else if(path==='entities/patients')data=[patient];
@@ -157,6 +158,15 @@ test('Superadmin puede cambiar la contraseña de un paciente sin consultar la co
 test('Administrador no tiene acceso a la consulta global de cuentas', async ({page}) => {
     await mockClinic(page,'Administrador');await page.goto('/');
     await expect(page.getByRole('button',{name:'Consultar todas las cuentas'})).toHaveCount(0);
+});
+
+test('cualquier cuenta puede elegir su usuario desde Mi sesión', async ({page}) => {
+    const state=await mockClinic(page,'Paciente');await page.goto('/#CU02');
+    await page.getByLabel('Usuario de acceso',{exact:true}).fill('mi.nuevo.usuario');
+    await page.getByLabel('Confirma tu contraseña actual',{exact:true}).fill('ClaveDePrueba2026');
+    await page.getByRole('button',{name:'Guardar usuario de acceso'}).click();
+    await expect(page.getByLabel('Usuario de acceso',{exact:true})).toHaveValue('mi.nuevo.usuario');
+    expect(state.calls.find(c=>c.path==='account/username').method).toBe('PATCH');
 });
 
 test('Paciente consulta, retiene y obtiene ficha únicamente después de la confirmación del servidor', async ({page}) => {

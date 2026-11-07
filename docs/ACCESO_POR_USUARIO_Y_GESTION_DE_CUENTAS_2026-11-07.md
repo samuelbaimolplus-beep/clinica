@@ -58,3 +58,13 @@ Se reprodujo un fallo de una pestaña abierta antes de incorporar un rol: conser
 Después del login se vuelve a consultar la sesión persistida, se actualizan usuario, permisos y CSRF y se abre el panel correspondiente. Si ya existía una sesión autenticada, se recupera su identidad real sin intentar crear otra. Una sesión que no se conserva o cuyos permisos no se pueden cargar produce un error explícito; no una bienvenida. Si falla la carga de referencias del panel, el botón Reintentar vuelve a cargarlo sin reenviar las credenciales. Las respuestas de login y sesión indican `Cache-Control: no-store`.
 
 La regresión se comprobó primero fallando con el código anterior y después pasando con la corrección. Pasaron las 22 pruebas de navegador, las 10 pruebas Node del cliente/navegación y las 14 pruebas del servidor seleccionadas de autenticación por usuario y seguridad de cuentas. Las pruebas del servidor usan la base aislada y las de interfaz simulan las respuestas de API. La compilación de los recursos quedó actualizada.
+
+## Elección del usuario desde la cuenta propia
+
+Por solicitud posterior del propietario, se agregó **Mi sesión → Elegir mi usuario de acceso** para todos los perfiles. Permite escoger un identificador disponible, distinto del nombre mostrado o del correo. Se confirma la contraseña actual y se aplican las mismas reglas de formato, normalización y unicidad.
+
+El endpoint autenticado `PATCH /api/account/username` obtiene la identidad exclusivamente de la sesión. No admite cambiar otra cuenta, el rol, el correo ni la contraseña mediante campos adicionales. El cambio se registra en auditoría sin guardar la contraseña de confirmación. La sesión que confirmó la operación continúa con un identificador y CSRF renovados; las demás sesiones con firma anterior deberán autenticarse otra vez.
+
+La interfaz se organiza en `resources/js/modules/session.js` y la operación en `AccountUsernameController`. Se añadieron pruebas para cambio propio, campos ajenos ignorados, contraseña conservada, nuevo login, duplicados, formato, confirmación incorrecta y conservación del identificador actual.
+
+Verificación de esta ampliación: 11 pruebas de `UsernameLoginTest` correctas (100 aserciones), 23 pruebas de navegador correctas con API simulada y compilación Vite correcta. Las pruebas no modifican el usuario ni la contraseña de cuentas reales.

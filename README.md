@@ -41,6 +41,8 @@ Para crear la primera cuenta en una instalación nueva: `php artisan clinica:cre
 
 Se puede iniciar sesión con el nombre de usuario o el correo. Los nombres del personal se consultan y modifican en «Usuarios y roles»; los pacientes los eligen al registrarse. Superadmin puede abrir «Consultar todas las cuentas» para cambiar contraseñas del personal y de los pacientes, sin consultar las anteriores. La [actualización de acceso y gestión de cuentas](docs/ACCESO_POR_USUARIO_Y_GESTION_DE_CUENTAS_2026-11-07.md) documenta estas ampliaciones y sus pruebas.
 
+Cada cuenta puede elegir o cambiar su propio usuario en **Mi sesión → Elegir mi usuario de acceso**. Debe confirmar su contraseña actual y elegir un usuario disponible; conserva su contraseña, correo y permisos.
+
 ## Correo
 
 El registro de Paciente envía un enlace firmado de verificación. El inicio de sesión del paciente exige correo verificado. La recuperación utiliza un enlace temporal de un solo uso, mantiene contraseñas con hash y revoca las sesiones anteriores tras restablecerlas.
