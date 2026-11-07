@@ -7,6 +7,7 @@ import { installAvailabilityViews } from './modules/availability';
 import { installAgendaAdjustmentViews } from './modules/agenda-adjustments';
 import { createApiClient } from './lib/api';
 import { installClinicalViews } from './modules/clinical';
+import { passwordToggleButton } from './lib/password-visibility';
 
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -36,7 +37,11 @@ const badge = s => `<span class="badge ${esc(s)}">${esc(s)}</span>`;
 const notice = (s, type = '') => `<div class="notice ${type}">${esc(s)}</div>`;
 const button = (label, attrs = '', style = 'primary') => `<button type="button" class="btn ${style}" ${attrs}>${esc(label)}</button>`;
 const table = (headers, rows) => `<div class="table-wrap"><table><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map(row=>`<tr>${row.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${headers.length}" class="empty">Sin resultados. Los registros aparecerán aquí cuando los cree.</td></tr>`}</tbody></table></div><p class="result-count">${rows.length} registro(s)</p>`;
-const field = (label, name, type = 'text', value = '', attrs = '') => `<label class="field"><span>${esc(label)}</span><input name="${esc(name)}" id="${esc(name)}" type="${type}" value="${esc(value)}" ${attrs}></label>`;
+const field = (label, name, type = 'text', value = '', attrs = '') => {
+    const input = `<input name="${esc(name)}" id="${esc(name)}" type="${type}" value="${esc(value)}" ${attrs}>`;
+    if (type === 'password') return `<div class="field"><label for="${esc(name)}">${esc(label)}</label><div class="password-control">${input}${passwordToggleButton(esc(name))}</div></div>`;
+    return `<label class="field"><span>${esc(label)}</span>${input}</label>`;
+};
 const select = (label, name, options, value = '', attrs = '') => `<label class="field"><span>${esc(label)}</span><select name="${esc(name)}" id="${esc(name)}" ${attrs}>${options.map(o=>{const [v,l] = Array.isArray(o) ? o : [o,o]; return `<option value="${esc(v)}" ${String(value) === String(v) ? 'selected' : ''}>${esc(l)}</option>`;}).join('')}</select></label>`;
 const textarea = (label, name, value = '', attrs = '') => `<label class="field full"><span>${esc(label)}</span><textarea name="${esc(name)}" rows="3" ${attrs}>${esc(value)}</textarea></label>`;
 const details = entries => `<dl class="details">${entries.map(([k,v])=>`<div><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}</dl>`;

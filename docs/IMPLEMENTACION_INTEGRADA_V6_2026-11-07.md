@@ -77,3 +77,7 @@ En el entorno local se habilitaron los módulos de citas. Las claves API y webho
 Las pruebas automatizadas cubren los flujos anteriores, incluidos cobro insuficiente, falta de cobro, referencia bancaria duplicada, reenvío de solicitudes, bloqueo online, dos intentos fallidos, pago pendiente después del plazo, importe de pasarela incorrecto, webhook autenticado e idempotente, permisos y titularidad, gracia de reembolso, aprobación separada de ejecución y pérdida/conservación de exención. También se conserva la regresión de autenticación, catálogos, horarios, demanda, auditoría y reportes.
 
 La pasarela se prueba con `Http::fake` únicamente dentro de las pruebas, sin sustituir el adaptador de la aplicación. Las notificaciones de correo también se simulan en pruebas. La compilación no equivale a una prueba visual: no se acredita revisión de todas las pantallas en navegador ni un cobro externo con credenciales reales del comercio. El correo local `MAIL_MAILER=log` registra mensajes privados y no los entrega a una bandeja externa.
+
+## Ajuste de interfaz solicitado después de la integración
+
+Por solicitud expresa del usuario se incorporó el botón de ojo para mostrar u ocultar cada contraseña en inicio de sesión, registro, gestión de cuentas y restablecimiento. Los campos comienzan ocultos; el botón no envía el formulario y permite continuar escribiendo en la misma posición. El ajuste no modifica las reglas de acceso de V6. Se verificaron la compilación Vite y la compilación de las plantillas Blade.
