@@ -22,13 +22,17 @@ class CatalogService
                 // Orden estable para impedir que cambios simultáneos eliminen todos los administradores.
                 User::orderBy('id')->lockForUpdate()->get();
                 $current = $actor?->fresh();
-                abort_unless($current?->status === 'Activo' && $current?->role === 'Administrador', 403);
+                abort_unless($current?->status === 'Activo' && $current?->hasStaffRole('Administrador'), 403);
                 abort_if($record->exists && $record->fresh()->role === 'Paciente', 403);
+                abort_if($current->role !== 'Superadmin' && ($data['role'] === 'Superadmin' || ($record->exists && $record->fresh()->role === 'Superadmin')), 403);
                 if ($record->getKey() === $actor->id && ($data['status'] !== 'Activo' || $data['role'] !== $actor->role)) {
                     throw ValidationException::withMessages(['status' => 'No puede desactivar su propia cuenta ni cambiar su propio rol.']);
                 }
                 if ($record->exists && $record->fresh()->role === 'Administrador' && ($data['status'] !== 'Activo' || $data['role'] !== 'Administrador') && User::where('role', 'Administrador')->where('status', 'Activo')->count() <= 1) {
                     throw ValidationException::withMessages(['status' => 'Debe conservar al menos un administrador activo.']);
+                }
+                if ($record->exists && $record->fresh()->role === 'Superadmin' && ($data['status'] !== 'Activo' || $data['role'] !== 'Superadmin') && User::where('role', 'Superadmin')->where('status', 'Activo')->count() <= 1) {
+                    throw ValidationException::withMessages(['status' => 'Debe conservar al menos un Superadmin activo.']);
                 }
                 if (empty($data['password'])) {
                     unset($data['password']);

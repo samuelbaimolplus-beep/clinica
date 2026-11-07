@@ -18,6 +18,21 @@ class BookingRequest extends Model
         return $this->hasMany(Payment::class);
     }
 
+    public function patient()
+    {
+        return $this->belongsTo(Patient::class);
+    }
+
+    public function doctor()
+    {
+        return $this->belongsTo(Doctor::class);
+    }
+
+    public function specialty()
+    {
+        return $this->belongsTo(Specialty::class);
+    }
+
     public function appointment()
     {
         return $this->hasOne(Appointment::class);

@@ -36,8 +36,8 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         ResetPassword::createUrlUsing(fn ($user, $token) => url('/password/reset/'.$token).'?'.http_build_query(['email' => $user->email]));
-        Gate::define('view-audit', fn (User $user) => $user->role === 'Administrador');
-        Gate::define('manage-agenda-adjustments', fn (User $user) => $user->role === 'Recepcionista');
+        Gate::define('view-audit', fn (User $user) => $user->hasStaffRole('Administrador'));
+        Gate::define('manage-agenda-adjustments', fn (User $user) => $user->hasStaffRole('Recepcionista'));
         foreach ([User::class, Doctor::class,
             Specialty::class, Patient::class,
             Schedule::class, Unavailability::class,
@@ -49,7 +49,7 @@ class AppServiceProvider extends ServiceProvider
             'specialties' => 'Administrador', 'schedules' => 'Administrador',
             'patients' => 'Recepcionista'] as $module => $role) {
             Gate::define('manage-'.$module,
-                fn (User $user) => $user->role === $role);
+                fn (User $user) => $user->hasStaffRole($role));
         }
     }
 }

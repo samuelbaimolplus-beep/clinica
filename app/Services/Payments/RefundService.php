@@ -17,7 +17,7 @@ class RefundService
     {
         return DB::transaction(function () use ($id, $reason, $actor) {
             $a = Appointment::whereKey($id)->lockForUpdate()->firstOrFail();
-            abort_unless($actor->role === 'Recepcionista' || ($actor->role === 'Paciente' && $a->patient_id === $actor->patient_id), 403);
+            abort_unless($actor->hasStaffRole('Recepcionista') || ($actor->role === 'Paciente' && $a->patient_id === $actor->patient_id), 403);
             if ($a->status !== 'Cancelada' || ! $a->cancelled_at) {
                 $this->fail('Primero Recepción debe cancelar la cita mediante CU11. Solicitar un reembolso no cancela la cita.');
             }
@@ -42,10 +42,11 @@ class RefundService
 
     public function decide(int $id, array $data, User $actor): RefundRequest
     {
-        abort_unless($actor->role === 'Administrador', 403);
+        abort_unless($actor->hasStaffRole('Administrador'), 403);
 
         return DB::transaction(function () use ($id, $data, $actor) {
             $r = RefundRequest::whereKey($id)->lockForUpdate()->firstOrFail();
+            abort_if($r->created_by === $actor->id, 403, 'No puede resolver su propia solicitud de reembolso.');
             if ($r->status !== 'pending') {
                 $this->fail('Solo se resuelven solicitudes admitidas pendientes de decisión.');
             }
@@ -58,7 +59,7 @@ class RefundService
 
     public function complete(int $id, array $data, User $actor): RefundRequest
     {
-        abort_unless($actor->role === 'Administrador', 403);
+        abort_unless($actor->hasStaffRole('Administrador'), 403);
 
         return DB::transaction(function () use ($id, $data) {
             $r = RefundRequest::whereKey($id)->lockForUpdate()->firstOrFail();

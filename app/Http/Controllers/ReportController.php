@@ -11,10 +11,10 @@ class ReportController extends Controller
 {
     public function index(Request $r)
     {
-        abort_unless($r->user()->role === 'Administrador', 403);
+        abort_unless($r->user()->hasStaffRole('Administrador'), 403);
         $d = $r->validate([
             'type' => ['required', Rule::in(['REP01', 'REP02', 'REP03', 'REP04', 'REP05', 'REP06', 'REP07'])],
-            'date' => 'required_if:type,REP01,REP07|nullable|date_format:Y-m-d',
+            'date' => ['nullable', 'date_format:Y-m-d', Rule::requiredIf(fn () => $r->input('type') === 'REP07' || ($r->input('type') === 'REP01' && ! $r->filled('from')))],
             'from' => 'required_if:type,REP02,REP03,REP04,REP06|nullable|date_format:Y-m-d',
             'to' => 'required_with:from|nullable|date_format:Y-m-d|after_or_equal:from',
             'doctor_id' => 'nullable|integer|exists:doctors,id', 'specialty_id' => 'nullable|integer|exists:specialties,id',
@@ -26,7 +26,7 @@ class ReportController extends Controller
             $table = $rows->map(fn ($p) => ['PAC-'.str_pad($p->id, 3, '0', STR_PAD_LEFT), $p->identity, $p->first_name.' '.$p->last_name, $p->birth_date, $p->sex, $p->phone, $p->status]);
         } else {
             $q = Appointment::with('patient', 'doctor', 'specialty')->orderBy('date')->orderBy('start_time');
-            if (in_array($d['type'], ['REP01', 'REP07'])) {
+            if ($d['type'] === 'REP07' || ($d['type'] === 'REP01' && ! empty($d['date']))) {
                 $q->where('date', $d['date']);
             } else {
                 $q->whereBetween('date', [$d['from'], $d['to']]);

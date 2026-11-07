@@ -89,6 +89,30 @@ class OnlineBookingService
         return $request->fresh();
     }
 
+    /** CU18 FA02: descartar solo cuando no pueda quedar un cobro en proceso. */
+    public function cancel(BookingRequest $request): BookingRequest
+    {
+        $request = $this->reconcile($request, true);
+
+        return DB::transaction(function () use ($request) {
+            Patient::whereKey($request->patient_id)->lockForUpdate()->firstOrFail();
+            Doctor::whereKey($request->doctor_id)->lockForUpdate()->firstOrFail();
+            $current = BookingRequest::whereKey($request->id)->lockForUpdate()->firstOrFail();
+            $payments = $current->payments()->orderBy('id')->lockForUpdate()->get();
+            if ($current->status === 'completed' || $payments->contains(fn ($p) => $p->status === 'confirmed')) {
+                $this->fail('El pago ya fue confirmado y la cita está formalizada. Su cancelación corresponde a Recepción.');
+            }
+            if ($payments->contains(fn ($p) => $p->status !== 'failed')) {
+                $this->fail('No se puede descartar mientras exista un pago pendiente o sin conciliar. Consulte el estado; se conserva el cupo.');
+            }
+            if (! in_array($current->status, ['cancelled', 'expired'])) {
+                $current->update(['status' => 'cancelled']);
+            }
+
+            return $current;
+        }, 3);
+    }
+
     public function reconcile(BookingRequest $request, bool $fromWebhook = false): BookingRequest
     {
         $payment = $request->payments()->latest('attempt')->first();

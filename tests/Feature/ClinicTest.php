@@ -190,7 +190,8 @@ class ClinicTest extends TestCase
         $own = $this->book();
         $other = $this->book(['doctor_id' => $this->otherDoctor->id, 'patient_id' => $this->otherPatient->id]);
         $this->postJson('/api/appointments/'.$own->id.'/attendance', [])->assertOk();
-        $response = $this->actingAs($this->physician)->getJson('/api/appointments?mode=agenda&doctor_id='.$this->otherDoctor->id)->assertOk();
+        $this->actingAs($this->physician)->getJson('/api/appointments?mode=agenda&doctor_id='.$this->otherDoctor->id)->assertForbidden();
+        $response = $this->getJson('/api/appointments?mode=agenda&doctor_id='.$this->doctor->id)->assertOk();
         $response->assertJsonCount(1)->assertJsonPath('0.id', $own->id);
         $this->postJson('/api/appointments/'.$other->id.'/attend', [])->assertForbidden();
         $this->postJson('/api/appointments/'.$own->id.'/attend', ['consultation_finished' => true])->assertOk()->assertJsonPath('status', 'Atendida');

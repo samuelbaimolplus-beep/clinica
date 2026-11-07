@@ -17,7 +17,7 @@ class ScheduleController extends Controller
 {
     public function availability(Request $r, AppointmentService $service)
     {
-        abort_unless($r->user()->role === 'Recepcionista', 403);
+        abort_unless($r->user()->hasStaffRole('Recepcionista'), 403);
         $d = $r->validate(['doctor_id' => 'required|integer|exists:doctors,id', 'date' => 'required|date_format:Y-m-d', 'exclude' => 'nullable|integer|exists:appointments,id', 'modality' => 'nullable|in:presential,online']);
 
         return $service->slots($d['doctor_id'], $d['date'], $d['exclude'] ?? null, $d['modality'] ?? 'presential');
@@ -25,7 +25,7 @@ class ScheduleController extends Controller
 
     public function index(Request $r)
     {
-        abort_unless($r->user()->role === 'Administrador', 403);
+        abort_unless($r->user()->hasStaffRole('Administrador'), 403);
         $d = $r->validate(['doctor_id' => 'required|integer|exists:doctors,id']);
 
         return ['schedules' => Schedule::where('doctor_id', $d['doctor_id'])->orderBy('weekday')->orderBy('start_time')->get(),

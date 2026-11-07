@@ -6,7 +6,9 @@ use App\Models\AgendaAdjustment;
 use App\Models\Appointment;
 use App\Models\BookingRequest;
 use App\Models\Doctor;
+use App\Models\Schedule;
 use App\Models\Specialty;
+use App\Services\Payments\WizPayGateway;
 use App\Services\Schedules\DoctorQuotaService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -17,14 +19,15 @@ class MedicalAvailabilityController extends Controller
 {
     private function authorizeRole(Request $request): void
     {
-        abort_unless(in_array($request->user()->role, ['Recepcionista', 'Paciente'], true), 403);
+        abort_unless(in_array($request->user()->role, ['Superadmin', 'Recepcionista', 'Paciente'], true), 403);
     }
 
     public function options(Request $request)
     {
         $this->authorizeRole($request);
 
-        return ['specialties' => Specialty::where('status', 'Activo')->orderBy('name')->get(['id', 'name', 'fee_minor']),
+        return ['online_payment_available' => app(WizPayGateway::class)->configured(),
+            'specialties' => Specialty::where('status', 'Activo')->orderBy('name')->get(['id', 'name', 'fee_minor']),
             'doctors' => Doctor::where('status', 'Activo')->whereHas('specialties', fn ($q) => $q->where('status', 'Activo'))
                 ->with(['specialties' => fn ($q) => $q->where('status', 'Activo')->select('specialties.id', 'name')])
                 ->orderBy('last_name')->get(['id', 'first_name', 'last_name'])];
@@ -38,9 +41,9 @@ class MedicalAvailabilityController extends Controller
             'include_demand' => 'sometimes|boolean',
             'specialty_id' => 'required|integer|exists:specialties,id',
             'date' => 'required|date_format:Y-m-d|after_or_equal:today',
-            'modality' => ['sometimes', Rule::in([$request->user()->role === 'Paciente' ? 'online' : 'presential'])],
+            'modality' => ['sometimes', Rule::in($request->user()->role === 'Superadmin' ? ['online', 'presential'] : [$request->user()->role === 'Paciente' ? 'online' : 'presential'])],
         ]);
-        $modality = $request->user()->role === 'Paciente' ? 'online' : 'presential';
+        $modality = $request->user()->role === 'Superadmin' ? ($data['modality'] ?? 'presential') : ($request->user()->role === 'Paciente' ? 'online' : 'presential');
         $doctors = Doctor::where('status', 'Activo')->when($data['doctor_id'] ?? null, fn ($q, $id) => $q->whereKey($id))
             ->whereHas('specialties', fn ($q) => $q->whereKey($data['specialty_id'])->where('status', 'Activo'))->get();
         $ranked = [];
@@ -67,6 +70,14 @@ class MedicalAvailabilityController extends Controller
             }
         }
 
-        return ['modality' => $modality, 'blocks' => $blocks];
+        $message = null;
+        if (! $blocks) {
+            $message = $doctors->isEmpty() ? 'No hay médicos activos habilitados para la especialidad seleccionada.'
+                : (! Schedule::whereIn('doctor_id', $doctors->pluck('id'))->where('weekday', CarbonImmutable::parse($data['date'])->dayOfWeek)->exists()
+                    ? 'Los médicos seleccionados no tienen atención programada para esa fecha.'
+                    : 'No hay cupos libres para esta modalidad. Consulte otra fecha o profesional.');
+        }
+
+        return ['modality' => $modality, 'blocks' => $blocks, 'message' => $message];
     }
 }

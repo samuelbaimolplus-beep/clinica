@@ -22,6 +22,10 @@ export function installPatientViews(ui) {
             Acepto las <a href="/terms" target="_blank" rel="noopener">condiciones de la cuenta</a> (versión ${esc(getTermsVersion())}).</label>
             ${submit('Crear mi cuenta')}</form>${button('Volver al inicio de sesión', 'id="back-login"', 'link')}`)}</div>`;
         on('#back-login', 'click', loginView);
+        const accept = document.querySelector('#registration-form [name="terms_accepted"]');
+        const create = document.querySelector('#registration-form [type="submit"]');
+        create.disabled = !accept.checked;
+        accept.addEventListener('change', () => { create.disabled = !accept.checked; });
         bindForm('registration-form', async data => {
             const result = await api('register', 'POST', {...data, terms_version: getTermsVersion()});
             state.user = null;

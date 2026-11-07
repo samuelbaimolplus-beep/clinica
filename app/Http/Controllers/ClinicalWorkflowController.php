@@ -28,11 +28,24 @@ class ClinicalWorkflowController extends Controller
         return $this->onlineResponse($service->reconcile($this->ownedBooking($r, $id)));
     }
 
+    public function onlineShow(Request $r, int $id)
+    {
+        $booking = BookingRequest::findOrFail($id);
+        abort_unless($r->user()->role === 'Superadmin' || ($r->user()->role === 'Paciente' && $booking->created_by === $r->user()->id), 403);
+
+        return $this->onlineResponse($booking);
+    }
+
     public function onlineRetry(Request $r, int $id, OnlineBookingService $service)
     {
         $booking = $service->reconcile($this->ownedBooking($r, $id));
 
         return $this->onlineResponse($service->attempt($booking));
+    }
+
+    public function onlineCancel(Request $r, int $id, OnlineBookingService $service)
+    {
+        return $this->onlineResponse($service->cancel($this->ownedBooking($r, $id)));
     }
 
     private function ownedBooking(Request $r, int $id): BookingRequest
@@ -53,14 +66,16 @@ class ClinicalWorkflowController extends Controller
 
     public function onlineList(Request $r)
     {
-        abort_unless($r->user()->role === 'Paciente', 403);
+        abort_unless(in_array($r->user()->role, ['Superadmin', 'Paciente'], true), 403);
 
-        return BookingRequest::where('created_by', $r->user()->id)->where('modality', 'online')->with('payments')->latest()->limit(50)->get();
+        return BookingRequest::when($r->user()->role === 'Paciente', fn ($q) => $q->where('created_by', $r->user()->id))
+            ->where('modality', 'online')->with('payments', 'patient:id,first_name,last_name', 'doctor:id,first_name,last_name', 'specialty:id,name')->latest()
+            ->when($r->user()->role === 'Paciente', fn ($q) => $q->limit(50))->get();
     }
 
     public function rescheduleList(Request $r)
     {
-        abort_unless(in_array($r->user()->role, ['Recepcionista', 'Paciente']), 403);
+        abort_unless(in_array($r->user()->role, ['Superadmin', 'Recepcionista', 'Paciente']), 403);
 
         return RescheduleRequest::with('appointment.patient', 'appointment.doctor', 'appointment.specialty', 'appointment.payment')
             ->when($r->user()->role === 'Paciente', fn ($q) => $q->where('created_by', $r->user()->id))->latest()->get();
@@ -87,7 +102,7 @@ class ClinicalWorkflowController extends Controller
 
     public function rejectReschedule(Request $r, int $id)
     {
-        abort_unless($r->user()->role === 'Recepcionista', 403);
+        abort_unless($r->user()->hasStaffRole('Recepcionista'), 403);
         $data = $r->validate(['response' => 'required|string|max:3000']);
 
         return DB::transaction(function () use ($r, $id, $data) {
@@ -103,7 +118,7 @@ class ClinicalWorkflowController extends Controller
 
     public function refunds(Request $r)
     {
-        abort_unless(in_array($r->user()->role, ['Administrador', 'Recepcionista', 'Paciente']), 403);
+        abort_unless(in_array($r->user()->role, ['Superadmin', 'Administrador', 'Recepcionista', 'Paciente']), 403);
 
         return RefundRequest::with('appointment.patient', 'appointment.doctor', 'appointment.specialty', 'payment')
             ->when($r->user()->role === 'Paciente', fn ($q) => $q->whereHas('appointment', fn ($q) => $q->where('patient_id', $r->user()->patient_id)))->latest()->get();
@@ -118,7 +133,7 @@ class ClinicalWorkflowController extends Controller
 
     public function decideRefund(Request $r, int $id, RefundService $service)
     {
-        abort_unless($r->user()->role === 'Administrador', 403);
+        abort_unless($r->user()->hasStaffRole('Administrador'), 403);
         $data = $r->validate(['decision' => 'required|in:approve,reject', 'reason' => 'required_if:decision,reject|nullable|string|max:3000']);
 
         return $service->decide($id, $data, $r->user());
@@ -126,7 +141,7 @@ class ClinicalWorkflowController extends Controller
 
     public function completeRefund(Request $r, int $id, RefundService $service)
     {
-        abort_unless($r->user()->role === 'Administrador', 403);
+        abort_unless($r->user()->hasStaffRole('Administrador'), 403);
         $data = $r->validate(['executor' => 'required|string|max:255', 'method' => 'required|string|max:80', 'reference' => 'nullable|string|max:255',
             'amount_minor' => 'required|integer|min:1', 'completed_at' => 'required|date|before_or_equal:now']);
 

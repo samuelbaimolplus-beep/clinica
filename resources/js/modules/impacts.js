@@ -9,7 +9,7 @@ export function installImpactViews(ui) {
     };
     views.CU17 = async () => {
         const affected = await api('schedule-impacts');
-        const reception = state.user.role === 'Recepcionista';
+        const reception = ['Superadmin', 'Recepcionista'].includes(state.user.role);
         return {html: notice('Estas citas conservan su estado. Recepción debe contactar al paciente y acordar una solución.')
             + panel('Citas futuras afectadas', table(['Cita', ...(reception ? ['Paciente', 'Teléfono'] : []), 'Médico', 'Especialidad', 'Fecha', 'Horario', 'Estado', 'Motivo', 'Detalle'], affected.map(appointment => [
                 esc(code('CIT', appointment.id)), ...(reception ? [esc(full(appointment.patient)), esc(appointment.patient?.phone)] : []), esc(full(state.refs.doctors.find(doctor => doctor.id === appointment.doctor_id))),

@@ -18,6 +18,12 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
+    /** Superadmin hereda la gestión del personal, sin suplantar identidades de pacientes o médicos. */
+    public function hasStaffRole(string ...$roles): bool
+    {
+        return $this->role === 'Superadmin' || in_array($this->role, $roles, true);
+    }
+
     public function doctor(): BelongsTo
     {
         return $this->belongsTo(Doctor::class);

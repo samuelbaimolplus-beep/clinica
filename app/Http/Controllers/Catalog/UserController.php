@@ -11,12 +11,12 @@ class UserController extends Controller
 {
     public function index()
     {
-        return User::where('role', '<>', 'Paciente')->orderBy('id')->get();
+        return User::where('role', '<>', 'Paciente')->when(request()->user()->role !== 'Superadmin', fn ($q) => $q->where('role', '<>', 'Superadmin'))->orderBy('id')->get();
     }
 
     public function show(int $id)
     {
-        return User::where('role', '<>', 'Paciente')->findOrFail($id);
+        return User::where('role', '<>', 'Paciente')->when(request()->user()->role !== 'Superadmin', fn ($q) => $q->where('role', '<>', 'Superadmin'))->findOrFail($id);
     }
 
     public function save(SaveUserRequest $request, CatalogService $service, ?int $id = null)

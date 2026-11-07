@@ -400,4 +400,55 @@ class ClinicalPaymentsTest extends TestCase
         $this->postJson('/api/online-bookings/'.$id.'/status')->assertOk()->assertJsonPath('booking.status', 'processing')->assertJsonPath('payment.attempt', 2)->assertJsonPath('payment.status', 'pending');
         $this->assertDatabaseCount('appointments', 0);
     }
+
+    public function test_followup_alternative_caused_by_clinic_preserves_exemption_at_initial_formalization(): void
+    {
+        $parent = $this->book();
+        $parent->update(['status' => 'Atendida', 'attended_at' => now(), 'followup_suggested_at' => '2026-11-16 08:00', 'followup_note' => 'Control']);
+        $data = $this->data(['date' => '2026-11-16', 'start_time' => '08:30', 'parent_appointment_id' => $parent->id, 'followup_change_cause' => 'clinic', 'payment_confirmed' => false]);
+        $this->postJson('/api/appointments', $data)->assertUnprocessable();
+        $data['followup_change_reason'] = 'La clínica acordó una alternativa por falta de cupo.';
+        $this->postJson('/api/appointments', $data)->assertCreated()->assertJsonPath('complimentary', true)->assertJsonPath('parent_appointment_id', $parent->id)->assertJsonPath('payment_id', null);
+        $this->assertDatabaseCount('payments', 1);
+    }
+
+    public function test_followup_voluntary_alternative_requires_payment_at_initial_formalization(): void
+    {
+        $parent = $this->book();
+        $parent->update(['status' => 'Atendida', 'attended_at' => now(), 'followup_suggested_at' => '2026-11-16 08:00']);
+        $this->postJson('/api/appointments', $this->data(['date' => '2026-11-16', 'start_time' => '08:30', 'parent_appointment_id' => $parent->id, 'followup_change_cause' => 'patient', 'payment_confirmed' => false]))->assertUnprocessable();
+        $this->assertDatabaseCount('appointments', 1);
+    }
+
+    public function test_patient_can_discard_unpaid_request_only_after_provider_verifies_failure(): void
+    {
+        $this->fakeGateway('RECHAZADO');
+        $id = $this->startOnline();
+        $this->postJson('/api/online-bookings/'.$id.'/cancel')->assertOk()->assertJsonPath('booking.status', 'cancelled');
+        $this->postJson('/api/online-bookings/'.$id.'/cancel')->assertOk()->assertJsonPath('booking.status', 'cancelled');
+        $this->assertDatabaseCount('appointments', 0);
+        $this->actingAs($this->patientUser)->getJson('/api/medical-availability?specialty_id='.$this->specialty->id.'&date=2026-11-09')->assertOk()->assertJsonFragment(['start_time' => '10:30']);
+    }
+
+    public function test_discarding_a_pending_or_unknown_payment_preserves_the_hold(): void
+    {
+        $this->fakeGateway('PENDIENTE');
+        $id = $this->startOnline();
+        $this->postJson('/api/online-bookings/'.$id.'/cancel')->assertUnprocessable();
+        $this->assertSame('processing', BookingRequest::findOrFail($id)->status);
+        Http::fake(fn () => throw new ConnectionException('Proveedor sin respuesta'));
+        $this->postJson('/api/online-bookings/'.$id.'/cancel')->assertUnprocessable();
+        $this->assertSame('processing', BookingRequest::findOrFail($id)->status);
+        $this->assertDatabaseCount('appointments', 0);
+    }
+
+    public function test_discard_cannot_cancel_a_paid_appointment_or_another_users_request(): void
+    {
+        $this->fakeGateway('APROBADO');
+        $id = $this->startOnline();
+        $this->actingAs($this->reception)->postJson('/api/online-bookings/'.$id.'/cancel')->assertForbidden();
+        $this->actingAs($this->patientUser)->postJson('/api/online-bookings/'.$id.'/cancel')->assertUnprocessable();
+        $this->assertSame('completed', BookingRequest::findOrFail($id)->status);
+        $this->assertSame('Programada', Appointment::where('booking_request_id', $id)->firstOrFail()->status);
+    }
 }

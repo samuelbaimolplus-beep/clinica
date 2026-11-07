@@ -8,6 +8,9 @@ import { installAgendaAdjustmentViews } from './modules/agenda-adjustments';
 import { createApiClient } from './lib/api';
 import { installClinicalViews } from './modules/clinical';
 import { passwordToggleButton } from './lib/password-visibility';
+import { navigationGroups, rolePanels, visibleNavigation, homeView } from './lib/navigation';
+import { installSupervisionViews } from './modules/supervision';
+import { installReceptionInbox } from './modules/reception-inbox';
 
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -19,17 +22,12 @@ const states = ['Programada', 'Confirmada', 'Atendida', 'Cancelada', 'Inasistenc
 const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const active = a => ['Programada', 'Confirmada'].includes(a.status);
 const localDate = () => new Intl.DateTimeFormat('sv-SE', {timeZone:'America/La_Paz'}).format(new Date());
-const cycles = [
-    ['Ciclo I · Funcionalidades fundamentales', [['CU01','Iniciar sesión'],['CU02','Cerrar sesión'],['CU03','Gestionar usuarios y roles'],['CU04','Gestionar médicos'],['CU05','Gestionar especialidades'],['CU06','Gestionar pacientes'],['CU07','Gestionar horarios médicos'],['CU08','Consultar disponibilidad médica'],['CU09','Programar cita médica']]],
-    ['Ciclo II · Gestión y seguimiento de citas', [['CU10','Reprogramar cita médica'],['CU11','Cancelar cita médica'],['CU12','Consultar agenda médica'],['CU13','Registrar asistencia e inasistencia'],['CU14','Registrar cita como atendida'],['CU17','Citas afectadas por indisponibilidad']]],
-    ['Ciclo III · Historial y reportes', [['CU15','Consultar historial de citas'],['CU16','Generar reportes administrativos'],['CU22','Consultar auditoría']]],
-];
-cycles.push(['Operación de Recepción', [['CU24', 'Bloqueos provisionales'], ['CU25', 'Habilitar cupos online']]]);
-cycles.push(['Reservas, seguimiento y reembolsos', [['CU18','Reservar cita online'],['CU20','Solicitar reembolso'],['CU21','Registrar seguimiento'],['CU26','Resolver reembolsos']]]);
+const cycles = navigationGroups;
 const titles = Object.fromEntries(cycles.flatMap(c => c[1]));
 let access = {};
 let termsVersion = '';
-const home = () => access[state.user?.role]?.[2] || 'CU02';
+const home = () => homeView(state.user?.role, access[state.user?.role] || []);
+let refreshInbox = () => {};
 const state = {user:null, csrf:$('meta[name="csrf-token"]').content, view:'CU01', refs:{doctors:[],specialties:[],patients:[]}, sequence:0};
 const main = $('#main');
 const panel = (title, body) => `<section class="panel">${title ? `<h3>${esc(title)}</h3>` : ''}${body}</section>`;
@@ -96,8 +94,11 @@ function shell() {
     $('#sidebar').hidden = !user;
     $('#menu-toggle').hidden = !user;
     $('#profile').innerHTML = user ? `<div class="profile-info"><strong>${esc(user.name)}</strong><small>${esc(user.role)}</small></div><span class="avatar" aria-hidden="true">${esc(user.name.slice(0,1))}</span>${button('Salir','id="logout-button"','')}` : '<small>Personal y pacientes</small>';
+    refreshInbox();
     if(!user)return;
-    $('#sidebar').innerHTML = cycles.filter(([,links]) => links.some(([id]) => access[user.role]?.includes(id))).map(([title,links])=>`<nav><h3>${esc(title)}</h3>${links.filter(([id])=>access[user.role]?.includes(id)).map(([id,label])=>`<button class="nav-btn ${state.view===id?'selected':''}" data-view="${id}" ${state.view===id?'aria-current="page"':''}><b>${id}</b><span>${esc(label)}</span></button>`).join('')}</nav>`).join('');
+    const profile = rolePanels[user.role];
+    $('#sidebar').innerHTML = `<div class="role-panel"><strong>${esc(profile?.title || user.role)}</strong><p>${esc(profile?.description || '')}</p></div>`
+        + visibleNavigation(user.role, access[user.role] || []).map(([title,links])=>`<nav><h3>${esc(title)}</h3>${links.map(([id,label])=>`<button class="nav-btn ${state.view===id?'selected':''}" data-view="${id}" ${state.view===id?'aria-current="page"':''}><b>${id}</b><span>${esc(label)}</span></button>`).join('')}</nav>`).join('');
     on('[data-view]','click',e=>navigate(e.currentTarget.dataset.view));
     on('#logout-button','click',logout);
 }
@@ -110,6 +111,7 @@ async function navigate(view) {
     else if (!access[state.user.role]?.includes(view)) { toast('Su rol no tiene acceso a esta función.',true); return; }
     else if(view==='CU01')view=home();
     state.view = view; state.sequence++; closeModal(); shell();
+    history.replaceState(null, '', state.user ? `#${view}` : location.pathname);
     $('#sidebar').classList.remove('open');$('#menu-toggle').setAttribute('aria-expanded','false');
     if(view==='CU01')return loginView();
     main.innerHTML = heading()+'<p class="empty">Cargando…</p>';
@@ -131,9 +133,9 @@ views.CU02 = async()=>({html:panel('Sesión activa',details([['Usuario',esc(stat
 // CU16: siete reportes, porcentajes, impresión y exportación CSV.
 const reportTypes=[['REP01','Citas por fecha'],['REP02','Citas por médico'],['REP03','Citas por especialidad'],['REP04','Citas por estado'],['REP05','Pacientes registrados'],['REP06','Resumen de atenciones por período'],['REP07','Agenda diaria por médico']];
 let reportFilter={type:'REP01',date:localDate(),from:localDate().slice(0,8)+'01',to:localDate()};
-views.CU16=async()=>({html:panel('Generador de reportes administrativos',`<form id="report-form">${formErrors}<div class="grid four">${select('Tipo de reporte','type',reportTypes.map(([k,n])=>[k,`${k} · ${n}`]),reportFilter.type)}<div data-report-field="date">${field('Fecha','date','date',reportFilter.date)}</div><div data-report-field="range">${field('Desde','from','date',reportFilter.from)}</div><div data-report-field="range">${field('Hasta','to','date',reportFilter.to)}</div><div data-report-field="doctor">${select('Médico','doctor_id',[['','Todos los médicos'],...personOptions(state.refs.doctors)],reportFilter.doctor_id)}</div><div data-report-field="specialty">${select('Especialidad','specialty_id',[['','Todas las especialidades'],...state.refs.specialties.map(s=>[s.id,s.name])],reportFilter.specialty_id)}</div><div data-report-field="status">${select('Estado','status',[['','Todos los estados'],...states],reportFilter.status)}</div></div>${submit('Generar reporte')}</form>`)+`<div id="report-result"></div>`,bind:()=>{
-    const update=()=>{const type=$('#type').value;const visible={date:['REP01','REP07'].includes(type),range:['REP02','REP03','REP04','REP06'].includes(type),doctor:['REP02','REP07'].includes(type),specialty:type==='REP03',status:type==='REP04'};$$('[data-report-field]').forEach(el=>{el.hidden=!visible[el.dataset.reportField];$$('input,select',el).forEach(input=>{input.disabled=el.hidden;input.required=!el.hidden&&['date','from','to'].includes(input.name);});});$('#report-result').innerHTML='';};
-    on('#type','change',update);update();
+views.CU16=async()=>({html:panel('Generador de reportes administrativos',`<form id="report-form">${formErrors}<div class="grid four">${select('Tipo de reporte','type',reportTypes.map(([k,n])=>[k,`${k} · ${n}`]),reportFilter.type)}<div data-report-field="period">${select('Consultar por','period_mode',[['date','Fecha específica'],['range','Período']],reportFilter.period_mode||'date')}</div><div data-report-field="date">${field('Fecha','date','date',reportFilter.date)}</div><div data-report-field="range">${field('Desde','from','date',reportFilter.from)}</div><div data-report-field="range">${field('Hasta','to','date',reportFilter.to)}</div><div data-report-field="doctor">${select('Médico','doctor_id',[['','Todos los médicos'],...personOptions(state.refs.doctors)],reportFilter.doctor_id)}</div><div data-report-field="specialty">${select('Especialidad','specialty_id',[['','Todas las especialidades'],...state.refs.specialties.map(s=>[s.id,s.name])],reportFilter.specialty_id)}</div><div data-report-field="status">${select('Estado','status',[['','Todos los estados'],...states],reportFilter.status)}</div></div>${submit('Generar reporte')}</form>`)+`<div id="report-result"></div>`,bind:()=>{
+    const update=()=>{const type=$('#type').value;const visible={period:type==='REP01',date:type==='REP07'||(type==='REP01'&&$('#period_mode').value==='date'),range:['REP02','REP03','REP04','REP06'].includes(type)||(type==='REP01'&&$('#period_mode').value==='range'),doctor:['REP02','REP07'].includes(type),specialty:type==='REP03',status:type==='REP04'};$$('[data-report-field]').forEach(el=>{el.hidden=!visible[el.dataset.reportField];$$('input,select',el).forEach(input=>{input.disabled=el.hidden;input.required=!el.hidden&&['date','from','to'].includes(input.name);});});$('#report-result').innerHTML='';};
+    on('#type,#period_mode','change',update);update();
     bindForm('report-form',async d=>{
         const filter=Object.fromEntries(Object.entries(d).filter(([,v])=>v));reportFilter={...reportFilter,...filter};
         const query=new URLSearchParams(filter);const data=await api('reports?'+query);
@@ -152,9 +154,11 @@ installImpactViews(ui);
 installAvailabilityViews(ui);
 installAgendaAdjustmentViews(ui);
 installClinicalViews(ui);
+installSupervisionViews(ui);
+refreshInbox = installReceptionInbox(ui);
 
 $('#close-modal').addEventListener('click',closeModal);
 $('#modal').addEventListener('click',e=>{if(e.target===$('#modal')){const rect=$('#modal').getBoundingClientRect();if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)closeModal();}});
 $('#menu-toggle').addEventListener('click',()=>{const open=$('#sidebar').classList.toggle('open');$('#menu-toggle').setAttribute('aria-expanded',String(open));});
-async function boot(){try {const result=await api('session');state.user=result.user;access=result.access;termsVersion=result.terms_version;if(state.user)await references();await navigate(state.user?home():'CU01');}catch(e){main.innerHTML=notice(e.message,'error')+button('Reintentar','id="boot-retry"');on('#boot-retry','click',boot);}}
+async function boot(){try {const result=await api('session');state.user=result.user;access=result.access;termsVersion=result.terms_version;if(state.user)await references();await navigate(state.user && access[state.user.role]?.includes(location.hash.slice(1)) ? location.hash.slice(1) : state.user?home():'CU01');}catch(e){main.innerHTML=notice(e.message,'error')+button('Reintentar','id="boot-retry"');on('#boot-retry','click',boot);}}
 boot();

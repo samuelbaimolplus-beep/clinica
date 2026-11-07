@@ -19,7 +19,7 @@ export function installAgendaAdjustmentViews(ui) {
                 + table(['Seleccionar', 'Especialidad', 'Médico', 'Horario', 'Estado', 'Responsable'], blocks.map(record => [
                     record.status === 'active' ? `<input type="checkbox" name="ids" value="${record.id}" aria-label="Seleccionar bloqueo ${record.id}">` : '',
                     esc(state.refs.specialties.find(item => item.id === record.specialty_id)?.name), esc(doctorName(record.doctor_id)),
-                    esc(`${record.start_time.slice(0, 5)}–${record.end_time.slice(0, 5)}`), esc(record.status === 'active' ? 'Activo' : 'Liberado'), esc(`Usuario ${record.created_by}`),
+                    esc(`${record.start_time.slice(0, 5)}–${record.end_time.slice(0, 5)}`), esc(({active:'Activo',released:'Liberado',consumed:'Consumido por una cita'})[record.status] || record.status), esc(`Usuario ${record.created_by}`),
                 ])) + submit('Liberar bloqueos seleccionados') + '</form>'),
             bind: () => {
                 on('#specialty_id', 'change', async event => { specialty = event.target.value; await navigate('CU24'); });

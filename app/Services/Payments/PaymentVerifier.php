@@ -25,7 +25,7 @@ class PaymentVerifier
 
     public function reception(array $data, int $amount, User $actor): Payment
     {
-        abort_unless($actor->role === 'Recepcionista', 403);
+        abort_unless($actor->hasStaffRole('Recepcionista'), 403);
         validator($data, ['payment_method' => 'required|in:cash,qr,transfer', 'payment_confirmed' => 'required|accepted',
             'payment_amount_minor' => 'required|integer|in:'.$amount,
             'bank_reference' => 'nullable|required_unless:payment_method,cash|string|max:180|unique:payments,bank_reference'])->validate();

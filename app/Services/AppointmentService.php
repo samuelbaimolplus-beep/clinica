@@ -42,7 +42,7 @@ class AppointmentService
 
     public function book(array $data, User $actor, ?int $id = null): Appointment
     {
-        abort_unless($actor->role === 'Recepcionista', 403);
+        abort_unless($actor->hasStaffRole('Recepcionista'), 403);
 
         return DB::transaction(function () use ($data, $actor, $id) {
             $original = $id ? Appointment::findOrFail($id) : null;
@@ -85,6 +85,10 @@ class AppointmentService
                 }
                 $suggested = CarbonImmutable::parse($parent->followup_suggested_at);
                 $free = $suggested->format('Y-m-d H:i') === $data['date'].' '.$data['start_time'];
+                if (! $free && ($data['followup_change_cause'] ?? 'patient') === 'clinic') {
+                    validator($data, ['followup_change_reason' => 'required|string|max:3000'])->validate();
+                    $free = true;
+                }
             }
             $losesExemption = $id && $a->complimentary && $data['cause'] === 'patient';
             $unverifiedLegacy = $id && ! $a->complimentary && $a->payment?->status !== 'confirmed';
@@ -116,7 +120,7 @@ class AppointmentService
                     'status' => 'accepted', 'response' => $data['change_reason'], 'resolved_by' => $actor->id, 'resolved_at' => now()]);
             }
             $this->event($a, $actor, $id ? 'Reprogramación' : 'Creación', ['before' => $before, 'after' => $a->only(['doctor_id', 'date', 'start_time', 'end_time']),
-                'cause' => $data['cause'] ?? null, 'patient_accepted' => $data['patient_accepted'] ?? null, 'reason' => $data['change_reason'] ?? null]);
+                'cause' => $data['cause'] ?? ($parent ? ($data['followup_change_cause'] ?? 'patient') : null), 'patient_accepted' => $data['patient_accepted'] ?? null, 'reason' => $data['change_reason'] ?? $data['followup_change_reason'] ?? null]);
 
             return $a->load('patient', 'doctor', 'specialty', 'events', 'payment');
         }, 3);

@@ -19,6 +19,7 @@ use App\Http\Controllers\ReferenceController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\ScheduleImpactController;
+use App\Http\Controllers\SupervisionController;
 use App\Http\Controllers\WizPayWebhookController;
 use App\Http\Middleware\ClinicalAccessAudit;
 use App\Http\Middleware\ClinicSession;
@@ -103,11 +104,16 @@ Route::prefix('api')->group(function () {
 
         // Los coordinadores clínicos verifican permisos, cupos y pago antes de emitir ficha.
         Route::middleware([RequireAppointments::class, ClinicalAccessAudit::class])->group(function () {
+            Route::get('reception-inbox', [SupervisionController::class, 'receptionInbox']);
+            Route::get('supervision/patient-accounts', [SupervisionController::class, 'patientAccounts']);
+            Route::get('supervision/payments', [SupervisionController::class, 'payments']);
             $workflow = ClinicalWorkflowController::class;
             Route::get('online-bookings', [$workflow, 'onlineList']);
+            Route::get('online-bookings/{id}', [$workflow, 'onlineShow'])->whereNumber('id');
             Route::post('online-bookings', [$workflow, 'onlineStart'])->middleware('throttle:12,1');
             Route::post('online-bookings/{id}/status', [$workflow, 'onlineStatus'])->whereNumber('id')->middleware('throttle:6,1');
             Route::post('online-bookings/{id}/retry', [$workflow, 'onlineRetry'])->whereNumber('id')->middleware('throttle:6,1');
+            Route::post('online-bookings/{id}/cancel', [$workflow, 'onlineCancel'])->whereNumber('id')->middleware('throttle:6,1');
             Route::get('reschedule-requests', [$workflow, 'rescheduleList']);
             Route::post('reschedule-requests/{id}/reject', [$workflow, 'rejectReschedule'])->whereNumber('id');
             Route::post('appointments/{id}/reschedule-request', [$workflow, 'requestReschedule'])->whereNumber('id');
