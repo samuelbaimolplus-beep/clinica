@@ -26,6 +26,9 @@ class AuthController extends Controller
             app(AuditLogger::class)->record('auth', 'login', $user, 'failure', ['reason' => 'inactive_account']);
             throw ValidationException::withMessages(['email' => 'FA03: La cuenta está inactiva. Contacte al administrador.']);
         }
+        if ($user->role === 'Paciente' && ! $user->email_verified_at) {
+            throw ValidationException::withMessages(['email' => 'Verifique su correo electrónico antes de iniciar sesión. Puede solicitar el enlace desde Recuperar acceso.']);
+        }
         try {
             Auth::login($user);
             $request->session()->regenerate();

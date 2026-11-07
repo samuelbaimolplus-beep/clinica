@@ -3,13 +3,15 @@
 namespace Tests\Feature;
 
 use App\Models\AuditEvent;
-use App\Models\Doctor;
 use App\Models\Patient;
 use App\Models\User;
-use App\Services\Patients\UpdatePatientContact;
+use App\Notifications\VerifyClinicEmail;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Hash;
-use PHPUnit\Framework\Attributes\DataProvider;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\URL;
 use Tests\TestCase;
 
 class AccountSecurityTest extends TestCase
@@ -20,105 +22,102 @@ class AccountSecurityTest extends TestCase
     {
         parent::setUp();
         $this->assertSame('clinica_vida_salud_test', config('database.connections.pgsql.database'));
+        Notification::fake();
     }
 
-    public static function roles(): array
+    private function account(bool $verified = true, bool $patient = false): User
     {
-        return array_map(fn ($role) => [$role], ['Administrador', 'Recepcionista', 'Médico', 'Paciente']);
-    }
-
-    private function account(string $role = 'Recepcionista'): User
-    {
-        $data = ['name' => 'Usuario de prueba', 'email' => 'usuario@example.test', 'password' => 'AnteriorSegura2026',
-            'role' => $role, 'status' => 'Activo'];
-        if ($role === 'Médico') {
-            $data['doctor_id'] = Doctor::create(['registration' => 'REG-1', 'first_name' => 'Médico', 'last_name' => 'Prueba',
-                'phone' => '70000000', 'email' => 'medico@example.test', 'status' => 'Activo'])->id;
-        }
-        if ($role === 'Paciente') {
-            $data['patient_id'] = Patient::create(['identity' => 'CI-ACCOUNT', 'first_name' => 'Ana', 'last_name' => 'Prueba',
-                'birth_date' => '1990-01-01', 'sex' => 'Femenino', 'phone' => '70000000', 'status' => 'Activo'])->id;
+        $patientId = $patient ? Patient::create(['identity' => 'ACCOUNT-V6', 'first_name' => 'Ana', 'last_name' => 'Prueba',
+            'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000000', 'status' => 'Activo'])->id : null;
+        $user = User::create(['name' => 'Cuenta de prueba', 'email' => 'cuenta@example.test', 'password' => 'AnteriorSegura2026',
+            'role' => $patient ? 'Paciente' : 'Recepcionista', 'patient_id' => $patientId, 'status' => 'Activo']);
+        if ($verified) {
+            $user->forceFill(['email_verified_at' => now()])->save();
         }
 
-        return User::create($data);
+        return $user;
     }
 
-    private function newPassword(array $overrides = []): array
+    public function test_patient_login_requires_verified_email_and_signed_verification_does_not_log_in(): void
     {
-        return array_replace(['current_password' => 'AnteriorSegura2026', 'password' => 'NuevaSegura2026',
-            'password_confirmation' => 'NuevaSegura2026'], $overrides);
+        $user = $this->account(false, true);
+        $this->postJson('/api/login', ['email' => $user->email, 'password' => 'AnteriorSegura2026'])->assertUnprocessable();
+        $this->postJson('/api/account/email', ['email' => $user->email, 'purpose' => 'verify'])->assertOk();
+        Notification::assertSentTo($user, VerifyClinicEmail::class);
+        $this->get('/account/verify/'.$user->id.'/'.sha1($user->email))->assertForbidden();
+        $url = URL::temporarySignedRoute('clinic.email.verify', now()->addHour(), ['id' => $user->id, 'hash' => sha1($user->email)]);
+        $this->get($url)->assertOk();
+        $this->assertGuest();
+        $this->assertNotNull($user->fresh()->email_verified_at);
+        $this->postJson('/api/login', ['email' => $user->email, 'password' => 'AnteriorSegura2026'])->assertOk();
     }
 
-    #[DataProvider('roles')]
-    public function test_every_role_can_change_own_password_and_keep_only_current_session(string $role): void
+    public function test_unknown_inactive_and_unverified_accounts_do_not_receive_reset_links_or_leak_identity(): void
     {
-        $user = $this->account($role);
+        $user = $this->account(false);
+        $body = $this->postJson('/api/account/email', ['email' => 'unknown@example.test', 'purpose' => 'recover'])->assertOk()->json();
+        $this->postJson('/api/account/email', ['email' => $user->email, 'purpose' => 'recover'])->assertExactJson($body);
+        Notification::assertSentTo($user, VerifyClinicEmail::class);
+        Notification::assertNotSentTo($user, ResetPassword::class);
+        $user->update(['status' => 'Inactivo']);
+        Notification::fake();
+        $this->postJson('/api/account/email', ['email' => $user->email, 'purpose' => 'recover'])->assertExactJson($body);
+        Notification::assertNothingSent();
+    }
+
+    public function test_recovery_uses_one_time_email_token_hash_and_revokes_old_sessions(): void
+    {
+        $user = $this->account();
         $this->postJson('/api/login', ['email' => $user->email, 'password' => 'AnteriorSegura2026'])->assertOk();
         $oldSession = ['clinic' => session('clinic')];
-        $oldCsrf = csrf_token();
-        $this->putJson('/api/profile/password', $this->newPassword(['role' => 'Administrador', 'user_id' => 999]))
-            ->assertOk()->assertJsonStructure(['csrf', 'message'])->assertJsonMissingPath('password');
-        $this->assertNotSame($oldCsrf, csrf_token());
-        $this->getJson('/api/profile')->assertOk()->assertJsonPath('user.id', $user->id)->assertJsonPath('user.role', $role);
-        $user->refresh();
-        $this->assertTrue(Hash::check('NuevaSegura2026', $user->password));
-        $this->assertFalse(Hash::check('AnteriorSegura2026', $user->password));
-        $this->assertDatabaseHas('audit_events', ['user_id' => $user->id, 'action' => 'password_changed', 'module' => 'auth']);
-        $this->withSession($oldSession)->getJson('/api/profile')->assertUnauthorized()->assertJsonStructure(['csrf']);
+        $this->postJson('/api/logout')->assertOk();
+        $this->postJson('/api/account/email', ['email' => $user->email, 'purpose' => 'recover'])->assertOk();
+        $token = null;
+        Notification::assertSentTo($user, ResetPassword::class, function ($notification) use (&$token) {
+            $token = $notification->token;
+
+            return true;
+        });
+        $data = ['email' => $user->email, 'token' => $token, 'password' => 'NuevaSegura2026', 'password_confirmation' => 'NuevaSegura2026'];
+        $this->postJson('/api/account/reset', $data)->assertOk();
         $this->assertGuest();
-        $this->assertDatabaseHas('audit_events', ['user_id' => $user->id, 'action' => 'session_revoked']);
-        $json = AuditEvent::all()->toJson();
-        foreach (['AnteriorSegura2026', 'NuevaSegura2026', $user->password, $oldSession['clinic']['auth_fingerprint']] as $secret) {
-            $this->assertStringNotContainsString($secret, $json);
-        }
+        $this->assertTrue(Hash::check('NuevaSegura2026', $user->fresh()->password));
+        $this->postJson('/api/account/reset', $data)->assertUnprocessable();
+        $this->actingAs($user->fresh())->withSession($oldSession)->getJson('/api/references')->assertUnauthorized();
+        $this->assertStringNotContainsString($token, AuditEvent::all()->toJson());
+        $this->assertDatabaseHas('audit_events', ['action' => 'password_recovered', 'user_id' => $user->id]);
     }
 
-    public function test_password_change_rejects_guest_wrong_current_short_unconfirmed_and_unchanged_passwords(): void
+    public function test_invalid_expired_or_unconfirmed_recovery_does_not_change_password(): void
     {
-        $this->putJson('/api/profile/password', $this->newPassword())->assertUnauthorized();
         $user = $this->account();
-        $oldHash = $user->password;
-        $this->actingAs($user);
-        $this->putJson('/api/profile/password', $this->newPassword(['current_password' => 'Incorrecta']))->assertUnprocessable()->assertJsonValidationErrors('current_password');
-        $this->putJson('/api/profile/password', $this->newPassword(['password_confirmation' => 'Distinta']))->assertUnprocessable()->assertJsonValidationErrors('password');
-        $this->putJson('/api/profile/password', $this->newPassword(['password' => 'Corta', 'password_confirmation' => 'Corta']))->assertUnprocessable()->assertJsonValidationErrors('password');
-        $this->putJson('/api/profile/password', $this->newPassword(['password' => 'AnteriorSegura2026', 'password_confirmation' => 'AnteriorSegura2026']))->assertUnprocessable()->assertJsonValidationErrors('password');
-        $this->assertSame($oldHash, $user->fresh()->password);
-        $this->assertDatabaseMissing('audit_events', ['action' => 'password_changed']);
+        $hash = $user->password;
+        $token = Password::createToken($user);
+        $data = ['email' => $user->email, 'token' => $token, 'password' => 'NuevaSegura2026', 'password_confirmation' => 'OtraSegura2026'];
+        $this->postJson('/api/account/reset', $data)->assertUnprocessable();
+        $data['password_confirmation'] = $data['password'];
+        $this->travel(61)->minutes();
+        $this->postJson('/api/account/reset', $data)->assertUnprocessable();
+        $this->assertSame($hash, $user->fresh()->password);
     }
 
-    public function test_password_changed_by_administrator_revokes_session_even_on_public_session_endpoint(): void
+    public function test_undocumented_profile_and_contact_operations_are_unavailable(): void
+    {
+        $this->actingAs($this->account());
+        $this->getJson('/api/profile')->assertNotFound();
+        $this->putJson('/api/profile', ['phone' => '70000000'])->assertNotFound();
+        $this->putJson('/api/profile/password', [])->assertNotFound();
+        $this->getJson('/api/session')->assertJsonMissingPath('access.PERFIL');
+    }
+
+    public function test_password_and_role_changes_revoke_existing_sessions(): void
     {
         $user = $this->account();
         $this->postJson('/api/login', ['email' => $user->email, 'password' => 'AnteriorSegura2026'])->assertOk();
         $user->update(['password' => 'AsignadaPorAdmin2026']);
-        $this->getJson('/api/session')->assertOk()->assertJsonPath('user', null)->assertJsonStructure(['csrf']);
-        $this->assertGuest();
-        $this->postJson('/api/login', ['email' => $user->email, 'password' => 'AnteriorSegura2026'])->assertUnprocessable();
+        $this->getJson('/api/session')->assertJsonPath('user', null);
         $this->postJson('/api/login', ['email' => $user->email, 'password' => 'AsignadaPorAdmin2026'])->assertOk();
-    }
-
-    public function test_role_changes_require_new_login_before_using_new_permissions(): void
-    {
-        $user = $this->account();
-        $this->postJson('/api/login', ['email' => $user->email, 'password' => 'AnteriorSegura2026'])->assertOk();
         $user->update(['role' => 'Administrador']);
         $this->getJson('/api/entities/users')->assertUnauthorized();
-        $this->assertGuest();
-        $this->postJson('/api/login', ['email' => $user->email, 'password' => 'AnteriorSegura2026'])->assertOk();
-        $this->getJson('/api/entities/users')->assertOk();
-    }
-
-    public function test_contact_update_preserves_reception_changes_even_with_stale_loaded_profile(): void
-    {
-        $user = $this->account('Paciente');
-        $user->load('patient');
-        Patient::whereKey($user->patient_id)->firstOrFail()->update(['last_name' => 'Corregido por recepción']);
-        $patient = app(UpdatePatientContact::class)->handle($user, ['phone' => '79999999', 'address' => 'Nueva dirección',
-            'last_name' => 'Valor antiguo', 'status' => 'Inactivo', 'identity' => 'NO-CAMBIAR']);
-        $this->assertSame('Corregido por recepción', $patient->last_name);
-        $this->assertSame('79999999', $patient->phone);
-        $this->assertSame('CI-ACCOUNT', $patient->identity);
-        $this->assertSame('Activo', $patient->status);
     }
 }

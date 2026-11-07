@@ -1,5 +1,7 @@
 # Arquitectura y trazabilidad de la base del sistema
 
+> Referencia vigente: [Adecuación del programa al Word V6](ADECUACION_WORD_V6_2026-11-07.md). Esta guía conserva etapas anteriores; sus preguntas, funciones retiradas y estados provisionales no prevalecen sobre la V6 definitiva.
+
 > Actualización del 7 de noviembre: la referencia vigente es el [informe de avance V3](INFORME_AVANCE_V3_2026-11-07.md), contrastado con el nuevo Word. Incorpora varios turnos, protección presencial, reparto inicial 50/50 con enteros y alternancia, bloqueos y aperturas de Recepción, disponibilidad provisional, citas afectadas y consulta de auditoría. Los apartados siguientes conservan el estado anterior y deben leerse como antecedentes cuando difieran del informe V3.
 
 La entrega contiene avances de los módulos 1 al 6, CU07 parcial y la infraestructura de CU22 en Laravel 13, Blade, JavaScript y PostgreSQL. La referencia funcional es `../Nuevo parcial angelica.docx`, revisada nuevamente el 4 de noviembre de 2026. Según la última actualización del equipo, **CU01–CU05 están establecidos y CU06–CU23 siguen en revisión**; las implementaciones de estos últimos son provisionales y están sujetas a ajustes. Este estado procede de la comunicación del equipo, sin implicar un nuevo contraste del Word. La implementación anterior de citas y reportes se conserva y permanece deshabilitada por defecto hasta integrar pagos y distribución de cupos.

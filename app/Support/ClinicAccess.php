@@ -8,10 +8,10 @@ use App\Models\User;
 final class ClinicAccess
 {
     public const VIEWS = [
-        'Administrador' => ['CU01', 'CU02', 'CU03', 'CU04', 'CU05', 'CU07', 'CU17', 'CU22', 'PERFIL'],
-        'Recepcionista' => ['CU01', 'CU02', 'CU06', 'CUPOS', 'CU08', 'CU17', 'PERFIL'],
-        'Médico' => ['CU01', 'CU02', 'PERFIL'],
-        'Paciente' => ['CU01', 'CU02', 'CU08', 'PERFIL'],
+        'Administrador' => ['CU01', 'CU02', 'CU03', 'CU04', 'CU05', 'CU07', 'CU22'],
+        'Recepcionista' => ['CU01', 'CU02', 'CU06', 'CU24', 'CU25', 'CU08', 'CU17'],
+        'Médico' => ['CU01', 'CU02'],
+        'Paciente' => ['CU01', 'CU02', 'CU08'],
     ];
 
     public static function views(string $role): array

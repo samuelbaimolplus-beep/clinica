@@ -78,14 +78,14 @@ class EstablishedUseCasesTest extends TestCase
         $this->postJson('/api/login', ['email' => $this->admin->email, 'password' => 'ClaveSegura2026'])
             ->assertStatus(503)->assertJsonMissingPath('user')->assertDontSee('DETALLE_INTERNO_NO_PUBLICAR');
         $this->assertGuest();
-        $this->getJson('/api/profile')->assertUnauthorized();
+        $this->getJson('/api/references')->assertUnauthorized();
         $this->getJson('/api/session')->assertJsonPath('user', null);
     }
 
     public function test_cu02_expired_session_requests_new_authentication(): void
     {
         $this->postJson('/api/logout')->assertUnauthorized()->assertJsonStructure(['csrf', 'message']);
-        $this->getJson('/api/profile')->assertUnauthorized();
+        $this->getJson('/api/references')->assertUnauthorized();
     }
 
     public function test_cu02_failure_does_not_confirm_logout_while_session_remains_active(): void
@@ -94,7 +94,7 @@ class EstablishedUseCasesTest extends TestCase
         $this->failAudit();
         $this->postJson('/api/logout')->assertStatus(503)->assertJsonPath('message', 'No se pudo completar el cierre de sesión. Intente nuevamente.');
         $this->assertAuthenticatedAs($this->admin);
-        $this->getJson('/api/profile')->assertOk();
+        $this->getJson('/api/references')->assertOk();
     }
 
     public function test_cu03_read_only_details_and_status_changes_preserve_staff_data(): void

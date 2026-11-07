@@ -1,0 +1,3 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Verificación de correo · Clínica Vida Salud</title>@vite(['resources/css/app.css'])</head>
+<body><main class="login-wrap"><section class="panel"><h1>Clínica Vida Salud</h1><p>{{ $message }}</p><a href="/">Volver al inicio de sesión</a></section></main></body></html>

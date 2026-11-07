@@ -22,8 +22,7 @@ const cycles = [
     ['Ciclo II · Gestión y seguimiento de citas', [['CU10','Reprogramar cita médica'],['CU11','Cancelar cita médica'],['CU12','Consultar agenda médica'],['CU13','Registrar asistencia e inasistencia'],['CU14','Registrar cita como atendida'],['CU17','Citas afectadas por indisponibilidad']]],
     ['Ciclo III · Historial y reportes', [['CU15','Consultar historial de citas'],['CU16','Generar reportes administrativos'],['CU22','Consultar auditoría']]],
 ];
-cycles.push(['Mi cuenta', [['PERFIL', 'Mi perfil']]]);
-cycles.push(['Operación de Recepción', [['CUPOS', 'Bloqueos y aperturas de cupos']]]);
+cycles.push(['Operación de Recepción', [['CU24', 'Bloqueos provisionales'], ['CU25', 'Habilitar cupos online']]]);
 const titles = Object.fromEntries(cycles.flatMap(c => c[1]));
 let access = {};
 let termsVersion = '';
@@ -89,12 +88,11 @@ function shell() {
     const user = state.user;
     $('#sidebar').hidden = !user;
     $('#menu-toggle').hidden = !user;
-    $('#profile').innerHTML = user ? `<div class="profile-info"><strong>${esc(user.name)}</strong><small>${esc(user.role)}</small></div><button class="avatar" id="profile-button" aria-label="Ver perfil">${esc(user.name.slice(0,1))}</button>${button('Salir','id="logout-button"','')}` : '<small>Personal y pacientes</small>';
+    $('#profile').innerHTML = user ? `<div class="profile-info"><strong>${esc(user.name)}</strong><small>${esc(user.role)}</small></div><span class="avatar" aria-hidden="true">${esc(user.name.slice(0,1))}</span>${button('Salir','id="logout-button"','')}` : '<small>Personal y pacientes</small>';
     if(!user)return;
     $('#sidebar').innerHTML = cycles.filter(([,links]) => links.some(([id]) => access[user.role]?.includes(id))).map(([title,links])=>`<nav><h3>${esc(title)}</h3>${links.filter(([id])=>access[user.role]?.includes(id)).map(([id,label])=>`<button class="nav-btn ${state.view===id?'selected':''}" data-view="${id}" ${state.view===id?'aria-current="page"':''}><b>${id}</b><span>${esc(label)}</span></button>`).join('')}</nav>`).join('');
     on('[data-view]','click',e=>navigate(e.currentTarget.dataset.view));
     on('#logout-button','click',logout);
-    on('#profile-button','click',()=>navigate('PERFIL'));
 }
 function logout() { confirmAction('Cerrar sesión',`¿Desea cerrar la sesión de ${state.user.name}?`,async()=>{await api('logout','POST',{});state.user=null;state.refs={doctors:[],specialties:[],patients:[]};await navigate('CU01');toast('Sesión cerrada correctamente.');},true); }
 function heading() {
@@ -116,6 +114,8 @@ async function navigate(view) {
 function loginView() {
     main.innerHTML = `<div class="login-wrap">${panel('',`<div class="login-heading"><div class="brand-mark">✚</div><h1>Iniciar sesión</h1><p>Acceso para personal y pacientes</p></div><form id="login-form">${formErrors}${field('Correo o identificador de acceso','email','text','','required maxlength="255" autocomplete="username" placeholder="usuario@vidasalud.bo"')}${field('Contraseña','password','password','','required maxlength="128" autocomplete="current-password"')}${submit('Iniciar sesión')}</form><div class="actions">${button('Crear cuenta de paciente','id="register-patient"','link')}</div>`)}<p class="login-foot">Clínica Vida Salud · Gestión de citas médicas</p></div>`;
     on('#register-patient', 'click', () => views.registration());
+    $('#login-form').insertAdjacentHTML('afterend', button('Recuperar acceso o verificar correo', 'id="recover-account"', 'link'));
+    on('#recover-account', 'click', () => views.recovery());
     bindForm('login-form', async data=>{const result=await api('login','POST',data);state.user=result.user;await references();await navigate(home());toast(`Bienvenido, ${state.user.name}.`);});
 }
 const views = {};

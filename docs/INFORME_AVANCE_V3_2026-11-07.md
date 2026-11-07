@@ -1,5 +1,7 @@
 # Informe de avance provisional de Clínica Vida Salud
 
+> Registro histórico del avance V3. La referencia vigente es la V6 definitiva y su [registro de adecuación](ADECUACION_WORD_V6_2026-11-07.md). Las funciones propias de perfil/contacto y retirada de aperturas aquí descritas se retiraron al adecuar el programa.
+
 Fecha: 7 de noviembre de 2026.
 
 Se adaptó el programa a la versión V3 del análisis y arquitectura entregada por el equipo. Esta entrega permite gestionar varios turnos, aplicar protección presencial y distribución de modalidades, administrar bloqueos y aperturas desde Recepción, consultar disponibilidad y supervisar auditoría. También completa operaciones de pacientes y corrige el final del registro de cuentas. El avance es provisional y no implica que todos los casos de uso estén aprobados ni terminados.

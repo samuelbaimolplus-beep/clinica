@@ -25,18 +25,22 @@ class CatalogImpact
             })->orderBy('date')->orderBy('start_time')->get()
             ->map(function (Appointment $appointment) {
                 $reasons = [];
+                $origins = [];
                 if ($appointment->doctor->status !== 'Activo') {
                     $reasons[] = 'Médico inactivo';
+                    $origins[] = ['entity' => 'Doctor', 'id' => $appointment->doctor_id];
                 }
                 if ($appointment->specialty->status !== 'Activo') {
                     $reasons[] = 'Especialidad inactiva';
+                    $origins[] = ['entity' => 'Specialty', 'id' => $appointment->specialty_id];
                 }
                 if (! $appointment->doctor->specialties->contains('id', $appointment->specialty_id)) {
                     $reasons[] = 'Especialidad retirada del médico';
+                    $origins[] = ['entity' => 'DoctorSpecialty', 'doctor_id' => $appointment->doctor_id, 'specialty_id' => $appointment->specialty_id];
                 }
 
                 return $appointment->only(['id', 'doctor_id', 'specialty_id', 'date', 'start_time', 'end_time', 'status'])
-                    + ['reasons' => $reasons];
+                    + ['reasons' => $reasons, 'origins' => $origins];
             });
     }
 }

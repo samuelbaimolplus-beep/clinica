@@ -17,8 +17,8 @@ class ScheduleService
     public function save(array $data, ?int $id = null): Schedule
     {
         $minutes = (int) CarbonImmutable::parse($data['start_time'])->diffInMinutes(CarbonImmutable::parse($data['end_time']));
-        if ($minutes < $data['duration'] || $minutes % $data['duration'] !== 0) {
-            throw ValidationException::withMessages(['duration' => 'La duración debe dividir el turno en consultas completas, sin minutos sobrantes.']);
+        if ($minutes < $data['duration']) {
+            throw ValidationException::withMessages(['duration' => 'La consulta debe caber íntegramente dentro del turno.']);
         }
 
         return DB::transaction(function () use ($data, $id) {
@@ -30,10 +30,13 @@ class ScheduleService
                 throw ValidationException::withMessages(['schedule' => 'El turno se superpone con otro horario del médico.']);
             }
             $schedule->fill($data)->save();
-            foreach (AgendaAdjustment::where('doctor_id', $data['doctor_id'])->where('date', '>=', today()->toDateString())->where('status', 'active')->get() as $adjustment) {
+            foreach (AgendaAdjustment::where('doctor_id', $data['doctor_id'])->where('date', '>=', today()->toDateString())->where('status', 'active')
+                ->where(fn ($query) => $query->where('kind', 'online_opening')->orWhere('date', today()->toDateString()))->get() as $adjustment) {
                 if (! collect(app(ScheduleBlocks::class)->forDate($data['doctor_id'], $adjustment->date))
                     ->contains(fn ($block) => $block['start']->format('H:i:s') === $adjustment->start_time && $block['end']->format('H:i:s') === $adjustment->end_time)) {
-                    throw ValidationException::withMessages(['schedule' => 'El cambio invalidaría movimientos activos de Recepción. Libérelos antes de modificar el turno.']);
+                    throw ValidationException::withMessages(['schedule' => $adjustment->kind === 'online_opening'
+                        ? 'El cambio invalidaría una habilitación online registrada. La V6 no permite retirar esa habilitación.'
+                        : 'El cambio invalidaría bloqueos de hoy. Recepción debe liberarlos antes de modificar el turno.']);
                 }
             }
             $schedule->setAttribute('affected_appointments', app(ScheduleImpact::class)->affected($data['doctor_id']));

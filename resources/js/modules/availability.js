@@ -7,20 +7,20 @@ export function installAvailabilityViews(ui) {
             html: notice('Consulta provisional de horarios. Consultar no retiene un cupo ni genera una cita. Las reservas y los pagos todavía no están habilitados.')
                 + panel('Disponibilidad médica', `<form id="medical-availability-form">${formErrors}<div class="grid two">
                 ${select('Especialidad', 'specialty_id', [['', 'Seleccione…'], ...options.specialties.map(item => [item.id, item.name])], '', 'required')}
-                ${select('Médico', 'doctor_id', [['', 'Seleccione especialidad…']], '', 'required')}
+                ${select('Preferencia de médico', 'doctor_id', [['', 'Disponibles según carga']], '')}
                 ${field('Fecha', 'date', 'date', localDate(), `required min="${localDate()}"`)}
                 ${field('Modalidad', 'modality_label', 'text', state.user.role === 'Paciente' ? 'Online' : 'Presencial', 'readonly')}
                 </div>${submit('Consultar horarios')}</form><div id="medical-availability-result"></div>`),
             bind: () => {
                 on('#specialty_id', 'change', event => {
-                    $('#doctor_id').innerHTML = [['', 'Seleccione…'], ...doctors(event.target.value)].map(([id, label]) => `<option value="${esc(id)}">${esc(label)}</option>`).join('');
+                    $('#doctor_id').innerHTML = [['', 'Disponibles según carga'], ...doctors(event.target.value)].map(([id, label]) => `<option value="${esc(id)}">${esc(label)}</option>`).join('');
                     $('#medical-availability-result').innerHTML = '';
                 });
                 on('#doctor_id,#date', 'change', () => { $('#medical-availability-result').innerHTML = ''; });
                 bindForm('medical-availability-form', async values => {
                     delete values.modality_label;
                     const result = await api('medical-availability?' + new URLSearchParams(values));
-                    $('#medical-availability-result').innerHTML = table(['Inicio', 'Fin', 'Modalidad'], result.blocks.map(block => [esc(block.start_time), esc(block.end_time), result.modality === 'online' ? 'Online' : 'Presencial']));
+                    $('#medical-availability-result').innerHTML = table(['Médico', 'Inicio', 'Fin', 'Modalidad'], result.blocks.map(block => [esc(block.doctor_name), esc(block.start_time), esc(block.end_time), result.modality === 'online' ? 'Online' : 'Presencial']));
                 });
             },
         };

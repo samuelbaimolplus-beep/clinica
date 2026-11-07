@@ -1,22 +1,12 @@
 # Clínica Vida Salud
 
-Sistema académico de gestión de citas médicas construido con Laravel 13, PostgreSQL, Blade y JavaScript. La entrega actual comprende autenticación con cuatro roles, cuentas del personal, médicos, especialidades, pacientes, registro y vinculación de cuentas, varios turnos médicos, distribución de modalidades, bloqueos y aperturas de Recepción, consulta provisional de disponibilidad y auditoría consultable.
+Sistema académico en Laravel 13, PostgreSQL, Blade y JavaScript. La referencia funcional definitiva es `../Clinica_Vida_Salud_V6_26CU_Revision_Final.docx`, entregada por el equipo el 7 de noviembre de 2026. El desarrollo se ajusta a sus 26 casos de uso y acuerdos definitivos.
 
-La revisión documental vigente es el [informe de concordancia con V5](docs/INFORME_CONCORDANCIA_V5_2026-11-07.md), con los 26 casos de uso, diferencias del programa, correcciones necesarias y preguntas pendientes. La última entrega de código corresponde al [avance V3 del 7 de noviembre](docs/INFORME_AVANCE_V3_2026-11-07.md). La revisión V5 no modifica funcionalidades: identifica, entre otras diferencias, que la retirada de aperturas online existente no está autorizada en la nueva línea base. Las reservas y los pagos todavía no están habilitados.
+El [registro de adecuación a V6](docs/ADECUACION_WORD_V6_2026-11-07.md) documenta las correcciones efectivas, funciones retiradas, trazabilidad y verificación. Los informes V3 y V5 y los demás documentos anteriores conservan valor histórico; sus preguntas y propuestas no sustituyen los acuerdos finales de V6.
 
-La [guía de arquitectura y trazabilidad](docs/ARQUITECTURA_Y_TRAZABILIDAD.md) explica la relación entre el documento del proyecto, casos de uso, reglas de negocio, clases y pruebas. También documenta las diferencias entre apartados antiguos y nuevos del Word, las decisiones de alcance y una secuencia para la defensa.
+## Ejecutar el proyecto
 
-El equipo estableció CU01–CU05 y autorizó avanzar provisionalmente con la nueva V3. Eso no equivale a aprobar todos los demás casos de uso. La [revisión del Word del 4 de noviembre](docs/REVISION_WORD_2026-11-04.md) conserva el contraste histórico; los cambios posteriores se explican en el informe vigente.
-
-Se autorizó de forma específica la [distribución de cupos de CU07 por mayor resto](docs/REGLA_CUPOS_MAYOR_RESTO.md), con prioridad presencial en empate exacto. Está disponible en **Horarios médicos → Distribución de cupos** y no supone dar por cerrado el resto de CU07.
-
-El [ajuste de código a CU01–CU05](docs/AJUSTE_CU01_A_CU05_2026-11-04.md) documenta las correcciones ya implementadas: errores de autenticación/cierre, consulta de solo lectura, estados, especialidades activas, nombres normalizados y citas afectadas por cambios administrativos.
-
-El [registro de uso del ZIP de referencia](docs/USO_DE_LA_GUIA_ZIP.md) explica qué ideas se adaptaron: perfil para los cuatro roles, cambio de contraseña, revocación de sesiones y conservación de correcciones de recepción al actualizar contacto.
-
-## Ejecutar el proyecto existente
-
-Desde esta carpeta, con PostgreSQL iniciado y `.env` configurado:
+Con PostgreSQL iniciado y `.env` configurado, desde esta carpeta:
 
 ```powershell
 php artisan migrate
@@ -24,48 +14,57 @@ npm.cmd run build
 php artisan serve --host=127.0.0.1 --port=8000
 ```
 
-Abrir <http://127.0.0.1:8000>. Las migraciones agregan estructuras pendientes sin vaciar las tablas. No utilizar `migrate:fresh` sobre la base del proyecto.
+Abrir <http://127.0.0.1:8000>. Las migraciones agregan o ajustan estructuras sin vaciar las tablas. No ejecutar `migrate:fresh` sobre la base del proyecto.
 
-La cuenta administrativa inicial utiliza `admin@vidasalud.bo`. Su contraseña está únicamente en `storage/app/private/acceso-inicial.txt`, excluido de Git. Para una instalación sin administrador: `php artisan clinica:crear-admin correo@ejemplo.bo`.
+Se necesitan PHP 8.3 o superior con `pdo_pgsql`, Composer, Node.js y PostgreSQL. En una instalación nueva, ejecutar `composer install` y `npm.cmd ci`, copiar `.env.example` a `.env`, configurar una base existente y ejecutar `php artisan key:generate`. Después aplicar migraciones, compilar y crear el administrador con `php artisan clinica:crear-admin correo@ejemplo.bo`.
 
-## Instalación nueva
+Los accesos iniciales y de demostración permanecen en archivos privados locales de `storage/app/private`, excluidos de Git. La aplicación no publica contraseñas.
 
-Se necesitan PHP 8.3 o superior con `pdo_pgsql`, Composer, Node.js y PostgreSQL. Instalar dependencias con `composer install` y `npm.cmd ci`; copiar `.env.example` a `.env`, generar `APP_KEY` con `php artisan key:generate` y configurar `DB_CONNECTION=pgsql`, host, puerto, base, usuario y contraseña de una base existente. Después ejecutar las migraciones, compilar y crear el primer administrador. No versionar `.env` ni los archivos privados de acceso.
+## Funciones disponibles
 
-## Organización y uso
+- Administrador: usuarios del personal, médicos, especialidades, turnos, indisponibilidades, porcentajes y consulta de auditoría.
+- Recepción: pacientes, vinculación verificada de cuentas, consulta presencial de disponibilidad, citas afectadas, CU24 para bloqueos de hoy y CU25 para habilitar franjas protegidas online.
+- Paciente: registro, verificación de correo, recuperación de acceso y consulta de disponibilidad online.
+- Acceso: sesión por rol, estado activo y revocación ante cambios de credenciales o permisos.
 
-- `app/Http/Controllers/Catalog` y `app/Http/Requests/Catalog`: entrada y validación independientes para usuarios, médicos, especialidades y pacientes.
-- `app/Services`: operaciones de catálogos, registro/vinculación, horarios y auditoría.
-- `app/Services/Auth`: cambio de contraseña propio y firma de sesión para detectar cambios de credenciales, rol o vínculos.
-- `app/Support/ClinicAccess.php`: vistas disponibles por rol y comprobación de cuentas/perfiles activos.
-- `app/Observers`: registro automático de modificaciones relevantes.
-- `resources/js/modules`: formularios y pantallas de catálogos, horarios y cuentas de pacientes.
-- `database/migrations`: integridad de datos y protección de la bitácora en PostgreSQL.
-- `tests/Feature`: reglas de negocio, seguridad y regresión.
+Los turnos protegen los primeros 120 minutos para presencial. El resto usa porcentajes enteros por médico, 50/50 inicial, mayor resto y desempate presencial, alternando modalidades mientras ambas conservan cupos. Los minutos sobrantes al final del turno quedan sin consulta; no se generan citas más cortas.
 
-El administrador gestiona personal, médicos, especialidades, turnos y porcentajes, y consulta auditoría y citas afectadas. Recepción administra pacientes y sus códigos de vinculación verificados; también propone, confirma y libera bloqueos de demanda o habilita franjas protegidas para online. El paciente crea su cuenta, acepta términos y luego inicia sesión; puede consultar su perfil y disponibilidad online sin acceder a información de otros pacientes.
+Los bloqueos de demanda se crean y liberan únicamente hoy, mediante selección y confirmación. Se conserva la cantidad de demanda registrada. No hay caducidad automática ni temporizador de advertencia. La habilitación online no admite retirada. «Mi perfil», edición propia de contacto y cambio propio de contraseña se retiraron por no corresponder a los flujos definidos; la recuperación funciona por correo.
 
-Todos los roles pueden abrir **Mi perfil → Cambiar contraseña**. Se verifica la contraseña actual; la sesión que realiza el cambio continúa y las demás deben volver a identificarse en su siguiente acceso.
+## Correo
 
-Los horarios admiten varios turnos diarios sin superposición. Cada turno protege sus primeros 120 minutos para presencial; el resto usa 50/50 por defecto o porcentajes enteros configurados por médico, con mayor resto y desempate presencial. Se alternan las modalidades mientras ambas conservan cupos. El cálculo de capacidad no mueve citas existentes. Los cambios que afectan citas futuras se muestran en CU17 sin cancelarlas automáticamente.
+El registro de Paciente envía un enlace firmado de verificación. El inicio de sesión del paciente exige correo verificado. La recuperación utiliza un enlace temporal de un solo uso, mantiene contraseñas con hash y revoca las sesiones anteriores tras restablecerlas.
 
-## Funciones aplazadas
+El entorno local usa `MAIL_MAILER=log`: registra el mensaje en el log privado para desarrollo y no lo entrega a una bandeja real. Para entrega real se configura el transporte SMTP mediante las variables de correo de Laravel en `.env`. Las pruebas simulan las notificaciones y no envían correos externos. No copiar enlaces de recuperación ni credenciales a los informes o al repositorio.
 
-La consulta de disponibilidad funciona por rol y modalidad, excluyendo citas, indisponibilidades y bloqueos. Faltan retenciones de pago, consumo de bloqueos al formalizar citas, tarifas, verificación de pagos presenciales, WizPay en pruebas, reembolsos y seguimientos. También queda adaptar asistencia, atención, historial y reportes a las reglas nuevas. El código anterior de citas/reportes se conserva deshabilitado mediante `CLINIC_APPOINTMENTS_ENABLED=false`; habilitarlo no implementa esas reglas.
+## Estado de los demás módulos
 
-`IMPLEMENTACION.md` y los informes anteriores conservan antecedentes. La guía de arquitectura se complementa con el informe V3 vigente.
+Las decisiones funcionales se toman de V6. La implementación económica de citas, retenciones, pago inmediato, WizPay, reembolsos, seguimiento y solicitudes de reprogramación aún no está completada. El código histórico de citas y reportes se conserva deshabilitado por defecto con `CLINIC_APPOINTMENTS_ENABLED=false`; habilitar ese indicador no implementa las reglas económicas de V6.
 
-## Validación
+Este estado de implementación no representa nuevas preguntas de negocio ni autoriza funciones adicionales. El registro de adecuación indica el alcance comprobado de la entrega.
 
-Las pruebas requieren la base separada `clinica_vida_salud_test` y las credenciales locales de PostgreSQL. `clinica:preparar-pruebas` solo aplica sus migraciones pendientes. Los casos funcionales utilizan transacciones revertidas.
+## Organización del código
+
+- `app/Http/Controllers` y `app/Http/Requests`: entrada, autorización y validación.
+- `app/Services/Catalog`: catálogos e impacto de cambios administrativos.
+- `app/Services/Schedules`: turnos, capacidad, modalidades, movimientos y afectaciones.
+- `app/Services/Auth`: seguridad y revocación de sesión.
+- `app/Notifications`: verificación de correo; recuperación mediante el broker de Laravel.
+- `app/Observers` y `app/Services/Audit`: auditoría transaccional.
+- `app/Support/ClinicAccess.php`: navegación por rol.
+- `resources/js/modules`: pantallas separadas por responsabilidad.
+- `database/migrations`: integridad, exclusión de superposiciones e historial.
+
+## Verificación
+
+Las pruebas usan exclusivamente `clinica_vida_salud_test`, mediante transacciones revertidas. `clinica:preparar-pruebas` aplica las migraciones pendientes de esa base aislada sin vaciar datos.
 
 ```powershell
 php artisan clinica:preparar-pruebas
-php artisan test
-node --test tests/Frontend/*.test.mjs
-node --check resources/js/app.js
+php artisan test --compact
+node --test tests/Frontend/api.test.mjs
 npm.cmd run build
 php vendor/bin/pint --dirty --test
 ```
 
-La validación de la V3 y su resultado se registran en el [informe de avance](docs/INFORME_AVANCE_V3_2026-11-07.md#verificación-y-puesta-en-marcha). Las pruebas JavaScript también pueden ejecutarse con `npm.cmd test`. Queda pendiente la revisión visual manual porque no hubo un navegador conectado disponible.
+El resultado de la entrega figura en el [registro de adecuación](docs/ADECUACION_WORD_V6_2026-11-07.md). La verificación visual y las pruebas reales de correo y pasarela no se presentan como realizadas.

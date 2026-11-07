@@ -34,6 +34,8 @@ class SessionSecurity
         $reason = null;
         if (! $user || ! ClinicAccess::isActive($user)) {
             $reason = 'inactive_account';
+        } elseif ($user->role === 'Paciente' && ! $user->email_verified_at) {
+            $reason = 'email_unverified';
         } elseif ($request->session()->get('clinic.auth_user_id') === $user->id
             && $request->session()->has('clinic.auth_fingerprint')
             && ! hash_equals($request->session()->get('clinic.auth_fingerprint'), $this->fingerprint($user))) {
@@ -46,9 +48,9 @@ class SessionSecurity
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
-            return $reason === 'inactive_account'
+            return $reason === 'email_unverified' ? 'Verifique su correo antes de iniciar sesión.' : ($reason === 'inactive_account'
                 ? 'La cuenta está inactiva. Contacte al administrador.'
-                : 'Sus credenciales o permisos cambiaron. Inicie sesión nuevamente.';
+                : 'Sus credenciales o permisos cambiaron. Inicie sesión nuevamente.');
         }
 
         Auth::setUser($user);

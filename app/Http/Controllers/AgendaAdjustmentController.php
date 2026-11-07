@@ -12,15 +12,9 @@ class AgendaAdjustmentController extends Controller
 {
     public function index(Request $request)
     {
-        $data = $request->validate(['date' => 'required|date_format:Y-m-d']);
+        $data = $request->validate(['date' => 'required|date_format:Y-m-d', 'specialty_id' => 'nullable|integer|exists:specialties,id']);
 
-        return AgendaAdjustment::where('date', $data['date'])->orderBy('start_time')->get()->map(function ($record) {
-            $record->setAttribute('age_minutes', (int) $record->created_at->diffInMinutes(now()));
-            $record->setAttribute('prolonged', $record->status === 'active' && $record->kind === 'presential_block'
-                && $record->created_at->addMinutes(config('clinic.block_warning_minutes')) <= now());
-
-            return $record;
-        });
+        return AgendaAdjustment::where('date', $data['date'])->when($data['specialty_id'] ?? null, fn ($q, $id) => $q->where('specialty_id', $id))->orderBy('start_time')->get();
     }
 
     public function propose(Request $request, AgendaAdjustments $service)
@@ -48,13 +42,21 @@ class AgendaAdjustmentController extends Controller
             'blocks.*.doctor_id' => 'required|integer|exists:doctors,id',
             'blocks.*.date' => 'required|date_format:Y-m-d|after_or_equal:today',
             'blocks.*.start_time' => 'required|date_format:H:i', 'blocks.*.end_time' => 'required|date_format:H:i',
+            'quantity' => 'nullable|integer|min:1',
         ]);
 
-        return response()->json($service->create($data['kind'], $data['specialty_id'] ?? null, $data['blocks'], $request->user()), 201);
+        return response()->json($service->create($data['kind'], $data['specialty_id'] ?? null, $data['blocks'], $request->user(), $data['quantity'] ?? null), 201);
     }
 
     public function release(Request $request, AgendaAdjustments $service, int $id)
     {
         return $service->release($id, $request->user());
+    }
+
+    public function releaseSelected(Request $request, AgendaAdjustments $service)
+    {
+        $data = $request->validate(['ids' => 'required|array|min:1|max:100', 'ids.*' => 'required|integer|distinct|exists:agenda_adjustments,id']);
+
+        return $service->releaseSelected($data['ids'], $request->user());
     }
 }

@@ -21,10 +21,10 @@ function client(responses) {
     return {api, calls, messages, token: () => token, signOuts: () => signOuts};
 }
 
-test('envía CSRF y adopta el token renovado después de cambiar contraseña', async () => {
+test('envía CSRF y adopta el token renovado después de iniciar sesión', async () => {
     const context = client([[200, {csrf: 'rotated'}], [200, {user: {id: 1}}]]);
-    await context.api('profile/password', 'PUT', {password: 'EjemploDePrueba'});
-    await context.api('profile');
+    await context.api('login', 'POST', {email: 'prueba@example.test', password: 'EjemploDePrueba'});
+    await context.api('references');
     assert.equal(context.calls[0].options.headers['X-CSRF-TOKEN'], 'original');
     assert.equal(context.calls[1].options.headers['X-CSRF-TOKEN'], 'rotated');
     assert.equal(context.calls[1].options.cache, 'no-store');
@@ -32,7 +32,7 @@ test('envía CSRF y adopta el token renovado después de cambiar contraseña', a
 
 test('401 limpia la sesión local y conserva el CSRF recibido para volver a ingresar', async () => {
     const context = client([[401, {message: 'Sesión revocada', csrf: 'guest-token'}]]);
-    await assert.rejects(context.api('profile'), /Sesión revocada/);
+    await assert.rejects(context.api('references'), /Sesión revocada/);
     assert.equal(context.signOuts(), 1);
     assert.equal(context.token(), 'guest-token');
     assert.deepEqual(context.messages, ['Sesión revocada']);

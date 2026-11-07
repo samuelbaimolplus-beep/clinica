@@ -49,6 +49,7 @@ class V3WorkflowTest extends TestCase
         $this->doctor->specialties()->attach($this->specialty);
         $this->patient = Patient::create(['identity' => null, 'first_name' => 'Paciente', 'last_name' => 'V3', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000002', 'address' => 'Dirección privada', 'status' => 'Activo']);
         $this->patientUser = User::create(['name' => 'Paciente V3', 'email' => 'patient-v3@example.test', 'role' => 'Paciente', 'patient_id' => $this->patient->id, 'status' => 'Activo', 'password' => 'ClavePrueba2026']);
+        $this->patientUser->forceFill(['email_verified_at' => now()])->save();
         $this->shift = Schedule::create($this->shiftData());
     }
 
@@ -104,7 +105,7 @@ class V3WorkflowTest extends TestCase
         $this->assertSame('14:00', $data[9]['start_time']);
         $this->postJson('/api/schedules', $this->shiftData(['start_time' => '12:30', 'end_time' => '13:30']))->assertCreated();
         $this->postJson('/api/schedules', $this->shiftData(['start_time' => '12:00', 'end_time' => '13:00']))->assertUnprocessable();
-        $this->postJson('/api/schedules', $this->shiftData(['weekday' => 2, 'end_time' => '10:10']))->assertUnprocessable();
+        $this->postJson('/api/schedules', $this->shiftData(['weekday' => 2, 'end_time' => '10:10']))->assertCreated();
     }
 
     public function test_database_rejects_overlapping_shifts_even_without_service(): void
@@ -133,12 +134,12 @@ class V3WorkflowTest extends TestCase
         $appointment = $this->appointment();
         $before = $appointment->fresh()->getAttributes();
         $this->actingAs($this->admin)->putJson('/api/schedules/'.$this->shift->id, $this->shiftData(['start_time' => '09:00']))->assertOk()->assertJsonCount(1, 'affected_appointments');
-        $this->getJson('/api/schedule-impacts')->assertOk()->assertJsonMissingPath('0.patient');
+        $this->getJson('/api/schedule-impacts')->assertForbidden();
         $this->actingAs($this->reception)->getJson('/api/schedule-impacts')->assertOk()->assertJsonPath('0.id', $appointment->id)
             ->assertJsonPath('0.patient.id', $this->patient->id)->assertJsonPath('0.patient.phone', $this->patient->phone)->assertJsonMissingPath('0.patient.address');
         $this->assertSame($before, $appointment->fresh()->getAttributes());
         $this->actingAs($this->admin)->putJson('/api/schedules/'.$this->shift->id, $this->shiftData())->assertOk()->assertJsonCount(0, 'affected_appointments');
-        $this->getJson('/api/schedule-impacts')->assertJsonCount(0);
+        $this->actingAs($this->reception)->getJson('/api/schedule-impacts')->assertJsonCount(0);
         $this->actingAs($this->patientUser)->getJson('/api/schedule-impacts')->assertForbidden();
     }
 
@@ -160,7 +161,7 @@ class V3WorkflowTest extends TestCase
         $this->availability('presential')->assertJsonCount(0, 'blocks');
     }
 
-    public function test_reception_demand_block_proposal_confirmation_release_and_warning(): void
+    public function test_reception_demand_blocks_persist_without_a_warning_timer_until_manual_release(): void
     {
         $this->appointment();
         $this->actingAs($this->reception);
@@ -170,7 +171,7 @@ class V3WorkflowTest extends TestCase
         $id = $created->json('0.id');
         $this->availability('presential')->assertJsonCount(5, 'blocks');
         $this->travel(31)->minutes();
-        $this->getJson('/api/agenda-adjustments?date=2026-11-09')->assertOk()->assertJsonPath('0.prolonged', true)->assertJsonPath('0.status', 'active');
+        $this->getJson('/api/agenda-adjustments?date=2026-11-09')->assertOk()->assertJsonMissingPath('0.prolonged')->assertJsonPath('0.status', 'active');
         $this->patchJson('/api/agenda-adjustments/'.$id.'/release')->assertOk()->assertJsonPath('released_by', $this->reception->id);
         $this->availability('presential')->assertJsonCount(6, 'blocks');
         $this->patchJson('/api/agenda-adjustments/'.$id.'/release')->assertUnprocessable();
@@ -211,9 +212,9 @@ class V3WorkflowTest extends TestCase
         $this->actingAs($this->admin)->putJson('/api/doctor-quotas', ['doctor_id' => $this->doctor->id, 'presential_percent' => 100, 'online_percent' => 0])->assertOk();
         $this->actingAs($this->patientUser);
         $this->availability('online')->assertJsonCount(1, 'blocks')->assertJsonPath('blocks.0.start_time', '08:00');
-        $this->actingAs($this->reception)->patchJson('/api/agenda-adjustments/'.$id.'/release')->assertOk();
+        $this->actingAs($this->reception)->patchJson('/api/agenda-adjustments/'.$id.'/release')->assertUnprocessable();
         $this->actingAs($this->patientUser);
-        $this->availability('online')->assertJsonCount(0, 'blocks');
+        $this->availability('online')->assertJsonCount(1, 'blocks');
     }
 
     public function test_active_movement_prevents_incompatible_shift_change_and_audit_failure_rolls_back(): void

@@ -34,7 +34,8 @@ class DoctorQuotaService
         $day = CarbonImmutable::parse($date);
         $blocks = Unavailability::where('doctor_id', $doctorId)->where('starts_at', '<', $day->addDay())->where('ends_at', '>', $day)->get();
         $usable = array_filter($ranges, fn ($range) => ! $blocks->contains(fn ($block) => CarbonImmutable::parse($block->starts_at) < $range['end'] && CarbonImmutable::parse($block->ends_at) > $range['start']));
-        $adjustments = AgendaAdjustment::where('doctor_id', $doctorId)->where('date', $date)->where('status', 'active')->get();
+        $adjustments = AgendaAdjustment::where('doctor_id', $doctorId)->where('date', $date)->where('status', 'active')
+            ->when($date !== today()->toDateString(), fn ($query) => $query->where('kind', 'online_opening'))->get();
         $usable = array_map(function ($block) use ($adjustments) {
             $adjustment = $adjustments->first(fn ($item) => $item->start_time === $block['start']->format('H:i:s') && $item->end_time === $block['end']->format('H:i:s'));
             $block['demand_blocked'] = $adjustment?->kind === 'presential_block';

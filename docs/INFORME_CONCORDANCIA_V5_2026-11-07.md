@@ -1,5 +1,7 @@
 # Informe de concordancia del programa con la versión V5
 
+> Antecedente histórico sustituido por la V6 definitiva. La fuente vigente y las correcciones del programa figuran en [Adecuación del programa al Word V6](ADECUACION_WORD_V6_2026-11-07.md). Las preguntas y propuestas siguientes no sustituyen los acuerdos finales del Word.
+
 Fecha: 7 de noviembre de 2026.
 
 **El programa tiene una base funcional reutilizable, pero todavía no cumple íntegramente la V5.** La configuración de turnos, la distribución de modalidades, los pacientes, la consulta provisional de disponibilidad y la auditoría ya tienen implementación. Las diferencias más inmediatas son la reversión de aperturas online que la V5 aún no autoriza, el acceso administrativo adicional a CU17 y las partes incompletas de CU24, CU25 y de la gestión económica.

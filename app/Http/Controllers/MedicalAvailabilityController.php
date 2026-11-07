@@ -32,22 +32,34 @@ class MedicalAvailabilityController extends Controller
     {
         $this->authorizeRole($request);
         $data = $request->validate([
-            'doctor_id' => 'required|integer|exists:doctors,id',
+            'doctor_id' => 'nullable|integer|exists:doctors,id',
             'specialty_id' => 'required|integer|exists:specialties,id',
             'date' => 'required|date_format:Y-m-d|after_or_equal:today',
             'modality' => ['sometimes', Rule::in([$request->user()->role === 'Paciente' ? 'online' : 'presential'])],
         ]);
         $modality = $request->user()->role === 'Paciente' ? 'online' : 'presential';
-        $doctor = Doctor::findOrFail($data['doctor_id']);
-        if ($doctor->status !== 'Activo' || ! $doctor->specialties()->whereKey($data['specialty_id'])->where('status', 'Activo')->exists()) {
-            return ['modality' => $modality, 'blocks' => []];
+        $doctors = Doctor::where('status', 'Activo')->when($data['doctor_id'] ?? null, fn ($q, $id) => $q->whereKey($id))
+            ->whereHas('specialties', fn ($q) => $q->whereKey($data['specialty_id'])->where('status', 'Activo'))->get();
+        $ranked = [];
+        foreach ($doctors as $doctor) {
+            $appointments = Appointment::where('doctor_id', $doctor->id)->where('date', $data['date'])->whereIn('status', Appointment::ACTIVE)->get(['start_time', 'end_time']);
+            $capacity = $service->capacity($doctor->id, $data['date']);
+            $blocks = array_values(array_filter($capacity['blocks'], fn ($block) => $block['modality'] === $modality
+                && ! $block['demand_blocked']
+                && CarbonImmutable::parse($data['date'].' '.$block['start_time']) >= now()
+                && ! $appointments->contains(fn ($appointment) => $appointment->start_time < $block['end_time'].':00' && $appointment->end_time > $block['start_time'].':00')));
+            if ($blocks) {
+                $ranked[] = ['doctor_id' => $doctor->id, 'doctor_name' => $doctor->first_name.' '.$doctor->last_name,
+                    'load' => $appointments->count(), 'blocks' => $blocks];
+            }
         }
-        $appointments = Appointment::where('doctor_id', $doctor->id)->where('date', $data['date'])->whereIn('status', Appointment::ACTIVE)->get(['start_time', 'end_time']);
-        $capacity = $service->capacity($doctor->id, $data['date']);
-        $blocks = array_values(array_filter($capacity['blocks'], fn ($block) => $block['modality'] === $modality
-            && ! $block['demand_blocked']
-            && CarbonImmutable::parse($data['date'].' '.$block['start_time']) >= now()
-            && ! $appointments->contains(fn ($appointment) => $appointment->start_time < $block['end_time'].':00' && $appointment->end_time > $block['start_time'].':00')));
+        usort($ranked, fn ($a, $b) => [$a['load'], -count($a['blocks']), $a['doctor_id']] <=> [$b['load'], -count($b['blocks']), $b['doctor_id']]);
+        $blocks = [];
+        foreach ($ranked as $doctor) {
+            foreach ($doctor['blocks'] as $block) {
+                $blocks[] = $block + ['doctor_id' => $doctor['doctor_id'], 'doctor_name' => $doctor['doctor_name']];
+            }
+        }
 
         return ['modality' => $modality, 'blocks' => $blocks];
     }

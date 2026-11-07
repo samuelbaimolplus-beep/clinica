@@ -16,6 +16,6 @@ class SaveScheduleRequest extends FormRequest
     {
         return ['doctor_id' => ['required', 'integer', Rule::exists('doctors', 'id')->where('status', 'Activo')],
             'weekday' => 'required|integer|between:0,6', 'start_time' => 'required|date_format:H:i',
-            'end_time' => 'required|date_format:H:i|after:start_time', 'duration' => 'required|integer|between:5,240'];
+            'end_time' => 'required|date_format:H:i|after:start_time', 'duration' => 'required|integer|min:1'];
     }
 }

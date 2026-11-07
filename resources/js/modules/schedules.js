@@ -17,7 +17,7 @@ export function installScheduleViews(ui) {
                 ${select('Día de atención', 'weekday', days.map((day, index) => [index, day]), 1)}
                 ${field('Hora de inicio', 'start_time', 'time', '08:00', 'required')}
                 ${field('Hora de finalización', 'end_time', 'time', '12:00', 'required')}
-                ${field('Duración de cita (minutos)', 'duration', 'number', 30, 'required min="5" max="240"')}
+                ${field('Duración de cita (minutos)', 'duration', 'number', 30, 'required min="1"')}
                 </div><p id="schedule-mode">Nuevo turno. Cada turno protege sus primeras dos horas para presencial.</p>${submit('Guardar horario')}${button('Nuevo turno', 'id="new-shift"', '')}</form>`)
                 + panel('Horario vigente', table(['Día', 'Inicio', 'Fin', 'Duración', ''], data.schedules.map(schedule => [
                     esc(days[schedule.weekday]), time(schedule.start_time), time(schedule.end_time), `${schedule.duration} min`,
@@ -67,7 +67,7 @@ export function installScheduleViews(ui) {
                     bindForm('schedule-form', async values => {
                         const result = await api(`schedules${editingSchedule ? '/' + editingSchedule : ''}`, editingSchedule ? 'PUT' : 'POST', {...values, doctor_id: scheduleDoctor});
                         editingSchedule = null;
-                        await navigate('CU07'); toast(`Horario guardado. ${result.affected_appointments.length} cita(s) afectadas; consulte CU17.`);
+                        await navigate('CU07'); toast(`Horario guardado. ${result.affected_appointments.length} cita(s) afectadas para gestión de Recepción.`);
                     });
                 } else if (scheduleTab === 'block') {
                     on('#preview-block', 'click', async () => {

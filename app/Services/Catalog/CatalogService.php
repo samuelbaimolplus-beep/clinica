@@ -59,7 +59,11 @@ class CatalogService
                 }
             }
             unset($data['specialty_ids']);
-            $record->fill($data)->save();
+            $record->fill($data);
+            if ($record instanceof User && $record->isDirty('email')) {
+                $record->email_verified_at = null;
+            }
+            $record->save();
             if ($record instanceof Doctor && $specialties !== null) {
                 $changes = $record->specialties()->sync($specialties);
                 if ($changes['attached'] || $changes['detached']) {

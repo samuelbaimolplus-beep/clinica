@@ -1,8 +1,7 @@
-// CU23 propuesto y consulta del perfil propio. La sesión determina el paciente en el servidor.
+// CU23: registro y recuperación por correo según V6.
 export function installPatientViews(ui) {
     const { state, views, main, panel, formErrors, field, select, textarea, localDate,
-        submit, button, on, bindForm, api, references, navigate, toast, loginView,
-        details, esc, full, code, getTermsVersion } = ui;
+        submit, button, on, bindForm, api, toast, loginView, esc, getTermsVersion } = ui;
 
     views.registration = () => {
         main.innerHTML = `<div class="registration-wrap">${panel('Crear cuenta de paciente',
@@ -31,44 +30,12 @@ export function installPatientViews(ui) {
         });
     };
 
-    views.PERFIL = async () => {
-        const result = await api('profile');
-        const person = result.patient || result.doctor;
-        const info = [['Nombre', esc(person ? full(person) : result.user.name)],
-            ['Correo de acceso', esc(result.user.email)], ['Rol', esc(result.user.role)]];
-        if (person) info.push(['Código', esc(code(result.patient ? 'PAC' : 'MED', person.id))],
-            ['Estado', esc(person.status)], ['Teléfono', esc(person.phone)]);
-        if (result.doctor) info.push(['Especialidades', esc(result.doctor.specialties.map(s => s.name).join(', '))]);
-        let contact = '';
-        if (result.patient) {
-            info.push(['CI', esc(person.identity || 'Sin documento')], ['Nacimiento', esc(person.birth_date)]);
-            contact = panel('Actualizar contacto',
-                `<form id="contact-form">${formErrors}<div class="grid two">
-                ${field('Teléfono', 'phone', 'tel', person.phone, 'required maxlength="30"')}
-                ${textarea('Dirección', 'address', person.address, 'maxlength="1000"')}
-                </div>${submit('Guardar contacto')}</form><p>Para corregir sus datos de identidad, solicite la verificación en recepción. Las reservas online se habilitarán en una etapa posterior.</p>`);
-        }
-        const password = panel('Cambiar contraseña',
-            `<form id="password-form">${formErrors}<div class="grid two">
-            ${field('Contraseña actual', 'current_password', 'password', '', 'required maxlength="128" autocomplete="current-password"')}
-            ${field('Nueva contraseña (mínimo 10 caracteres)', 'password', 'password', '', 'required minlength="10" maxlength="128" autocomplete="new-password"')}
-            ${field('Repetir nueva contraseña', 'password_confirmation', 'password', '', 'required minlength="10" maxlength="128" autocomplete="new-password"')}
-            </div><p>Su sesión actual continuará abierta. Las demás deberán volver a iniciar sesión.</p>
-            ${submit('Actualizar contraseña')}</form>`);
-        return {
-            html: panel('Mi perfil', details(info)) + contact + password,
-            bind: () => {
-                if (result.patient) bindForm('contact-form', async data => {
-                    await api('profile', 'PUT', data);
-                    await navigate('PERFIL');
-                    toast('Datos de contacto actualizados.');
-                });
-                bindForm('password-form', async data => {
-                    const response = await api('profile/password', 'PUT', data);
-                    await navigate('PERFIL');
-                    toast(response.message);
-                });
-            },
-        };
+    views.recovery = () => {
+        main.innerHTML = `<div class="login-wrap">${panel('Recuperar acceso', `<form id="recovery-form">${formErrors}
+            ${field('Correo de la cuenta', 'email', 'email', '', 'required maxlength="255" autocomplete="email"')}
+            ${select('Operación', 'purpose', [['recover', 'Recuperar contraseña'], ['verify', 'Verificar correo']], 'recover')}
+            ${submit('Enviar instrucciones por correo')}</form>${button('Volver al inicio de sesión', 'id="recovery-back"', 'link')}`)}</div>`;
+        on('#recovery-back', 'click', loginView);
+        bindForm('recovery-form', async data => { const result = await api('account/email', 'POST', data); toast(result.message); });
     };
 }

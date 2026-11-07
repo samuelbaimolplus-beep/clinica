@@ -54,7 +54,8 @@ class FoundationModulesTest extends TestCase
             ->assertJsonMissingPath('user.password');
         $user = User::findOrFail($response->json('user.id'));
         $this->assertGuest();
-        $this->getJson('/api/profile')->assertUnauthorized();
+        $this->getJson('/api/references')->assertUnauthorized();
+        $user->forceFill(['email_verified_at' => now()])->save();
         $this->postJson('/api/login', ['email' => $user->email, 'password' => 'PruebaSegura2026'])->assertOk();
         $this->assertTrue(Hash::check('PruebaSegura2026', $user->password));
         $this->assertSame('ana@example.test', $user->email);
@@ -78,13 +79,14 @@ class FoundationModulesTest extends TestCase
         $this->assertDatabaseCount('users', 0);
     }
 
-    public function test_patient_can_only_read_and_update_own_contact_without_accessing_catalogs(): void
+    public function test_patient_cannot_download_catalogs_or_use_undocumented_contact_updates(): void
     {
         $other = $this->patient(['identity' => 'OTHER', 'first_name' => 'Otra']);
         $response = $this->postJson('/api/register', $this->registration())->assertCreated();
         $id = $response->json('user.patient_id');
+        User::findOrFail($response->json('user.id'))->forceFill(['email_verified_at' => now()])->save();
         $this->postJson('/api/login', ['email' => 'ana@example.test', 'password' => 'PruebaSegura2026'])->assertOk();
-        $this->getJson('/api/profile?patient_id='.$other->id)->assertOk()->assertJsonPath('patient.id', $id);
+        $this->getJson('/api/profile?patient_id='.$other->id)->assertNotFound();
         $this->getJson('/api/references')->assertExactJson(['doctors' => [], 'patients' => [], 'specialties' => []]);
         foreach (['users', 'doctors', 'specialties', 'patients'] as $module) {
             $this->getJson('/api/entities/'.$module)->assertForbidden();
@@ -93,7 +95,7 @@ class FoundationModulesTest extends TestCase
         $this->getJson('/api/schedules?doctor_id=1')->assertForbidden();
         $this->putJson('/api/profile', ['phone' => '79999999', 'address' => 'Calle Prueba',
             'patient_id' => $other->id, 'identity' => 'HACK', 'status' => 'Inactivo'])
-            ->assertOk()->assertJsonPath('patient.phone', '79999999')->assertJsonPath('patient.identity', 'CI-123');
+            ->assertNotFound();
         $this->assertSame('70000000', $other->fresh()->phone);
         $this->assertSame('Activo', Patient::findOrFail($id)->status);
     }
@@ -131,9 +133,10 @@ class FoundationModulesTest extends TestCase
     public function test_patient_deactivation_revokes_session_and_login(): void
     {
         $response = $this->postJson('/api/register', $this->registration())->assertCreated();
+        User::findOrFail($response->json('user.id'))->forceFill(['email_verified_at' => now()])->save();
         $this->postJson('/api/login', ['email' => 'ana@example.test', 'password' => 'PruebaSegura2026'])->assertOk();
         Patient::findOrFail($response->json('user.patient_id'))->update(['status' => 'Inactivo']);
-        $this->getJson('/api/profile')->assertUnauthorized();
+        $this->getJson('/api/references')->assertUnauthorized();
         $this->postJson('/api/login', ['email' => 'ana@example.test', 'password' => 'PruebaSegura2026'])->assertUnprocessable();
         $this->getJson('/api/session')->assertJsonPath('user', null);
     }
@@ -240,7 +243,7 @@ class FoundationModulesTest extends TestCase
         $this->postJson('/api/appointments', [])->assertNotFound();
         $this->getJson('/api/availability')->assertNotFound();
         $this->getJson('/api/reports')->assertNotFound();
-        $this->getJson('/api/session')->assertJsonPath('access.Recepcionista', ['CU01', 'CU02', 'CU06', 'CUPOS', 'CU08', 'CU17', 'PERFIL']);
+        $this->getJson('/api/session')->assertJsonPath('access.Recepcionista', ['CU01', 'CU02', 'CU06', 'CU24', 'CU25', 'CU08', 'CU17']);
         $this->get('/terms')->assertOk()->assertSee(config('clinic.terms_version'));
     }
 
