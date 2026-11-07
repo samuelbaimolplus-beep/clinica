@@ -212,7 +212,9 @@ class ClinicTest extends TestCase
         $d = ['doctor_id' => $this->doctor->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30];
         $this->actingAs($this->admin)->postJson('/api/schedules', array_replace($d, ['end_time' => '07:00']))->assertUnprocessable();
         $this->postJson('/api/schedules', array_replace($d, ['start_time' => '09:00']))->assertUnprocessable();
-        $this->postJson('/api/schedules', $d)->assertOk();
+        $shift = Schedule::where('doctor_id', $this->doctor->id)->firstOrFail();
+        $this->putJson('/api/schedules/'.$shift->id, array_replace($d, ['start_time' => '09:00']))->assertOk()->assertJsonCount(1, 'affected_appointments');
+        $this->putJson('/api/schedules/'.$shift->id, $d)->assertOk()->assertJsonCount(0, 'affected_appointments');
         $this->postJson('/api/schedules', array_replace($d, ['weekday' => 0]))->assertCreated();
     }
 

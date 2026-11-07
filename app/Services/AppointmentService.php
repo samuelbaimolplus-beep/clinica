@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AgendaAdjustment;
 use App\Models\Appointment;
 use App\Models\Doctor;
 use App\Models\Patient;
@@ -9,6 +10,7 @@ use App\Models\Schedule;
 use App\Models\Specialty;
 use App\Models\Unavailability;
 use App\Models\User;
+use App\Services\Schedules\ScheduleBlocks;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -18,16 +20,16 @@ class AppointmentService
     public function slots(int $doctorId, string $date, ?int $exclude = null): array
     {
         $day = CarbonImmutable::parse($date);
-        $schedule = Schedule::where('doctor_id', $doctorId)->where('weekday', $day->dayOfWeek)->first();
-        if (! $schedule || Doctor::findOrFail($doctorId)->status !== 'Activo') {
+        $ranges = app(ScheduleBlocks::class)->forDate($doctorId, $date);
+        if (! $ranges || Doctor::findOrFail($doctorId)->status !== 'Activo') {
             return [];
         }
         $appointments = Appointment::where('doctor_id', $doctorId)->where('date', $date)->whereIn('status', Appointment::ACTIVE)->when($exclude, fn ($q) => $q->whereKeyNot($exclude))->get();
         $blocks = Unavailability::where('doctor_id', $doctorId)->where('starts_at', '<', $day->addDay())->where('ends_at', '>', $day)->get();
-        $end = CarbonImmutable::parse($date.' '.$schedule->end_time);
         $result = [];
-        for ($start = CarbonImmutable::parse($date.' '.$schedule->start_time); $start->addMinutes($schedule->duration) <= $end; $start = $start->addMinutes($schedule->duration)) {
-            $finish = $start->addMinutes($schedule->duration);
+        foreach ($ranges as $range) {
+            $start = $range['start'];
+            $finish = $range['end'];
             $busy = $appointments->first(fn ($a) => $a->start_time < $finish->format('H:i:s') && $a->end_time > $start->format('H:i:s'));
             $block = $blocks->first(fn ($b) => CarbonImmutable::parse($b->starts_at) < $finish && CarbonImmutable::parse($b->ends_at) > $start);
             $state = $block ? 'Bloqueado' : ($busy ? 'Ocupado' : ($start < now() ? 'Pasado' : 'Disponible'));
@@ -59,6 +61,10 @@ class AppointmentService
             $slot = collect($this->slots($doctor->id, $data['date'], $id))->firstWhere('start', $data['start_time']);
             if (! $slot || $slot['status'] !== 'Disponible') {
                 $this->fail('El horario ya no está disponible. Consulte los bloques libres.');
+            }
+            if (AgendaAdjustment::where('doctor_id', $doctor->id)->where('date', $data['date'])->where('status', 'active')
+                ->where('start_time', '<', $slot['end'])->where('end_time', '>', $slot['start'])->exists()) {
+                $this->fail('El horario tiene un movimiento activo de Recepción. No puede utilizarse desde el flujo anterior.');
             }
             if (Appointment::where('patient_id', $patient->id)->where('date', $data['date'])->whereIn('status', Appointment::ACTIVE)->when($id, fn ($q) => $q->whereKeyNot($id))->where('start_time', '<', $slot['end'])->where('end_time', '>', $slot['start'])->exists()) {
                 $this->fail('El paciente ya tiene una cita que se superpone con este horario.');

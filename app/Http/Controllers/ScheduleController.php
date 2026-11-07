@@ -28,14 +28,14 @@ class ScheduleController extends Controller
         abort_unless($r->user()->role === 'Administrador', 403);
         $d = $r->validate(['doctor_id' => 'required|integer|exists:doctors,id']);
 
-        return ['schedules' => Schedule::where('doctor_id', $d['doctor_id'])->orderBy('weekday')->get(),
+        return ['schedules' => Schedule::where('doctor_id', $d['doctor_id'])->orderBy('weekday')->orderBy('start_time')->get(),
             'unavailabilities' => Unavailability::where('doctor_id', $d['doctor_id'])->orderByDesc('starts_at')->get(),
-            'quota' => DoctorQuota::where('doctor_id', $d['doctor_id'])->first()];
+            'quota' => DoctorQuota::where('doctor_id', $d['doctor_id'])->first() ?? ['presential_percent' => 50, 'online_percent' => 50]];
     }
 
-    public function save(SaveScheduleRequest $request, ScheduleService $service)
+    public function save(SaveScheduleRequest $request, ScheduleService $service, ?int $id = null)
     {
-        $schedule = $service->save($request->validated());
+        $schedule = $service->save($request->validated(), $id);
 
         return response()->json($schedule, $schedule->wasRecentlyCreated ? 201 : 200);
     }

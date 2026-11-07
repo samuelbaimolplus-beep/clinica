@@ -3,6 +3,7 @@ export function installScheduleViews(ui) {
     let scheduleDoctor = '';
     let scheduleTab = 'schedule';
     let capacityDate = localDate();
+    let editingSchedule = null;
 
     views.CU07 = async () => {
         const doctors = doctorOptions();
@@ -17,7 +18,7 @@ export function installScheduleViews(ui) {
                 ${field('Hora de inicio', 'start_time', 'time', '08:00', 'required')}
                 ${field('Hora de finalización', 'end_time', 'time', '12:00', 'required')}
                 ${field('Duración de cita (minutos)', 'duration', 'number', 30, 'required min="5" max="240"')}
-                </div>${submit('Guardar horario')}</form>`)
+                </div><p id="schedule-mode">Nuevo turno. Cada turno protege sus primeras dos horas para presencial.</p>${submit('Guardar horario')}${button('Nuevo turno', 'id="new-shift"', '')}</form>`)
                 + panel('Horario vigente', table(['Día', 'Inicio', 'Fin', 'Duración', ''], data.schedules.map(schedule => [
                     esc(days[schedule.weekday]), time(schedule.start_time), time(schedule.end_time), `${schedule.duration} min`,
                     button('Modificar', `data-schedule="${schedule.id}"`, 'link'),
@@ -35,10 +36,10 @@ export function installScheduleViews(ui) {
         } else {
             const quota = data.quota || {};
             body = panel('Distribución de cupos por médico', `<form id="quota-form">${formErrors}
-                <p>Los porcentajes deben sumar 100%. Los cupos se calculan por mayor resto; en empate exacto se prioriza presencial.</p>
+                <p>Las primeras dos horas de cada turno son presenciales. En el resto se alternan las modalidades respetando los cupos del mayor resto; los empates favorecen presencial. El reparto inicial es 50% / 50%.</p>
                 <div class="grid two">
-                ${field('Porcentaje presencial', 'presential_percent', 'number', quota.presential_percent ?? '', 'required min="0" max="100" step="0.01"')}
-                ${field('Porcentaje online', 'online_percent', 'number', quota.online_percent ?? '', 'required min="0" max="100" step="0.01"')}
+                ${field('Porcentaje presencial', 'presential_percent', 'number', quota.presential_percent ?? 50, 'required min="0" max="100" step="1"')}
+                ${field('Porcentaje online', 'online_percent', 'number', quota.online_percent ?? 50, 'required min="0" max="100" step="1"')}
                 </div>${submit('Guardar distribución')}</form>`)
                 + panel('Capacidad por fecha', `<form id="capacity-form">${formErrors}
                 ${field('Fecha de atención', 'date', 'date', capacityDate, 'required')}${submit('Calcular cupos')}</form><div id="capacity-result"></div>`);
@@ -49,19 +50,24 @@ export function installScheduleViews(ui) {
                 + `<div class="tabs">${[['schedule', 'Horario médico'], ['block', 'Indisponibilidades'], ['quota', 'Distribución de cupos']].map(([key, label]) =>
                     `<button class="tab ${scheduleTab === key ? 'selected' : ''}" data-tab="${key}">${label}</button>`).join('')}</div>` + body,
             bind: () => {
-                on('#schedule-doctor', 'change', async event => { scheduleDoctor = event.target.value; await navigate('CU07'); });
+                on('#schedule-doctor', 'change', async event => { scheduleDoctor = event.target.value; editingSchedule = null; await navigate('CU07'); });
                 on('[data-tab]', 'click', event => { scheduleTab = event.currentTarget.dataset.tab; return navigate('CU07'); });
                 if (scheduleTab === 'schedule') {
+                    editingSchedule = null;
+                    on('#new-shift', 'click', () => { editingSchedule = null; $('#schedule-form').reset(); $('#schedule-mode').textContent = 'Nuevo turno.'; });
                     on('[data-schedule]', 'click', event => {
                         const schedule = data.schedules.find(item => item.id === Number(event.currentTarget.dataset.schedule));
+                        editingSchedule = schedule.id;
+                        $('#schedule-mode').textContent = 'Modificando turno existente. Las citas afectadas conservarán su estado.';
                         for (const key of ['weekday', 'duration', 'start_time', 'end_time']) {
                             $(`[name=${key}]`).value = key.endsWith('time') ? time(schedule[key]) : schedule[key];
                         }
                         $('#schedule-form').scrollIntoView({block: 'center', behavior: 'smooth'});
                     });
                     bindForm('schedule-form', async values => {
-                        await api('schedules', 'POST', {...values, doctor_id: scheduleDoctor});
-                        await navigate('CU07'); toast('Horario guardado.');
+                        const result = await api(`schedules${editingSchedule ? '/' + editingSchedule : ''}`, editingSchedule ? 'PUT' : 'POST', {...values, doctor_id: scheduleDoctor});
+                        editingSchedule = null;
+                        await navigate('CU07'); toast(`Horario guardado. ${result.affected_appointments.length} cita(s) afectadas; consulte CU17.`);
                     });
                 } else if (scheduleTab === 'block') {
                     on('#preview-block', 'click', async () => {
@@ -90,8 +96,10 @@ export function installScheduleViews(ui) {
                         summary += result.quota
                             ? ` Presenciales: ${result.presential_capacity}. Online: ${result.online_capacity}.`
                             : ' Configure los porcentajes para distribuir la capacidad.';
+                        summary += ` Protegidos para presencial: ${result.protected_capacity}.`;
                         $('#capacity-result').innerHTML = notice(summary)
-                            + notice('Este cálculo distribuye la capacidad del horario, descontando indisponibilidades. No muestra cupos libres después de las reservas ni modifica citas existentes.');
+                            + notice('La asignación se calcula por turno antes de excluir indisponibilidades. No muestra cupos libres después de las reservas ni modifica citas existentes.')
+                            + table(['Inicio', 'Fin', 'Modalidad', 'Protección inicial'], result.blocks.map(block => [esc(block.start_time), esc(block.end_time), block.modality === 'presential' ? 'Presencial' : 'Online', block.protected ? 'Sí' : 'No']));
                     });
                 }
             },

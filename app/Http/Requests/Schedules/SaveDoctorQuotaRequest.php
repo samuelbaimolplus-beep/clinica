@@ -14,7 +14,7 @@ class SaveDoctorQuotaRequest extends FormRequest
 
     public function rules(): array
     {
-        $percent = ['required', 'numeric', 'between:0,100', 'regex:/^\d{1,3}(\.\d{1,2})?$/'];
+        $percent = ['required', 'integer', 'between:0,100'];
 
         return ['doctor_id' => ['required', 'integer', Rule::exists('doctors', 'id')->where('status', 'Activo')],
             'presential_percent' => $percent, 'online_percent' => $percent];

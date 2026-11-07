@@ -8,10 +8,10 @@ use App\Models\User;
 final class ClinicAccess
 {
     public const VIEWS = [
-        'Administrador' => ['CU01', 'CU02', 'CU03', 'CU04', 'CU05', 'CU07', 'PERFIL'],
-        'Recepcionista' => ['CU01', 'CU02', 'CU06', 'PERFIL'],
+        'Administrador' => ['CU01', 'CU02', 'CU03', 'CU04', 'CU05', 'CU07', 'CU17', 'CU22', 'PERFIL'],
+        'Recepcionista' => ['CU01', 'CU02', 'CU06', 'CUPOS', 'CU08', 'CU17', 'PERFIL'],
         'Médico' => ['CU01', 'CU02', 'PERFIL'],
-        'Paciente' => ['CU01', 'CU02', 'PERFIL'],
+        'Paciente' => ['CU01', 'CU02', 'CU08', 'PERFIL'],
     ];
 
     public static function views(string $role): array
@@ -20,7 +20,7 @@ final class ClinicAccess
         if (config('clinic.appointments_enabled')) {
             $views = array_merge($views, match ($role) {
                 'Administrador' => ['CU15', 'CU16'],
-                'Recepcionista' => ['CU08', 'CU09', 'CU10', 'CU11', 'CU12', 'CU13', 'CU15', 'CU17'],
+                'Recepcionista' => ['CU09', 'CU10', 'CU11', 'CU12', 'CU13', 'CU15'],
                 'Médico' => ['CU12', 'CU14'],
                 default => [],
             });

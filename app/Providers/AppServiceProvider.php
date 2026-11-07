@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\AgendaAdjustment;
 use App\Models\Appointment;
 use App\Models\Doctor;
 use App\Models\DoctorQuota;
@@ -29,10 +30,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::define('view-audit', fn (User $user) => $user->role === 'Administrador');
+        Gate::define('manage-agenda-adjustments', fn (User $user) => $user->role === 'Recepcionista');
         foreach ([User::class, Doctor::class,
             Specialty::class, Patient::class,
             Schedule::class, Unavailability::class,
-            Appointment::class, DoctorQuota::class] as $model) {
+            Appointment::class, DoctorQuota::class, AgendaAdjustment::class] as $model) {
             $model::observe(ClinicAuditObserver::class);
         }
         foreach (['users' => 'Administrador', 'doctors' => 'Administrador',

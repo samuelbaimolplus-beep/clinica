@@ -53,7 +53,9 @@ class FoundationModulesTest extends TestCase
         $response->assertCreated()->assertJsonPath('user.role', 'Paciente')->assertJsonPath('user.status', 'Activo')
             ->assertJsonMissingPath('user.password');
         $user = User::findOrFail($response->json('user.id'));
-        $this->assertAuthenticatedAs($user);
+        $this->assertGuest();
+        $this->getJson('/api/profile')->assertUnauthorized();
+        $this->postJson('/api/login', ['email' => $user->email, 'password' => 'PruebaSegura2026'])->assertOk();
         $this->assertTrue(Hash::check('PruebaSegura2026', $user->password));
         $this->assertSame('ana@example.test', $user->email);
         $this->assertSame('CI-123', $user->patient->identity);
@@ -81,6 +83,7 @@ class FoundationModulesTest extends TestCase
         $other = $this->patient(['identity' => 'OTHER', 'first_name' => 'Otra']);
         $response = $this->postJson('/api/register', $this->registration())->assertCreated();
         $id = $response->json('user.patient_id');
+        $this->postJson('/api/login', ['email' => 'ana@example.test', 'password' => 'PruebaSegura2026'])->assertOk();
         $this->getJson('/api/profile?patient_id='.$other->id)->assertOk()->assertJsonPath('patient.id', $id);
         $this->getJson('/api/references')->assertExactJson(['doctors' => [], 'patients' => [], 'specialties' => []]);
         foreach (['users', 'doctors', 'specialties', 'patients'] as $module) {
@@ -128,6 +131,7 @@ class FoundationModulesTest extends TestCase
     public function test_patient_deactivation_revokes_session_and_login(): void
     {
         $response = $this->postJson('/api/register', $this->registration())->assertCreated();
+        $this->postJson('/api/login', ['email' => 'ana@example.test', 'password' => 'PruebaSegura2026'])->assertOk();
         Patient::findOrFail($response->json('user.patient_id'))->update(['status' => 'Inactivo']);
         $this->getJson('/api/profile')->assertUnauthorized();
         $this->postJson('/api/login', ['email' => 'ana@example.test', 'password' => 'PruebaSegura2026'])->assertUnprocessable();
@@ -147,7 +151,7 @@ class FoundationModulesTest extends TestCase
         $this->postJson('/api/register', $this->registration(['activation_code' => $token]))->assertCreated()->assertJsonPath('user.patient_id', $patient->id);
         $this->assertDatabaseCount('patients', 1);
         $this->assertNotNull(PatientAccountInvitation::firstOrFail()->consumed_at);
-        $this->postJson('/api/logout')->assertOk();
+        $this->assertGuest();
         $this->postJson('/api/register', $this->registration(['email' => 'second@example.test', 'activation_code' => $token]))->assertUnprocessable();
         $this->assertSame(1, User::where('role', 'Paciente')->count());
         $this->assertStringNotContainsString($token, AuditEvent::all()->toJson());
@@ -236,7 +240,7 @@ class FoundationModulesTest extends TestCase
         $this->postJson('/api/appointments', [])->assertNotFound();
         $this->getJson('/api/availability')->assertNotFound();
         $this->getJson('/api/reports')->assertNotFound();
-        $this->getJson('/api/session')->assertJsonPath('access.Recepcionista', ['CU01', 'CU02', 'CU06', 'PERFIL']);
+        $this->getJson('/api/session')->assertJsonPath('access.Recepcionista', ['CU01', 'CU02', 'CU06', 'CUPOS', 'CU08', 'CU17', 'PERFIL']);
         $this->get('/terms')->assertOk()->assertSee(config('clinic.terms_version'));
     }
 

@@ -27,7 +27,7 @@ trait PersonRules
                 $this->merge([$field => $value === '' ? null : $value]);
             }
         }
-        if (! $this->route('id') && ($this instanceof SaveDoctorRequest || $this instanceof SaveSpecialtyRequest)) {
+        if (! $this->route('id') && ($this instanceof SaveDoctorRequest || $this instanceof SaveSpecialtyRequest || $this instanceof SavePatientRequest)) {
             $this->merge(['status' => 'Activo']);
         }
     }

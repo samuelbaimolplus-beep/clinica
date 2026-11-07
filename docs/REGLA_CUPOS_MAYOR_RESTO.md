@@ -1,5 +1,7 @@
 # Distribución de cupos por mayor resto
 
+> Antecedente del 4 de noviembre. La [entrega V3 del 7 de noviembre](INFORME_AVANCE_V3_2026-11-07.md) mantiene el mayor resto y desempate presencial, pero aplica el reparto solo después de los 120 minutos protegidos de cada turno, usa 50/50 por defecto y porcentajes enteros en nuevas configuraciones. Los bloques del resto alternan modalidades. Sustituye los criterios anteriores sobre decimales, ausencia de valores iniciales y reparto de la capacidad diaria completa.
+
 Este avance implementa la regla propuesta por el equipo en la conversación del 4 de noviembre de 2026: asignar cupos enteros mediante el método del mayor resto y favorecer la modalidad presencial en un empate exacto de las partes decimales.
 
 La distribución porcentual por médico ya está prevista en RF07, RN35–RN37 y CU07. La revisión textual del Word disponible al cerrar este avance no encontró una definición explícita del método de redondeo o del desempate. Esta regla procede de la conversación y queda documentada aquí para incorporarla posteriormente al Word, sin asignarle un código RN que el equipo todavía no haya definido.

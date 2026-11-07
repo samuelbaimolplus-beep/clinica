@@ -1,6 +1,10 @@
 import { installCatalogViews } from './modules/catalogs';
 import { installScheduleViews } from './modules/schedules';
 import { installPatientViews } from './modules/patients';
+import { installAuditViews } from './modules/audit';
+import { installImpactViews } from './modules/impacts';
+import { installAvailabilityViews } from './modules/availability';
+import { installAgendaAdjustmentViews } from './modules/agenda-adjustments';
 import { createApiClient } from './lib/api';
 
 const $ = (s, root = document) => root.querySelector(s);
@@ -16,9 +20,10 @@ const localDate = () => new Intl.DateTimeFormat('sv-SE', {timeZone:'America/La_P
 const cycles = [
     ['Ciclo I · Funcionalidades fundamentales', [['CU01','Iniciar sesión'],['CU02','Cerrar sesión'],['CU03','Gestionar usuarios y roles'],['CU04','Gestionar médicos'],['CU05','Gestionar especialidades'],['CU06','Gestionar pacientes'],['CU07','Gestionar horarios médicos'],['CU08','Consultar disponibilidad médica'],['CU09','Programar cita médica']]],
     ['Ciclo II · Gestión y seguimiento de citas', [['CU10','Reprogramar cita médica'],['CU11','Cancelar cita médica'],['CU12','Consultar agenda médica'],['CU13','Registrar asistencia e inasistencia'],['CU14','Registrar cita como atendida'],['CU17','Citas afectadas por indisponibilidad']]],
-    ['Ciclo III · Historial y reportes', [['CU15','Consultar historial de citas'],['CU16','Generar reportes administrativos']]],
+    ['Ciclo III · Historial y reportes', [['CU15','Consultar historial de citas'],['CU16','Generar reportes administrativos'],['CU22','Consultar auditoría']]],
 ];
 cycles.push(['Mi cuenta', [['PERFIL', 'Mi perfil']]]);
+cycles.push(['Operación de Recepción', [['CUPOS', 'Bloqueos y aperturas de cupos']]]);
 const titles = Object.fromEntries(cycles.flatMap(c => c[1]));
 let access = {};
 let termsVersion = '';
@@ -220,6 +225,10 @@ const ui = { $, state, views, api, esc, full, code, badge, field, select, textar
 installCatalogViews(ui);
 installScheduleViews(ui);
 installPatientViews(ui);
+installAuditViews(ui);
+installImpactViews(ui);
+installAvailabilityViews(ui);
+installAgendaAdjustmentViews(ui);
 
 $('#close-modal').addEventListener('click',closeModal);
 $('#modal').addEventListener('click',e=>{if(e.target===$('#modal')){const rect=$('#modal').getBoundingClientRect();if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)closeModal();}});

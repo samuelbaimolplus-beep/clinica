@@ -17,14 +17,14 @@ function entityFields(entity,r={}) {
         body=field('Código de médico','code','text',r.id?code('MED',r.id):'Automático al guardar','readonly')+field('Número de registro profesional','registration','text',r.registration,'required maxlength="80"')+person+field('Correo electrónico','email','email',r.email,'required maxlength="255"')+`<div class="full"><span class="label">Especialidades activas *</span><div class="checks">${state.refs.specialties.filter(s=>s.status==='Activo').map(s=>`<label><input type="checkbox" name="specialty_ids" value="${s.id}" ${r.specialties?.some(x=>x.id===s.id)?'checked':''}>${esc(s.name)}</label>`).join('')||'<small>Registre una especialidad activa antes de crear médicos.</small>'}</div>${r.specialties?.some(s=>s.status==='Inactivo')?notice('Este médico conserva relaciones con especialidades inactivas. Al guardar la edición, seleccione sus especialidades activas; se identificarán las citas afectadas por las retiradas.') : ''}</div>`;
     } else if(entity==='specialties')body=field('Código','code','text',r.id?code('ESP',r.id):'Automático al guardar','readonly')+field('Nombre de especialidad','name','text',r.name,'required maxlength="120"')+textarea('Descripción (opcional)','description',r.description,'maxlength="3000"');
     else body=field('Código de paciente','code','text',r.id?code('PAC',r.id):'Automático al guardar','readonly')+field('Documento de identidad (CI, opcional)','identity','text',r.identity,'maxlength="40"')+person+field('Fecha de nacimiento','birth_date','date',r.birth_date,`required max="${localDate()}"`)+select('Sexo','sex',['Femenino','Masculino'],r.sex)+field('Correo electrónico (opcional)','email','email',r.email,'maxlength="255"')+textarea('Dirección (opcional)','address',r.address,'maxlength="1000"');
-    if (!r.id && ['doctors','specialties'].includes(entity)) {
+    if (!r.id && ['doctors','specialties','patients'].includes(entity)) {
         return body+'<input type="hidden" name="status" value="Activo">'+notice('El registro se creará activo.');
     }
     return body+select('Estado','status',['Activo','Inactivo'],r.status||'Activo');
 }
 async function crudView(entity) {
     const rows=await api(`entities/${entity}`), config=configs[entity];
-    const rowsHtml = items=>table([...config.headers,'Acciones'],items.map(r=>[...config.row(r),(['users','doctors','specialties'].includes(entity)?button('Consultar',`data-show="${r.id}"`,'link'):'')+button('Modificar',`data-edit="${r.id}"`,'link')+button(r.status==='Activo'?'Desactivar':'Activar',`data-toggle="${r.id}"`,'link')+(entity==='patients'&&r.status==='Activo'?button('Vincular cuenta',`data-invite="${r.id}"`,'link'):'')]));
+    const rowsHtml = items=>table([...config.headers,'Acciones'],items.map(r=>[...config.row(r),(button('Consultar',`data-show="${r.id}"`,'link'))+button('Modificar',`data-edit="${r.id}"`,'link')+button(r.status==='Activo'?'Desactivar':'Activar',`data-toggle="${r.id}"`,'link')+(entity==='patients'&&r.status==='Activo'?button('Vincular cuenta',`data-invite="${r.id}"`,'link'):'')]));
     function impactHtml(record) {
         const affected = record.affected_appointments || [];
         if (!affected.length) return '';
@@ -56,7 +56,9 @@ async function crudView(entity) {
     function bindRows(){
         on('[data-show]','click',async event=>{
             const record=await api(`entities/${entity}/${event.currentTarget.dataset.show}`);
-            modal('Consultar registro',details(config.headers.map((label,index)=>[label,config.row(record)[index]]))+impactHtml(record));
+            const fields = config.headers.map((label,index)=>[label,config.row(record)[index]]);
+            if (entity === 'patients') fields.push(['Correo electrónico', esc(record.email || '—')], ['Dirección', esc(record.address || '—')]);
+            modal('Consultar registro',details(fields)+impactHtml(record));
         });
         on('[data-invite]','click',e=>{
             const id=Number(e.currentTarget.dataset.invite);
@@ -73,9 +75,7 @@ async function crudView(entity) {
             confirmAction('Cambiar estado',`¿Desea ${r.status==='Activo'?'desactivar':'activar'} este registro?`,async()=>{
                 const data={...r,status:r.status==='Activo'?'Inactivo':'Activo'};
                 if(entity==='doctors')data.specialty_ids=r.specialties.map(s=>s.id);
-                const saved = entity==='patients'
-                    ? await api(`entities/${entity}/${r.id}`,'PUT',data)
-                    : await api(`entities/${entity}/${r.id}/status`,'PATCH',{status:data.status});
+                const saved = await api(`entities/${entity}/${r.id}/status`,'PATCH',{status:data.status});
                 await references();await navigate(state.view);toast('Estado actualizado.');
                 return ()=>showImpact(saved);
             },r.status==='Activo');

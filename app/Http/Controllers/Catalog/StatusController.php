@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Catalog;
 
 use App\Http\Controllers\Controller;
 use App\Models\Doctor;
+use App\Models\Patient;
 use App\Models\Specialty;
 use App\Models\User;
 use App\Services\Catalog\CatalogService;
@@ -16,7 +17,7 @@ class StatusController extends Controller
     {
         $catalog = $request->route('catalog');
         $model = match ($catalog) {
-            'users' => User::class, 'doctors' => Doctor::class, 'specialties' => Specialty::class,
+            'users' => User::class, 'doctors' => Doctor::class, 'specialties' => Specialty::class, 'patients' => Patient::class,
             default => abort(404),
         };
         abort_unless($request->user()->can('manage-'.$catalog), 403);

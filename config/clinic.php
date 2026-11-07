@@ -4,4 +4,6 @@ return [
     // Las citas anteriores necesitan integrar pago obligatorio antes de habilitarse.
     'appointments_enabled' => env('CLINIC_APPOINTMENTS_ENABLED', false),
     'terms_version' => '2026-11-02',
+    // Parámetro operativo provisional; no provoca liberaciones automáticas.
+    'block_warning_minutes' => 30,
 ];

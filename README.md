@@ -1,10 +1,12 @@
 # Clínica Vida Salud
 
-Sistema académico de gestión de citas médicas construido con Laravel 13, PostgreSQL, Blade y JavaScript. La entrega actual comprende autenticación con cuatro roles, cuentas del personal, médicos, especialidades, pacientes, registro y vinculación de cuentas de pacientes, horarios básicos y auditoría automática.
+Sistema académico de gestión de citas médicas construido con Laravel 13, PostgreSQL, Blade y JavaScript. La entrega actual comprende autenticación con cuatro roles, cuentas del personal, médicos, especialidades, pacientes, registro y vinculación de cuentas, varios turnos médicos, distribución de modalidades, bloqueos y aperturas de Recepción, consulta provisional de disponibilidad y auditoría consultable.
+
+La referencia vigente es el [informe de avance de la V3 del 7 de noviembre](docs/INFORME_AVANCE_V3_2026-11-07.md). Detalla lo implementado, las decisiones confirmadas, las propuestas para completar el Word, las preguntas y los límites pendientes. El avance es provisional; las reservas y los pagos todavía no están habilitados.
 
 La [guía de arquitectura y trazabilidad](docs/ARQUITECTURA_Y_TRAZABILIDAD.md) explica la relación entre el documento del proyecto, casos de uso, reglas de negocio, clases y pruebas. También documenta las diferencias entre apartados antiguos y nuevos del Word, las decisiones de alcance y una secuencia para la defensa.
 
-Estado vigente comunicado por el equipo: **CU01–CU05 establecidos; CU06–CU23 en revisión**. La [revisión del Word del 4 de noviembre](docs/REVISION_WORD_2026-11-04.md) conserva el contraste realizado entonces y registra esta actualización de estado. Incluye el informe de funciones y decisiones que todavía no están descritas expresamente en el Word.
+El equipo estableció CU01–CU05 y autorizó avanzar provisionalmente con la nueva V3. Eso no equivale a aprobar todos los demás casos de uso. La [revisión del Word del 4 de noviembre](docs/REVISION_WORD_2026-11-04.md) conserva el contraste histórico; los cambios posteriores se explican en el informe vigente.
 
 Se autorizó de forma específica la [distribución de cupos de CU07 por mayor resto](docs/REGLA_CUPOS_MAYOR_RESTO.md), con prioridad presencial en empate exacto. Está disponible en **Horarios médicos → Distribución de cupos** y no supone dar por cerrado el resto de CU07.
 
@@ -41,17 +43,17 @@ Se necesitan PHP 8.3 o superior con `pdo_pgsql`, Composer, Node.js y PostgreSQL.
 - `database/migrations`: integridad de datos y protección de la bitácora en PostgreSQL.
 - `tests/Feature`: reglas de negocio, seguridad y regresión.
 
-El administrador gestiona el personal, médicos, especialidades y horarios. Recepción administra pacientes y puede generar códigos de vinculación después de verificar su identidad. El paciente crea su cuenta desde **Crear cuenta de paciente**, acepta los términos y consulta exclusivamente su perfil. Los pacientes ya registrados utilizan el código emitido por recepción para conservar su identificador y sus relaciones históricas.
+El administrador gestiona personal, médicos, especialidades, turnos y porcentajes, y consulta auditoría y citas afectadas. Recepción administra pacientes y sus códigos de vinculación verificados; también propone, confirma y libera bloqueos de demanda o habilita franjas protegidas para online. El paciente crea su cuenta, acepta términos y luego inicia sesión; puede consultar su perfil y disponibilidad online sin acceder a información de otros pacientes.
 
 Todos los roles pueden abrir **Mi perfil → Cambiar contraseña**. Se verifica la contraseña actual; la sesión que realiza el cambio continúa y las demás deben volver a identificarse en su siguiente acceso.
 
-Los horarios básicos admiten una franja por médico y día con duración configurable. El Administrador puede guardar porcentajes presenciales/online por médico y calcular su capacidad diaria por mayor resto, con desempate presencial. El cálculo conserva las citas existentes. La auditoría funciona automáticamente; su pantalla de consulta queda para una entrega posterior.
+Los horarios admiten varios turnos diarios sin superposición. Cada turno protege sus primeros 120 minutos para presencial; el resto usa 50/50 por defecto o porcentajes enteros configurados por médico, con mayor resto y desempate presencial. Se alternan las modalidades mientras ambas conservan cupos. El cálculo de capacidad no mueve citas existentes. Los cambios que afectan citas futuras se muestran en CU17 sin cancelarlas automáticamente.
 
 ## Funciones aplazadas
 
-La asignación de bloques concretos por modalidad, reservas con pago obligatorio, pasarela, reembolsos, seguimientos, asistencia, atención e historial requieren la integración indicada en el documento. La configuración porcentual y el cálculo de cupos ya están disponibles. El código anterior de citas/reportes se conserva y queda deshabilitado por defecto mediante `CLINIC_APPOINTMENTS_ENABLED=false`. Esa opción controla tanto rutas como menú; habilitar el comportamiento anterior no implementa las reglas nuevas de pago.
+La consulta de disponibilidad funciona por rol y modalidad, excluyendo citas, indisponibilidades y bloqueos. Faltan retenciones de pago, consumo de bloqueos al formalizar citas, tarifas, verificación de pagos presenciales, WizPay en pruebas, reembolsos y seguimientos. También queda adaptar asistencia, atención, historial y reportes a las reglas nuevas. El código anterior de citas/reportes se conserva deshabilitado mediante `CLINIC_APPOINTMENTS_ENABLED=false`; habilitarlo no implementa esas reglas.
 
-`IMPLEMENTACION.md` conserva antecedentes de aquella implementación; la referencia vigente es la guía de arquitectura.
+`IMPLEMENTACION.md` y los informes anteriores conservan antecedentes. La guía de arquitectura se complementa con el informe V3 vigente.
 
 ## Validación
 
@@ -66,4 +68,4 @@ npm.cmd run build
 php vendor/bin/pint --dirty --test
 ```
 
-Última validación: **74 pruebas de Laravel aprobadas y 1087 aserciones, más 6 pruebas JavaScript**, incluyendo distribución por mayor resto y los flujos anteriores. Compilación Vite correcta. Las pruebas JavaScript también se pueden ejecutar con `npm.cmd test`. Queda pendiente la revisión visual manual porque no hubo un navegador conectado disponible.
+La validación de la V3 y su resultado se registran en el [informe de avance](docs/INFORME_AVANCE_V3_2026-11-07.md#verificación-y-puesta-en-marcha). Las pruebas JavaScript también pueden ejecutarse con `npm.cmd test`. Queda pendiente la revisión visual manual porque no hubo un navegador conectado disponible.

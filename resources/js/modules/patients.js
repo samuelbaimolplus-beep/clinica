@@ -25,10 +25,9 @@ export function installPatientViews(ui) {
         on('#back-login', 'click', loginView);
         bindForm('registration-form', async data => {
             const result = await api('register', 'POST', {...data, terms_version: getTermsVersion()});
-            state.user = result.user;
-            await references();
-            await navigate('PERFIL');
-            toast('Cuenta de paciente creada correctamente.');
+            state.user = null;
+            loginView();
+            toast(result.message);
         });
     };
 

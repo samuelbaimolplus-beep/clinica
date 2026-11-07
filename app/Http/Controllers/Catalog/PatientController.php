@@ -10,6 +10,11 @@ use Illuminate\Http\Request;
 
 class PatientController extends Controller
 {
+    public function show(int $id)
+    {
+        return Patient::findOrFail($id);
+    }
+
     public function index(Request $request)
     {
         $data = $request->validate(['search' => 'nullable|string|max:150']);

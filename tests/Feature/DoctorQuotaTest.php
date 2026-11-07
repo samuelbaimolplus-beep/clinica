@@ -36,7 +36,7 @@ class DoctorQuotaTest extends TestCase
             'password' => 'ClaveSegura2026', 'role' => 'Administrador', 'status' => 'Activo']);
         $this->doctor = Doctor::create(['registration' => 'QUOTA-DOC', 'first_name' => 'Ana', 'last_name' => 'Prueba',
             'email' => 'quota-doc@example.test', 'phone' => '70000000', 'status' => 'Activo']);
-        Schedule::create(['doctor_id' => $this->doctor->id, 'weekday' => 3, 'start_time' => '08:00', 'end_time' => '10:30', 'duration' => 30]);
+        Schedule::create(['doctor_id' => $this->doctor->id, 'weekday' => 3, 'start_time' => '08:00', 'end_time' => '12:30', 'duration' => 30]);
     }
 
     private function saveQuota(string $presential, string $online)
@@ -54,31 +54,32 @@ class DoctorQuotaTest extends TestCase
     {
         foreach ([['50', '50', 3, 2], ['60', '40', 3, 2], ['70', '30', 4, 1], ['35', '65', 2, 3], ['20', '80', 1, 4]] as [$presential, $online, $expectedPresential, $expectedOnline]) {
             $this->saveQuota($presential, $online)->assertOk();
-            $this->capacity()->assertOk()->assertJsonPath('total_capacity', 5)
-                ->assertJsonPath('presential_capacity', $expectedPresential)->assertJsonPath('online_capacity', $expectedOnline);
+            $this->capacity()->assertOk()->assertJsonPath('total_capacity', 9)->assertJsonPath('protected_capacity', 4)
+                ->assertJsonPath('presential_capacity', $expectedPresential + 4)->assertJsonPath('online_capacity', $expectedOnline);
         }
         $this->assertDatabaseCount('doctor_quotas', 1);
         $this->assertDatabaseHas('audit_events', ['record_type' => 'DoctorQuota', 'module' => 'schedules', 'user_id' => $this->admin->id]);
     }
 
-    public function test_configuration_is_per_doctor_and_does_not_invent_initial_percentages(): void
+    public function test_configuration_is_per_doctor_and_uses_documented_default_with_whole_percentages(): void
     {
         $other = Doctor::create(['registration' => 'QUOTA-OTHER', 'first_name' => 'Otro', 'last_name' => 'Profesional',
             'email' => 'quota-other@example.test', 'phone' => '70000001', 'status' => 'Activo']);
         $this->actingAs($this->admin);
-        $this->capacity()->assertOk()->assertJsonPath('quota', null)->assertJsonPath('presential_capacity', null);
-        $this->saveQuota('35.25', '64.75')->assertOk()->assertJsonPath('presential_percent', '35.25');
-        $this->capacity()->assertJsonPath('presential_capacity', 2)->assertJsonPath('online_capacity', 3);
-        $this->getJson('/api/schedules?doctor_id='.$this->doctor->id)->assertJsonPath('quota.online_percent', '64.75');
-        $this->getJson('/api/schedules?doctor_id='.$other->id)->assertJsonPath('quota', null);
+        $this->capacity()->assertOk()->assertJsonPath('uses_default_quota', true)->assertJsonPath('presential_capacity', 7);
+        $this->saveQuota('35.25', '64.75')->assertUnprocessable();
+        $this->saveQuota('35', '65')->assertOk()->assertJsonPath('presential_percent', '35.00');
+        $this->capacity()->assertJsonPath('presential_capacity', 6)->assertJsonPath('online_capacity', 3);
+        $this->getJson('/api/schedules?doctor_id='.$this->doctor->id)->assertJsonPath('quota.online_percent', '65.00');
+        $this->getJson('/api/schedules?doctor_id='.$other->id)->assertJsonPath('quota.online_percent', 50);
     }
 
-    public function test_partial_unavailability_removes_the_whole_overlapping_block_before_distribution(): void
+    public function test_partial_unavailability_removes_whole_block_without_reassigning_other_modalities(): void
     {
         Unavailability::create(['doctor_id' => $this->doctor->id, 'starts_at' => '2026-11-04 08:10', 'ends_at' => '2026-11-04 08:20', 'reason' => 'Ausencia']);
         $this->saveQuota('50', '50')->assertOk();
-        $this->capacity()->assertOk()->assertJsonPath('configured_blocks', 5)->assertJsonPath('blocked_blocks', 1)
-            ->assertJsonPath('total_capacity', 4)->assertJsonPath('presential_capacity', 2)->assertJsonPath('online_capacity', 2);
+        $this->capacity()->assertOk()->assertJsonPath('configured_blocks', 9)->assertJsonPath('blocked_blocks', 1)
+            ->assertJsonPath('total_capacity', 8)->assertJsonPath('presential_capacity', 6)->assertJsonPath('online_capacity', 2);
         $this->getJson('/api/schedules/capacity?doctor_id='.$this->doctor->id.'&date=2026-11-05')->assertJsonPath('total_capacity', 0)
             ->assertJsonPath('presential_capacity', 0)->assertJsonPath('online_capacity', 0);
     }
@@ -93,6 +94,12 @@ class DoctorQuotaTest extends TestCase
         try {
             DB::transaction(fn () => DoctorQuota::firstOrFail()->update(['presential_percent' => 80]));
             $this->fail('PostgreSQL permitió porcentajes que no suman 100%.');
+        } catch (QueryException $exception) {
+            $this->assertSame('23514', $exception->errorInfo[0]);
+        }
+        try {
+            DB::transaction(fn () => DoctorQuota::firstOrFail()->update(['presential_percent' => 35.25, 'online_percent' => 64.75]));
+            $this->fail('PostgreSQL permitió nuevas configuraciones decimales.');
         } catch (QueryException $exception) {
             $this->assertSame('23514', $exception->errorInfo[0]);
         }

@@ -40,7 +40,7 @@ class CatalogService
             if ($record instanceof Specialty && isset($data['name']) && Specialty::whereRaw("lower(trim(regexp_replace(name, '[[:space:]]+', ' ', 'g'))) = ?", [SpecialtyName::key($data['name'])])->when($record->exists, fn ($q) => $q->whereKeyNot($record->id))->exists()) {
                 throw ValidationException::withMessages(['name' => 'Ya existe una especialidad con ese nombre.']);
             }
-            if ($record instanceof Patient && empty($data['identity'])) {
+            if ($record instanceof Patient && array_key_exists('identity', $data) && empty($data['identity'])) {
                 $data['identity'] = null;
                 // Sin CI no se fusionan personas automáticamente; recepción revisa coincidencias exactas.
                 $duplicate = Patient::whereRaw('lower(first_name) = ?', [mb_strtolower($data['first_name'])])

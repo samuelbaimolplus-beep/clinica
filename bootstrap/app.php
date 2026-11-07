@@ -20,7 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (QueryException $e, Request $r) {
             if ($r->is('api/*')) {
-                $conflict = ($e->errorInfo[0] ?? null) === '23505';
+                $conflict = in_array($e->errorInfo[0] ?? null, ['23505', '23P01'], true);
 
                 return response()->json(['message' => $conflict ? 'Ya existe un registro con esos datos. Actualice la pantalla e intente nuevamente.' : 'No se pudo completar la operación en PostgreSQL. Revise la conexión o consulte al administrador.'], $conflict ? 409 : 503);
             }
