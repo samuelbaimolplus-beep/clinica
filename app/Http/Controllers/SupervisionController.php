@@ -16,7 +16,7 @@ class SupervisionController extends Controller
         abort_unless($request->user()->role === 'Superadmin', 403);
 
         return User::where('role', 'Paciente')->with('patient:id,first_name,last_name,status')
-            ->orderByDesc('id')->get(['id', 'name', 'email', 'status', 'patient_id', 'email_verified_at', 'terms_accepted_at', 'terms_version']);
+            ->orderByDesc('id')->get(['id', 'name', 'username', 'email', 'status', 'patient_id', 'email_verified_at', 'terms_accepted_at', 'terms_version']);
     }
 
     public function payments(Request $request)

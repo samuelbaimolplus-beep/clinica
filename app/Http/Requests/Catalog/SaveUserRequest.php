@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Catalog;
 
 use App\Models\User;
+use App\Support\Username;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -25,6 +26,7 @@ class SaveUserRequest extends FormRequest
 
         return [
             'name' => 'required|string|max:150',
+            'username' => ['sometimes', 'required', 'string', 'min:3', 'max:50', 'regex:'.Username::PATTERN, Rule::unique('users', 'username')->ignore($id)],
             'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($id)],
             'password' => [$id ? 'nullable' : 'required', 'string', 'min:10', 'max:128'],
             'role' => ['required', Rule::in($this->user()->role === 'Superadmin'

@@ -21,7 +21,7 @@ class SessionSecurity
     {
         // La sesión guarda una firma; nunca una copia de la contraseña o su hash.
         return hash_hmac('sha256', json_encode([
-            $user->id, $user->password, $user->role, $user->doctor_id, $user->patient_id,
+            $user->id, $user->username, $user->password, $user->role, $user->doctor_id, $user->patient_id,
         ], JSON_THROW_ON_ERROR), config('app.key'));
     }
 

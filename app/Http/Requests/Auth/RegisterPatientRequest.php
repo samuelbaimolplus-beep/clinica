@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Auth;
 
 use App\Http\Requests\Catalog\PersonRules;
+use App\Support\Username;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -25,6 +26,7 @@ class RegisterPatientRequest extends FormRequest
             'birth_date' => 'required|date_format:Y-m-d|before_or_equal:today',
             'sex' => ['required', Rule::in(['Femenino', 'Masculino'])],
             'email' => ['required', 'email', 'max:255', Rule::unique('users')],
+            'username' => ['sometimes', 'required', 'string', 'min:3', 'max:50', 'regex:'.Username::PATTERN, Rule::unique('users', 'username')],
             'password' => 'required|string|min:10|max:128|confirmed',
             'address' => 'nullable|string|max:1000',
             'terms_accepted' => 'required|accepted',

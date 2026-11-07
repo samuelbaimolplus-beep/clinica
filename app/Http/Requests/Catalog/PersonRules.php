@@ -15,12 +15,12 @@ trait PersonRules
 
     protected function prepareForValidation(): void
     {
-        foreach (['name', 'first_name', 'last_name', 'email', 'identity', 'registration'] as $field) {
+        foreach (['name', 'first_name', 'last_name', 'email', 'username', 'identity', 'registration'] as $field) {
             if (is_string($this->input($field))) {
                 $value = trim($this->input($field));
                 $value = match ($field) {
                     'name' => $this instanceof SaveSpecialtyRequest ? SpecialtyName::display($value) : $value,
-                    'email' => mb_strtolower($value),
+                    'email', 'username' => mb_strtolower($value),
                     'identity', 'registration' => mb_strtoupper($value),
                     default => $value,
                 };

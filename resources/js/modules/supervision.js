@@ -4,8 +4,8 @@ export function installSupervisionViews(ui) {
     views.CU23 = async () => {
         const accounts = await api('supervision/patient-accounts');
         return {html: notice('Supervisión de CU23. El paciente crea su propia cuenta desde «Crear cuenta de paciente» en el inicio de sesión y verifica su correo.')
-            + panel('Cuentas de pacientes', table(['Paciente', 'Correo', 'Estado de cuenta', 'Estado del paciente', 'Verificación', 'Términos aceptados'], accounts.map(a => [
-                esc(full(a.patient)), esc(a.email), badge(a.status), badge(a.patient?.status), a.email_verified_at ? 'Correo verificado' : 'Verificación pendiente', esc(a.terms_accepted_at ? a.terms_version : 'Sin aceptación registrada'),
+            + panel('Cuentas de pacientes', table(['Paciente', 'Usuario', 'Correo', 'Estado de cuenta', 'Estado del paciente', 'Verificación', 'Términos aceptados'], accounts.map(a => [
+                esc(full(a.patient)), esc(a.username), esc(a.email), badge(a.status), badge(a.patient?.status), a.email_verified_at ? 'Correo verificado' : 'Verificación pendiente', esc(a.terms_accepted_at ? a.terms_version : 'Sin aceptación registrada'),
             ])))};
     };
     views.CU19 = async () => {

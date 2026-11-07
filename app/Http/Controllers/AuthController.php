@@ -17,7 +17,9 @@ class AuthController extends Controller
     {
         abort_if($request->user(), 409, 'Ya tiene una sesión activa. Ciérrela antes de iniciar otra.');
         $data = $request->validate(['email' => 'required|string|max:255', 'password' => 'required|string|max:255']);
-        $user = User::whereRaw('lower(email) = ?', [mb_strtolower(trim($data['email']))])->first();
+        $identifier = mb_strtolower(trim($data['email']));
+        $column = str_contains($identifier, '@') ? 'email' : 'username';
+        $user = User::whereRaw('lower('.$column.') = ?', [$identifier])->first();
         if (! $user || ! Hash::check($data['password'], $user->password)) {
             app(AuditLogger::class)->record('auth', 'login', result: 'failure', details: ['reason' => 'invalid_credentials']);
             throw ValidationException::withMessages(['email' => 'FA02: Credenciales incorrectas. Verifique sus datos.']);

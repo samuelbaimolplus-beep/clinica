@@ -11,6 +11,7 @@ import { passwordToggleButton } from './lib/password-visibility';
 import { navigationGroups, rolePanels, visibleNavigation, homeView } from './lib/navigation';
 import { installSupervisionViews } from './modules/supervision';
 import { installReceptionInbox } from './modules/reception-inbox';
+import { installAccountManagementViews } from './modules/accounts';
 
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -121,14 +122,14 @@ async function navigate(view) {
     window.scrollTo(0,0);
 }
 function loginView() {
-    main.innerHTML = `<div class="login-wrap">${panel('',`<div class="login-heading"><div class="brand-mark">✚</div><h1>Iniciar sesión</h1><p>Acceso para personal y pacientes</p></div><form id="login-form">${formErrors}${field('Correo o identificador de acceso','email','text','','required maxlength="255" autocomplete="username" placeholder="usuario@vidasalud.bo"')}${field('Contraseña','password','password','','required maxlength="128" autocomplete="current-password"')}${submit('Iniciar sesión')}</form><div class="actions">${button('Crear cuenta de paciente','id="register-patient"','link')}</div>`)}<p class="login-foot">Clínica Vida Salud · Gestión de citas médicas</p></div>`;
+    main.innerHTML = `<div class="login-wrap">${panel('',`<div class="login-heading"><div class="brand-mark">✚</div><h1>Iniciar sesión</h1><p>Acceso para personal y pacientes</p></div><form id="login-form">${formErrors}${field('Usuario o correo electrónico','email','text','','required maxlength="255" autocomplete="username" placeholder="superadmin o usuario@vidasalud.bo"')}${field('Contraseña','password','password','','required maxlength="128" autocomplete="current-password"')}${submit('Iniciar sesión')}</form><div class="actions">${button('Crear cuenta de paciente','id="register-patient"','link')}</div>`)}<p class="login-foot">Clínica Vida Salud · Gestión de citas médicas</p></div>`;
     on('#register-patient', 'click', () => views.registration());
     $('#login-form').insertAdjacentHTML('afterend', button('Recuperar acceso o verificar correo', 'id="recover-account"', 'link'));
     on('#recover-account', 'click', () => views.recovery());
     bindForm('login-form', async data=>{const result=await api('login','POST',data);state.user=result.user;await references();await navigate(home());toast(`Bienvenido, ${state.user.name}.`);});
 }
 const views = {};
-views.CU02 = async()=>({html:panel('Sesión activa',details([['Usuario',esc(state.user.name)],['Identificador',esc(state.user.email)],['Rol',badge(state.user.role)]])+`<div class="actions">${button('Cerrar sesión','id="session-logout"','danger')}</div>`),bind:()=>on('#session-logout','click',logout)});
+views.CU02 = async()=>({html:panel('Sesión activa',details([['Usuario',esc(state.user.name)],['Nombre de usuario',esc(state.user.username || '')],['Correo',esc(state.user.email)],['Rol',badge(state.user.role)]])+`<div class="actions">${button('Cerrar sesión','id="session-logout"','danger')}</div>`),bind:()=>on('#session-logout','click',logout)});
 
 // CU16: siete reportes, porcentajes, impresión y exportación CSV.
 const reportTypes=[['REP01','Citas por fecha'],['REP02','Citas por médico'],['REP03','Citas por especialidad'],['REP04','Citas por estado'],['REP05','Pacientes registrados'],['REP06','Resumen de atenciones por período'],['REP07','Agenda diaria por médico']];
@@ -155,6 +156,7 @@ installAvailabilityViews(ui);
 installAgendaAdjustmentViews(ui);
 installClinicalViews(ui);
 installSupervisionViews(ui);
+installAccountManagementViews(ui);
 refreshInbox = installReceptionInbox(ui);
 
 $('#close-modal').addEventListener('click',closeModal);

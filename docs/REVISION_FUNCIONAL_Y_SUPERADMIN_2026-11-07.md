@@ -2,6 +2,8 @@
 
 Fecha: 7 de noviembre de 2026.
 
+Actualización posterior: el propietario solicitó acceso por nombre de usuario y gestión global de contraseñas desde Superadmin, conservando su protección. Se documenta por separado en [Acceso por usuario y gestión de cuentas](ACCESO_POR_USUARIO_Y_GESTION_DE_CUENTAS_2026-11-07.md); sus resultados de pruebas corresponden a la versión ampliada y complementan la línea base de este informe.
+
 ## Alcance y resultado
 
 La referencia funcional es `Clinica_Vida_Salud_V6_26CU_Revision_Final.docx`, situado en la carpeta superior. La V6 contiene 26 CU: conserva CU01–CU23 y separa CU24, CU25 y CU26. La revisión considera operaciones internas, alternativas, permisos y reglas; no equipara el número de pantallas con el cumplimiento completo.

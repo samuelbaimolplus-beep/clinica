@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Support\Username;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -11,12 +12,27 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'email', 'password', 'role', 'status', 'doctor_id', 'patient_id', 'terms_accepted_at', 'terms_version'])]
+#[Fillable(['name', 'username', 'email', 'password', 'role', 'status', 'doctor_id', 'patient_id', 'terms_accepted_at', 'terms_version'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
+
+    protected static function booted(): void
+    {
+        static::creating(function (User $user) {
+            // Compatibilidad con altas por consola y clientes anteriores al campo username.
+            if (! filled($user->username)) {
+                $user->username = Username::generated($user->email);
+            }
+        });
+    }
+
+    public function setUsernameAttribute(?string $value): void
+    {
+        $this->attributes['username'] = $value === null ? null : mb_strtolower(trim($value));
+    }
 
     /** Superadmin hereda la gestión del personal, sin suplantar identidades de pacientes o médicos. */
     public function hasStaffRole(string ...$roles): bool

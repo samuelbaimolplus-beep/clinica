@@ -14,7 +14,8 @@ export function installPatientViews(ui) {
             ${field('Fecha de nacimiento', 'birth_date', 'date', '', `required max="${localDate()}"`)}
             ${select('Sexo', 'sex', [['', 'Seleccione…'], 'Femenino', 'Masculino'], '', 'required')}
             ${field('Teléfono', 'phone', 'tel', '', 'required maxlength="30" autocomplete="tel"')}
-            ${field('Correo de acceso', 'email', 'email', '', 'required maxlength="255" autocomplete="email"')}
+            ${field('Nombre de usuario (3–50 letras, números, punto o guion)', 'username', 'text', '', 'required minlength="3" maxlength="50" autocomplete="username"')}
+            ${field('Correo electrónico (para verificar y recuperar acceso)', 'email', 'email', '', 'required maxlength="255" autocomplete="email"')}
             ${textarea('Dirección (opcional)', 'address', '', 'maxlength="1000"')}
             ${field('Contraseña (mínimo 10 caracteres)', 'password', 'password', '', 'required minlength="10" maxlength="128" autocomplete="new-password"')}
             ${field('Repetir contraseña', 'password_confirmation', 'password', '', 'required minlength="10" maxlength="128" autocomplete="new-password"')}

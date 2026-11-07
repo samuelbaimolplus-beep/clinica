@@ -31,8 +31,8 @@ class CreateClinicSuperadmin extends Command
                 return self::FAILURE;
             }
             $password = Str::password(24, symbols: false);
-            User::create(['name' => $this->option('nombre'), 'email' => $email, 'password' => $password, 'role' => 'Superadmin', 'status' => 'Activo']);
-            if (! Storage::disk('local')->put('acceso-superadmin.txt', "Clínica Vida Salud — acceso Superadmin\nCorreo: {$email}\nContraseña: {$password}\nConserve este archivo en privado. Puede cambiar la contraseña en Usuarios y roles.\n")) {
+            $user = User::create(['name' => $this->option('nombre'), 'email' => $email, 'password' => $password, 'role' => 'Superadmin', 'status' => 'Activo']);
+            if (! Storage::disk('local')->put('acceso-superadmin.txt', "Clínica Vida Salud — acceso Superadmin\nUsuario: {$user->username}\nCorreo: {$email}\nContraseña: {$password}\nConserve este archivo en privado. Puede cambiar la contraseña en Usuarios y roles.\n")) {
                 throw new \RuntimeException('No se pudo guardar el acceso privado; no se creó la cuenta.');
             }
             $this->info('Superadmin creado. Acceso en storage/app/private/acceso-superadmin.txt (excluido de Git).');

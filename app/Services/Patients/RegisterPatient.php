@@ -40,6 +40,7 @@ class RegisterPatient
             }
             $user = User::create([
                 'name' => $data['first_name'].' '.$data['last_name'], 'email' => $data['email'],
+                'username' => $data['username'] ?? null,
                 'password' => $data['password'], 'role' => 'Paciente', 'status' => 'Activo',
                 'patient_id' => $patient->id, 'terms_accepted_at' => now(),
                 'terms_version' => config('clinic.terms_version'),

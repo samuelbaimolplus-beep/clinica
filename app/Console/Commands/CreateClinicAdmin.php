@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\User;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -27,10 +28,15 @@ class CreateClinicAdmin extends Command
             return self::FAILURE;
         }
         $password = Str::password(20, symbols: false);
-        Storage::disk('local')->put('acceso-inicial.txt', "Clínica Vida Salud — acceso local inicial\nCorreo: {$email}\nContraseña: {$password}\nCambie la contraseña desde Gestionar usuarios y roles.\nNo publique ni comparta este archivo.\n");
-        User::create(['name' => $this->option('nombre'), 'email' => $email, 'password' => $password, 'role' => 'Administrador', 'status' => 'Activo']);
-        $this->info('Administrador creado. Acceso guardado en storage/app/private/acceso-inicial.txt (fuera de Git).');
 
-        return self::SUCCESS;
+        return DB::transaction(function () use ($email, $password) {
+            $user = User::create(['name' => $this->option('nombre'), 'email' => $email, 'password' => $password, 'role' => 'Administrador', 'status' => 'Activo']);
+            if (! Storage::disk('local')->put('acceso-inicial.txt', "Clínica Vida Salud — acceso local inicial\nUsuario: {$user->username}\nCorreo: {$email}\nContraseña: {$password}\nCambie la contraseña desde Gestionar usuarios y roles.\nNo publique ni comparta este archivo.\n")) {
+                throw new \RuntimeException('No se pudo guardar el acceso privado; no se creó la cuenta.');
+            }
+            $this->info('Administrador creado. Acceso guardado en storage/app/private/acceso-inicial.txt (fuera de Git).');
+
+            return self::SUCCESS;
+        });
     }
 }

@@ -15,8 +15,8 @@ const patient = {id:1,first_name:'Paciente',last_name:'Prueba',status:'Activo'};
 const slot = {doctor_id:1,doctor_name:'Ana Prueba',start_time:'10:30',end_time:'11:00',modality:'online'};
 
 async function mockClinic(page, role, options={}) {
-    const user = role ? {id:1,name:`Cuenta ${role}`,email:'cuenta@example.test',role,status:'Activo'} : null;
-    const state = {calls:[],pending:0,confirmed:false};
+    const user = role ? {id:1,name:`Cuenta ${role}`,username:'cuenta_prueba',email:'cuenta@example.test',role,status:'Activo'} : null;
+    const state = {calls:[],pending:0,confirmed:false,authenticated:!options.initiallyGuest};
     const booking = {id:1,date:'2030-11-11',start_time:'10:30',end_time:'11:00',status:'processing',attempt:1,amount_minor:10000,expires_at:new Date(Date.now()+300000).toISOString()};
     const payment = {id:1,status:'pending',amount_minor:10000};
     const appointment = {id:1,patient,doctor,specialty,date:booking.date,start_time:booking.start_time,end_time:booking.end_time,status:'Programada',payment:{...payment,status:'confirmed'}};
@@ -24,7 +24,8 @@ async function mockClinic(page, role, options={}) {
         const url = new URL(route.request().url()), path=url.pathname.slice(5);
         state.calls.push({path,method:route.request().method(),data:route.request().postDataJSON()});
         let data;
-        if(path==='session')data={user,access,csrf:'browser-test-csrf',terms_version:'2026-11-02'};
+        if(path==='session')data={user:state.authenticated?user:null,access,csrf:'browser-test-csrf',terms_version:'2026-11-02'};
+        else if(path==='login') {state.authenticated=true;data={user,csrf:'browser-test-csrf'};}
         else if(path==='references')data={doctors:[doctor],specialties:[specialty],patients:[patient]};
         else if(path==='medical-availability/options')data={online_payment_available:options.paymentAvailable!==false,doctors:[doctor],specialties:[specialty]};
         else if(path==='medical-availability')data={blocks:[slot],modality:url.searchParams.get('modality')||'online'};
@@ -37,6 +38,8 @@ async function mockClinic(page, role, options={}) {
         else if(path==='audit/filters')data={users:[],modules:[],actions:[],results:[]};
         else if(path==='audit'||path==='supervision/payments')data={data:[],total:0,current_page:1,last_page:1};
         else if(path==='entities/users')data=[{...user,id:1}];
+        else if(path==='supervision/accounts')data=[{...user,id:1},{id:2,name:'Ana paciente',username:'ana.paciente',email:'ana@example.test',role:'Paciente',status:'Activo'}];
+        else if(path==='supervision/accounts/2/password')data={message:'Contraseña cambiada.'};
         else if(path==='entities/doctors')data=[doctor];
         else if(path==='entities/specialties')data=[specialty];
         else if(path==='entities/patients')data=[patient];
@@ -80,12 +83,40 @@ for (const role of ['Superadmin','Administrador']) {
     test(`${role}: formulario de personal respeta la asignación de Superadmin`, async ({page}) => {
         await mockClinic(page,role);await page.goto('/');
         await page.getByRole('button',{name:'+ Registrar usuario',exact:true}).click();
+        await expect(page.getByLabel('Nombre de usuario', {exact:true})).toBeVisible();
         await expect(page.locator('#role option[value="Superadmin"]')).toHaveCount(role==='Superadmin'?1:0);
         await page.locator('#role').selectOption('Médico');
         await expect(page.locator('#doctor-link')).toBeVisible();
         await expect(page.locator('#doctor_id')).toHaveAttribute('required','');
     });
 }
+
+test('el acceso admite un nombre de usuario sin formato de correo electrónico', async ({page}) => {
+    const state=await mockClinic(page,'Paciente',{initiallyGuest:true});await page.goto('/');
+    await expect(page.locator('#email')).toHaveAttribute('type','text');
+    await page.getByLabel('Usuario o correo electrónico', {exact:true}).fill('ana.paciente');
+    await page.locator('#password').fill('ClaveDePrueba2026');
+    await page.getByRole('button',{name:'Iniciar sesión',exact:true}).click();
+    await expect(page.locator('.nav-btn.selected')).toHaveAttribute('data-view','CU18');
+    expect(state.calls.find(c=>c.path==='login').data.email).toBe('ana.paciente');
+});
+
+test('Superadmin puede cambiar la contraseña de un paciente sin consultar la contraseña anterior', async ({page}) => {
+    const state=await mockClinic(page,'Superadmin');await page.goto('/');
+    await page.getByRole('button',{name:'Consultar todas las cuentas'}).click();
+    await page.getByRole('row').filter({hasText:'ana.paciente'}).getByRole('button',{name:'Cambiar contraseña'}).click();
+    await expect(page.getByRole('dialog')).toContainText('La contraseña actual no se puede consultar');
+    await page.getByLabel('Nueva contraseña',{exact:true}).fill('NuevaSegura2026');
+    await page.getByLabel('Repetir contraseña nueva',{exact:true}).fill('NuevaSegura2026');
+    await page.getByRole('button',{name:'Guardar nueva contraseña'}).click();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+    expect(state.calls.find(c=>c.path==='supervision/accounts/2/password').data.password_confirmation).toBe('NuevaSegura2026');
+});
+
+test('Administrador no tiene acceso a la consulta global de cuentas', async ({page}) => {
+    await mockClinic(page,'Administrador');await page.goto('/');
+    await expect(page.getByRole('button',{name:'Consultar todas las cuentas'})).toHaveCount(0);
+});
 
 test('Paciente consulta, retiene y obtiene ficha únicamente después de la confirmación del servidor', async ({page}) => {
     const state=await mockClinic(page,'Paciente');await page.goto('/');
