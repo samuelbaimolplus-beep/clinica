@@ -2,7 +2,7 @@
 
 Sistema académico de gestión de citas médicas construido con Laravel 13, PostgreSQL, Blade y JavaScript. La entrega actual comprende autenticación con cuatro roles, cuentas del personal, médicos, especialidades, pacientes, registro y vinculación de cuentas, varios turnos médicos, distribución de modalidades, bloqueos y aperturas de Recepción, consulta provisional de disponibilidad y auditoría consultable.
 
-La referencia vigente es el [informe de avance de la V3 del 7 de noviembre](docs/INFORME_AVANCE_V3_2026-11-07.md). Detalla lo implementado, las decisiones confirmadas, las propuestas para completar el Word, las preguntas y los límites pendientes. El avance es provisional; las reservas y los pagos todavía no están habilitados.
+La revisión documental vigente es el [informe de concordancia con V5](docs/INFORME_CONCORDANCIA_V5_2026-11-07.md), con los 26 casos de uso, diferencias del programa, correcciones necesarias y preguntas pendientes. La última entrega de código corresponde al [avance V3 del 7 de noviembre](docs/INFORME_AVANCE_V3_2026-11-07.md). La revisión V5 no modifica funcionalidades: identifica, entre otras diferencias, que la retirada de aperturas online existente no está autorizada en la nueva línea base. Las reservas y los pagos todavía no están habilitados.
 
 La [guía de arquitectura y trazabilidad](docs/ARQUITECTURA_Y_TRAZABILIDAD.md) explica la relación entre el documento del proyecto, casos de uso, reglas de negocio, clases y pruebas. También documenta las diferencias entre apartados antiguos y nuevos del Word, las decisiones de alcance y una secuencia para la defensa.
 
