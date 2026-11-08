@@ -31,8 +31,8 @@ class V6RulesTest extends TestCase
         parent::setUp();
         $this->assertSame('clinica_vida_salud_test', config('database.connections.pgsql.database'));
         $this->travelTo(Carbon::parse('2026-11-09 07:00', 'America/La_Paz'));
-        $this->reception = User::create(['name' => 'Recepción V6', 'email' => 'reception-v6@example.test', 'password' => 'PruebaSegura2026', 'role' => 'Recepcionista', 'status' => 'Activo']);
-        $this->admin = User::create(['name' => 'Administrador V6', 'email' => 'admin-v6@example.test', 'password' => 'PruebaSegura2026', 'role' => 'Administrador', 'status' => 'Activo']);
+        $this->reception = $this->verifiedAccount(['name' => 'Recepción V6', 'email' => 'reception-v6@example.test', 'password' => 'PruebaSegura2026', 'role' => 'Recepcionista', 'status' => 'Activo']);
+        $this->admin = $this->verifiedAccount(['name' => 'Administrador V6', 'email' => 'admin-v6@example.test', 'password' => 'PruebaSegura2026', 'role' => 'Administrador', 'status' => 'Activo']);
         $this->specialty = Specialty::create(['name' => 'Especialidad V6', 'status' => 'Activo']);
         $this->doctor = $this->createDoctor('V6-A');
         $this->actingAs($this->reception);

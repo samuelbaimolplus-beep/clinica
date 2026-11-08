@@ -36,7 +36,7 @@ class EstablishedUseCasesTest extends TestCase
         $this->assertSame('clinica_vida_salud_test', config('database.connections.pgsql.database'));
         $this->travelTo(Carbon::parse('2026-11-04 07:00:00', 'America/La_Paz'));
         config(['clinic.appointments_enabled' => false]);
-        $this->admin = User::create(['name' => 'Administración', 'email' => 'admin@acceptance.test',
+        $this->admin = $this->verifiedAccount(['name' => 'Administración', 'email' => 'admin@acceptance.test',
             'password' => 'ClaveSegura2026', 'role' => 'Administrador', 'status' => 'Activo']);
         $this->general = Specialty::create(['name' => 'Medicina General', 'status' => 'Activo']);
         $this->pediatrics = Specialty::create(['name' => 'Pediatría', 'status' => 'Activo']);
@@ -99,7 +99,7 @@ class EstablishedUseCasesTest extends TestCase
 
     public function test_cu03_read_only_details_and_status_changes_preserve_staff_data(): void
     {
-        $user = User::create(['name' => 'Recepción', 'email' => 'reception@acceptance.test', 'password' => 'ClaveSegura2026',
+        $user = $this->verifiedAccount(['name' => 'Recepción', 'email' => 'reception@acceptance.test', 'password' => 'ClaveSegura2026',
             'role' => 'Recepcionista', 'status' => 'Inactivo']);
         $oldPassword = $user->password;
         $this->actingAs($this->admin)->getJson('/api/entities/users/'.$user->id)->assertOk()->assertJsonPath('name', 'Recepción')->assertJsonMissingPath('password');
@@ -199,20 +199,20 @@ class EstablishedUseCasesTest extends TestCase
     {
         $appointment = $this->appointment();
         $this->general->update(['status' => 'Inactivo']);
-        $reception = User::create(['name' => 'Recepción', 'email' => 'impact@acceptance.test', 'password' => 'ClaveSegura2026',
+        $reception = $this->verifiedAccount(['name' => 'Recepción', 'email' => 'impact@acceptance.test', 'password' => 'ClaveSegura2026',
             'role' => 'Recepcionista', 'status' => 'Activo']);
         $this->actingAs($reception)->getJson('/api/catalog-impacts')->assertOk()->assertJsonCount(1)
             ->assertJsonPath('0.id', $appointment->id)->assertJsonMissingPath('0.patient_id')->assertJsonMissingPath('0.patient');
         $this->postJson('/api/appointments', [])->assertNotFound();
         $this->assertSame('Programada', $appointment->fresh()->status);
-        $physician = User::create(['name' => 'Profesional', 'email' => 'physician@acceptance.test', 'password' => 'ClaveSegura2026',
+        $physician = $this->verifiedAccount(['name' => 'Profesional', 'email' => 'physician@acceptance.test', 'password' => 'ClaveSegura2026',
             'role' => 'Médico', 'doctor_id' => $this->doctor->id, 'status' => 'Activo']);
         $this->actingAs($physician)->getJson('/api/catalog-impacts')->assertForbidden();
     }
 
     public function test_detail_and_status_endpoints_reject_non_administrators(): void
     {
-        $reception = User::create(['name' => 'Recepción', 'email' => 'denied@acceptance.test', 'password' => 'ClaveSegura2026',
+        $reception = $this->verifiedAccount(['name' => 'Recepción', 'email' => 'denied@acceptance.test', 'password' => 'ClaveSegura2026',
             'role' => 'Recepcionista', 'status' => 'Activo']);
         $this->actingAs($reception);
         foreach (['users' => $this->admin->id, 'doctors' => $this->doctor->id, 'specialties' => $this->general->id] as $catalog => $id) {

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Catalog;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Catalog\SaveUserRequest;
 use App\Models\User;
+use App\Services\Auth\EmailActivation;
 use App\Services\Catalog\CatalogService;
 
 class UserController extends Controller
@@ -23,6 +24,11 @@ class UserController extends Controller
     {
         $record = $id ? User::findOrFail($id) : new User;
 
-        return response()->json($service->save($record, $request->validated(), $request->user()), $id ? 200 : 201);
+        $record = $service->save($record, $request->validated(), $request->user());
+        if (! $record->email_verified_at) {
+            $record->setAttribute('activation_email_sent', app(EmailActivation::class)->send($record));
+        }
+
+        return response()->json($record, $id ? 200 : 201)->header('Cache-Control', 'no-store');
     }
 }

@@ -1,6 +1,6 @@
 // Las opciones visibles siempre se cruzan con los permisos entregados por el servidor.
 export const navigationGroups = [
-    ['Acceso', [['CU02', 'Mi sesión']]],
+    ['Mi cuenta', [['CU02', 'Mi cuenta y seguridad']]],
     ['Administración', [['CU03', 'Usuarios y roles'], ['CU04', 'Médicos'], ['CU05', 'Especialidades y tarifas'], ['CU07', 'Horarios médicos']]],
     ['Recepción', [['CU06', 'Pacientes'], ['CU09', 'Programar cita presencial'], ['CU10', 'Reprogramaciones'], ['CU11', 'Cancelar cita'], ['CU13', 'Asistencia e inasistencia'], ['CU17', 'Citas afectadas'], ['CU24', 'Bloqueos provisionales'], ['CU25', 'Habilitar cupos online']]],
     ['Consultas médicas', [['CU12', 'Agenda médica'], ['CU14', 'Finalizar consulta'], ['CU21', 'Registrar seguimiento']]],
@@ -31,3 +31,44 @@ export function homeView(role, allowed) {
     const preferred = rolePanels[role]?.home;
     return allowed.includes(preferred) ? preferred : allowed.find(id => !['CU01', 'CU02'].includes(id)) || 'CU02';
 }
+
+// Los identificadores internos conservan la autorización; las direcciones son legibles.
+export const viewRoutes = {
+    CU02:'mi-cuenta', CU03:'usuarios', CU04:'medicos', CU05:'especialidades', CU06:'pacientes',
+    CU07:'horarios', CU08:'disponibilidad', CU09:'nueva-cita', CU10:'reprogramaciones',
+    CU11:'cancelaciones', CU12:'agenda', CU13:'asistencia', CU14:'consultas', CU15:'mis-citas',
+    CU16:'reportes', CU17:'citas-afectadas', CU18:'reservar-cita', CU19:'pagos', CU20:'solicitar-reembolso',
+    CU21:'seguimientos', CU22:'auditoria', CU23:'cuentas-pacientes', CU24:'bloqueos', CU25:'cupos-online', CU26:'reembolsos',
+};
+export const routeFor = view => viewRoutes[view] || '';
+export const viewFromHash = hash => {
+    const value = hash.replace(/^#/, '');
+    return Object.keys(viewRoutes).find(view => viewRoutes[view] === value) || (viewRoutes[value] ? value : null);
+};
+export const viewDescriptions = {
+    CU02:'Actualice sus datos de contacto y mantenga protegido su acceso.',
+    CU03:'Administre las cuentas del personal y sus permisos de acceso.',
+    CU04:'Gestione el equipo médico y las especialidades que atiende.',
+    CU05:'Organice los servicios de la clínica y sus tarifas de consulta.',
+    CU06:'Encuentre a un paciente o registre su ficha y su cuenta de acceso.',
+    CU07:'Organice los turnos de atención y la distribución de cupos.',
+    CU08:'Consulte los horarios disponibles por especialidad y médico.',
+    CU09:'Seleccione al paciente, el horario y el medio de pago para emitir su ficha.',
+    CU10:'Consulte las solicitudes y gestione los cambios de fecha u horario.',
+    CU11:'Busque la cita y revise sus datos antes de confirmar la cancelación.',
+    CU12:'Revise las citas del día y prepare la atención de sus pacientes.',
+    CU13:'Registre la llegada de los pacientes y el resultado de la asistencia.',
+    CU14:'Revise las citas pendientes y registre las consultas realizadas.',
+    CU15:'Consulte el detalle y el estado de las citas registradas.',
+    CU16:'Obtenga reportes por período y descargue la información que necesita.',
+    CU17:'Revise las citas que necesitan atención por cambios en la disponibilidad.',
+    CU18:'Elija especialidad y horario para reservar su próxima consulta.',
+    CU19:'Consulte los cobros registrados, sus referencias y las exenciones.',
+    CU20:'Consulte las citas elegibles y envíe su solicitud de devolución.',
+    CU21:'Programe el seguimiento recomendado en una consulta anterior.',
+    CU22:'Consulte la actividad registrada y filtre por usuario, fecha o acción.',
+    CU23:'Revise las cuentas de pacientes y el estado de su activación.',
+    CU24:'Gestione las franjas reservadas para la demanda presencial de hoy.',
+    CU25:'Habilite franjas disponibles para la reserva de citas por internet.',
+    CU26:'Revise las solicitudes de devolución y registre su resolución.',
+};

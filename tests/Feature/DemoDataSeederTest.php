@@ -22,7 +22,7 @@ class DemoDataSeederTest extends TestCase
         $this->assertSame('clinica_vida_salud_test', config('database.connections.pgsql.database'));
         $this->travelTo(Carbon::parse('2026-10-24 13:00:00', 'America/La_Paz'));
         Storage::fake('local');
-        $admin = User::create(['name' => 'Administrador existente', 'email' => 'admin@existing.example', 'password' => 'ExistingPassword2026', 'role' => 'Administrador', 'status' => 'Activo']);
+        $admin = $this->verifiedAccount(['name' => 'Administrador existente', 'email' => 'admin@existing.example', 'password' => 'ExistingPassword2026', 'role' => 'Administrador', 'status' => 'Activo']);
         $password = $admin->password;
 
         $this->seed(DemoDataSeeder::class);

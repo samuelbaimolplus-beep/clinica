@@ -8,7 +8,7 @@ use App\Models\BookingRequest;
 use App\Models\Doctor;
 use App\Models\Schedule;
 use App\Models\Specialty;
-use App\Services\Payments\WizPayGateway;
+use App\Services\Payments\PayPalGateway;
 use App\Services\Schedules\DoctorQuotaService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -26,7 +26,8 @@ class MedicalAvailabilityController extends Controller
     {
         $this->authorizeRole($request);
 
-        return ['online_payment_available' => app(WizPayGateway::class)->configured(),
+        return ['online_payment_available' => app(PayPalGateway::class)->configured(),
+            'payment_provider' => 'paypal', 'payment_currency' => 'USD', 'bob_per_usd' => config('paypal.bob_per_usd'),
             'specialties' => Specialty::where('status', 'Activo')->orderBy('name')->get(['id', 'name', 'fee_minor']),
             'doctors' => Doctor::where('status', 'Activo')->whereHas('specialties', fn ($q) => $q->where('status', 'Activo'))
                 ->with(['specialties' => fn ($q) => $q->where('status', 'Activo')->select('specialties.id', 'name')])

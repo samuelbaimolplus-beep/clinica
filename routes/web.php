@@ -1,6 +1,9 @@
 <?php
 
+use App\Http\Controllers\AccountActivationController;
 use App\Http\Controllers\AccountManagementController;
+use App\Http\Controllers\AccountPasswordController;
+use App\Http\Controllers\AccountProfileController;
 use App\Http\Controllers\AccountRecoveryController;
 use App\Http\Controllers\AccountUsernameController;
 use App\Http\Controllers\AgendaAdjustmentController;
@@ -14,38 +17,46 @@ use App\Http\Controllers\Catalog\SpecialtyController;
 use App\Http\Controllers\Catalog\StatusController;
 use App\Http\Controllers\Catalog\UserController;
 use App\Http\Controllers\ClinicalWorkflowController;
+use App\Http\Controllers\ManagedPatientAccountController;
 use App\Http\Controllers\MedicalAvailabilityController;
-use App\Http\Controllers\PatientAccountInvitationController;
-use App\Http\Controllers\PatientRegistrationController;
+use App\Http\Controllers\PayPalWebhookController;
 use App\Http\Controllers\ReferenceController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ScheduleController;
 use App\Http\Controllers\ScheduleImpactController;
 use App\Http\Controllers\SupervisionController;
-use App\Http\Controllers\WizPayWebhookController;
 use App\Http\Middleware\ClinicalAccessAudit;
 use App\Http\Middleware\ClinicSession;
 use App\Http\Middleware\ReceptionAgendaAccess;
 use App\Http\Middleware\RequireAppointments;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('clinic');
 });
 Route::view('/terms', 'terms')->name('terms');
-Route::post('/webhooks/wizpay', WizPayWebhookController::class)->middleware('throttle:60,1');
-Route::get('/account/verify/{id}/{hash}', [AccountRecoveryController::class, 'verify'])->middleware(['signed', 'throttle:6,1'])->name('clinic.email.verify');
+Route::post('/pagos/paypal/webhook', PayPalWebhookController::class)->middleware('throttle:60,1');
+// El retorno del navegador no confirma pagos; solo vuelve a la reserva del usuario.
+Route::get('/pagos/paypal/{result}', function (Request $request) {
+    $id = filter_var($request->query('operacion'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+
+    return redirect('/'.($id ? '?paypal_booking='.$id : '').'#reservar-cita');
+})->whereIn('result', ['retorno', 'cancelado']);
 Route::get('/password/reset/{token}', fn (string $token) => view('auth.reset-password', ['token' => $token]));
 
 Route::prefix('api')->group(function () {
     Route::get('session', [AuthController::class, 'session']);
     Route::post('login', [AuthController::class, 'login'])->middleware('throttle:6,1');
-    Route::post('register', PatientRegistrationController::class)->middleware('throttle:6,1');
     Route::post('account/email', [AccountRecoveryController::class, 'send'])->middleware('throttle:6,1');
+    Route::post('account/activate', AccountActivationController::class)->middleware('throttle:6,1');
     Route::post('account/reset', [AccountRecoveryController::class, 'reset'])->middleware('throttle:6,1');
     Route::post('logout', [AuthController::class, 'logout']);
     Route::middleware(ClinicSession::class)->group(function () {
         Route::patch('account/username', AccountUsernameController::class)->middleware('throttle:6,1');
+        Route::patch('account/password', AccountPasswordController::class)->middleware('throttle:6,1');
+        Route::get('account/profile', [AccountProfileController::class, 'show']);
+        Route::patch('account/profile', [AccountProfileController::class, 'update'])->middleware('throttle:6,1');
         Route::get('supervision/accounts', [AccountManagementController::class, 'index']);
         Route::post('supervision/accounts/{id}/password', [AccountManagementController::class, 'password'])->whereNumber('id')->middleware('throttle:6,1');
         Route::get('references', ReferenceController::class);
@@ -92,10 +103,13 @@ Route::prefix('api')->group(function () {
         Route::middleware('can:manage-patients')->group(function () {
             Route::get('entities/patients/{id}', [PatientController::class, 'show'])->whereNumber('id');
             Route::patch('entities/patients/{id}/status', StatusController::class)->whereNumber('id')->defaults('catalog', 'patients');
-            Route::post('patients/{id}/account-invitation', PatientAccountInvitationController::class)->whereNumber('id')->middleware('throttle:12,1');
             Route::get('entities/patients', [PatientController::class, 'index']);
             Route::post('entities/patients', [PatientController::class, 'save']);
             Route::put('entities/patients/{id}', [PatientController::class, 'save'])->whereNumber('id');
+        });
+        Route::middleware('can:manage-patient-accounts')->group(function () {
+            Route::post('patients/with-account', [ManagedPatientAccountController::class, 'register']);
+            Route::post('patients/{id}/account', [ManagedPatientAccountController::class, 'store'])->whereNumber('id');
         });
         Route::middleware('can:manage-schedules')->group(function () {
             Route::put('doctor-quotas', [ScheduleController::class, 'quota']);

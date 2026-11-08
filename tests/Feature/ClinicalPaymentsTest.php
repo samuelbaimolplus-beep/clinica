@@ -12,6 +12,7 @@ use App\Models\Schedule;
 use App\Models\Specialty;
 use App\Models\User;
 use App\Services\Payments\OnlineBookingService;
+use App\Services\Payments\PayPalGateway;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\Client\ConnectionException;
@@ -41,7 +42,7 @@ class ClinicalPaymentsTest extends TestCase
     {
         parent::setUp();
         $this->assertSame('clinica_vida_salud_test', config('database.connections.pgsql.database'));
-        config(['clinic.appointments_enabled' => true, 'wizpay.key' => 'wtest_unit_tests_only']);
+        config(['clinic.appointments_enabled' => true, 'paypal.enabled' => true, 'paypal.client_id' => 'client-test', 'paypal.secret' => 'secret-test', 'paypal.bob_per_usd' => '10']);
         Http::preventStrayRequests();
         $this->travelTo(Carbon::parse('2026-11-09 07:00', 'America/La_Paz'));
         $this->specialty = Specialty::create(['name' => 'Especialidad pagos', 'status' => 'Activo', 'fee_minor' => 12550]);
@@ -50,7 +51,7 @@ class ClinicalPaymentsTest extends TestCase
         Schedule::create(['doctor_id' => $this->doctor->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30]);
         $this->patient = Patient::create(['identity' => 'PAY-001', 'first_name' => 'María', 'last_name' => 'Paciente', 'phone' => '70000001', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'status' => 'Activo']);
         foreach (['reception' => 'Recepcionista', 'admin' => 'Administrador', 'patientUser' => 'Paciente', 'physician' => 'Médico'] as $key => $role) {
-            $this->$key = User::create(['name' => $key, 'email' => $key.'@payments.test', 'password' => 'PruebaSegura2026', 'role' => $role, 'status' => 'Activo',
+            $this->$key = $this->verifiedAccount(['name' => $key, 'email' => $key.'@payments.test', 'password' => 'PruebaSegura2026', 'role' => $role, 'status' => 'Activo',
                 'patient_id' => $role === 'Paciente' ? $this->patient->id : null, 'doctor_id' => $role === 'Médico' ? $this->doctor->id : null]);
         }
         $this->patientUser->forceFill(['email_verified_at' => now()])->save();
@@ -71,20 +72,62 @@ class ClinicalPaymentsTest extends TestCase
         return Appointment::findOrFail($r->json('id'));
     }
 
-    private function fakeGateway(string $state = 'APROBADO', bool $wrongAmount = false, bool $loseGenerationResponse = false, ?string $secondState = null): void
+    private function paypalOrder(Payment $payment, string $state = 'APPROVED', ?string $captureState = null, bool $wrongAmount = false): array
     {
-        Http::fake(function ($request) use ($state, $wrongAmount, $loseGenerationResponse, $secondState) {
-            if (str_ends_with($request->url(), '/qr/generate')) {
+        $gateway = app(PayPalGateway::class);
+        $ref = $gateway->reference($payment);
+        $id = 'PP-'.$ref;
+        $amount = ['currency_code' => 'USD', 'value' => $wrongAmount ? '0.01' : $gateway->usdValue($payment)];
+        $unit = ['reference_id' => $ref, 'custom_id' => $ref, 'invoice_id' => $ref, 'amount' => $amount];
+        if ($captureState) {
+            $unit['payments']['captures'] = [['id' => 'CAP-'.$payment->id, 'status' => $captureState, 'amount' => $amount, 'final_capture' => true]];
+        }
+
+        return ['id' => $id, 'intent' => 'CAPTURE', 'status' => $state, 'purchase_units' => [$unit],
+            'links' => [['rel' => 'approve', 'href' => 'https://www.sandbox.paypal.com/checkoutnow?token='.$id]]];
+    }
+
+    private function paypalHeaders(): array
+    {
+        return ['PAYPAL-AUTH-ALGO' => 'SHA256withRSA', 'PAYPAL-CERT-URL' => 'https://api-m.sandbox.paypal.com/cert/test',
+            'PAYPAL-TRANSMISSION-ID' => 'test-event', 'PAYPAL-TRANSMISSION-SIG' => 'test-signature', 'PAYPAL-TRANSMISSION-TIME' => now()->toIso8601String()];
+    }
+
+    private function fakeGateway(string $state = 'APROBADO', bool $wrongAmount = false, bool $loseGenerationResponse = false, ?string $secondState = null, bool $race = false): void
+    {
+        Http::fake(function ($request) use ($state, $wrongAmount, $loseGenerationResponse, $secondState, $race) {
+            if (str_ends_with($request->url(), '/v1/oauth2/token')) {
+                return Http::response(['access_token' => 'test-token']);
+            }
+            if (str_ends_with($request->url(), '/verify-webhook-signature')) {
+                return Http::response(['verification_status' => 'SUCCESS']);
+            }
+            if ($request->method() === 'POST' && str_ends_with($request->url(), '/v2/checkout/orders')) {
+                preg_match('/^CVS-(\d+)-(\d+)$/', $request['purchase_units'][0]['custom_id'], $m);
+                $payment = Payment::where('booking_request_id', $m[1])->where('attempt', $m[2])->firstOrFail();
                 if ($loseGenerationResponse) {
                     throw new ConnectionException('Tiempo de espera de prueba');
                 }
+                $created = $this->paypalOrder($payment, 'CREATED');
+                if ($race) {
+                    $payment->update(['reference' => $created['id']]);
+                    app(OnlineBookingService::class)->reconcile(BookingRequest::findOrFail($payment->booking_request_id), true);
+                }
 
-                return Http::response(['reference' => 'WP-'.$request['order_id'], 'qr' => ['numero_referencia' => 12345, 'imagen' => 'aW1hZ2U=', 'monto' => $request['amount'], 'moneda' => 'BOB']], 201);
+                return Http::response($created, 201);
             }
-            $payment = Payment::where('reference', basename($request->url()))->firstOrFail();
+            $id = str_ends_with($request->url(), '/capture') ? basename(dirname($request->url())) : basename($request->url());
+            preg_match('/^PP-CVS-(\d+)-(\d+)$/', $id, $m);
+            $payment = Payment::where('booking_request_id', $m[1])->where('attempt', $m[2])->firstOrFail();
+            $current = $payment->attempt === 2 ? ($secondState ?? $state) : $state;
+            $capture = match ($current) {
+                'PENDIENTE' => 'PENDING', 'RECHAZADO' => 'DECLINED', default => null
+            };
+            if (str_ends_with($request->url(), '/capture')) {
+                $capture = 'COMPLETED';
+            }
 
-            return Http::response(['reference' => $payment->reference, 'order_id' => 'CVS-'.$payment->booking_request_id.'-'.$payment->attempt,
-                'amount' => $wrongAmount ? 1 : $payment->amount_minor / 100, 'status' => $payment->attempt === 2 ? ($secondState ?? $state) : $state]);
+            return Http::response($this->paypalOrder($payment, $capture ? 'COMPLETED' : 'APPROVED', $capture, $wrongAmount));
         });
     }
 
@@ -176,7 +219,7 @@ class ClinicalPaymentsTest extends TestCase
 
     public function test_missing_gateway_configuration_does_not_create_a_hold(): void
     {
-        config(['wizpay.key' => null]);
+        config(['paypal.enabled' => false]);
         $this->actingAs($this->patientUser)->postJson('/api/online-bookings', $this->data(['start_time' => '10:30']))->assertUnprocessable();
         $this->assertDatabaseCount('booking_requests', 0);
         Http::assertNothingSent();
@@ -288,20 +331,135 @@ class ClinicalPaymentsTest extends TestCase
         $this->assertSame('08:00:00', $shift->fresh()->start_time);
     }
 
-    public function test_webhook_requires_secret_sandbox_and_backend_confirmation_and_is_idempotent(): void
+    public function test_paypal_webhook_requires_signature_and_backend_confirmation_and_is_idempotent(): void
     {
-        config(['wizpay.webhook_key' => 'secret-for-tests-only']);
+        config(['paypal.webhook_id' => 'WH-TEST']);
         $this->fakeGateway();
         $id = $this->startOnline();
         $payment = Payment::where('booking_request_id', $id)->firstOrFail();
-        $payload = ['environment' => 'SANDBOX', 'event' => 'payment.qr.success', 'reference' => $payment->reference,
-            'order_id' => 'CVS-'.$id.'-1', 'qr_id' => '12345', 'amount' => 125.50, 'currency' => 'BOB'];
-        $this->postJson('/webhooks/wizpay', $payload)->assertUnauthorized();
-        $this->withHeader('Authorization', 'Bearer secret-for-tests-only')->postJson('/webhooks/wizpay', array_replace($payload, ['environment' => 'PRODUCCION']))->assertUnprocessable();
-        $this->postJson('/webhooks/wizpay', $payload)->assertOk();
-        $this->postJson('/webhooks/wizpay', $payload)->assertOk();
+        $payload = ['id' => 'EV-TEST', 'event_type' => 'CHECKOUT.ORDER.APPROVED', 'resource' => ['id' => $payment->reference]];
+        $this->postJson('/pagos/paypal/webhook', $payload)->assertUnauthorized();
+        $this->withHeaders($this->paypalHeaders())->postJson('/pagos/paypal/webhook', array_replace($payload, ['resource' => ['other' => 'missing-order-id']]))->assertUnprocessable();
+        $this->postJson('/pagos/paypal/webhook', $payload)->assertOk();
+        $this->postJson('/pagos/paypal/webhook', $payload)->assertOk();
         $this->assertDatabaseCount('appointments', 1);
         $this->assertSame('completed', BookingRequest::findOrFail($id)->status);
+    }
+
+    public function test_paypal_webhook_without_configuration_rejects_events_without_contacting_paypal(): void
+    {
+        config(['paypal.webhook_id' => null]);
+        Http::fake();
+        $this->postJson('/pagos/paypal/webhook', ['id' => 'EV-NO-CONFIG', 'event_type' => 'CHECKOUT.ORDER.APPROVED',
+            'resource' => ['id' => 'NO-ORDER']])->assertStatus(503);
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('appointments', 0);
+    }
+
+    public function test_paypal_webhook_acknowledges_a_signed_simulator_event_with_a_nonexistent_order(): void
+    {
+        config(['paypal.webhook_id' => 'WH-TEST']);
+        Http::fake([
+            '*/v1/oauth2/token' => Http::response(['access_token' => 'test-token']),
+            '*/verify-webhook-signature' => Http::response(['verification_status' => 'SUCCESS']),
+            '*/v2/checkout/orders/SIMULATED-ORDER' => Http::response(['name' => 'RESOURCE_NOT_FOUND'], 404),
+        ]);
+        $this->withHeaders($this->paypalHeaders())->postJson('/pagos/paypal/webhook', ['id' => 'EV-SIMULATOR',
+            'event_type' => 'CHECKOUT.ORDER.APPROVED', 'resource' => ['id' => 'SIMULATED-ORDER']])
+            ->assertOk()->assertJsonPath('received', true)->assertJsonPath('processed', false)->assertJsonPath('reason', 'order_not_found');
+        $this->assertDatabaseCount('appointments', 0);
+        $this->assertDatabaseCount('payments', 0);
+        Http::assertNotSent(fn ($request) => str_ends_with($request->url(), '/capture'));
+    }
+
+    public function test_paypal_webhook_keeps_transient_provider_errors_retryable(): void
+    {
+        config(['paypal.webhook_id' => 'WH-TEST']);
+        Http::fake([
+            '*/v1/oauth2/token' => Http::response(['access_token' => 'test-token']),
+            '*/verify-webhook-signature' => Http::response(['verification_status' => 'SUCCESS']),
+            '*/v2/checkout/orders/UNAVAILABLE-ORDER' => Http::response(['name' => 'INTERNAL_SERVER_ERROR'], 500),
+        ]);
+        $this->withHeaders($this->paypalHeaders())->postJson('/pagos/paypal/webhook', ['id' => 'EV-TEMPORARY-ERROR',
+            'event_type' => 'CHECKOUT.ORDER.APPROVED', 'resource' => ['id' => 'UNAVAILABLE-ORDER']])->assertStatus(500);
+        $this->assertDatabaseCount('appointments', 0);
+        $this->assertDatabaseCount('payments', 0);
+    }
+
+    public function test_paypal_webhook_rejects_a_signature_declared_invalid_by_paypal(): void
+    {
+        config(['paypal.webhook_id' => 'WH-TEST']);
+        Http::fake([
+            '*/v1/oauth2/token' => Http::response(['access_token' => 'test-token']),
+            '*/verify-webhook-signature' => Http::response(['verification_status' => 'FAILURE']),
+        ]);
+        $payload = ['id' => 'EV-BAD-SIGNATURE', 'event_type' => 'CHECKOUT.ORDER.APPROVED', 'resource' => ['id' => 'NO-ORDER']];
+        $this->withHeaders($this->paypalHeaders())->postJson('/pagos/paypal/webhook', $payload)->assertUnauthorized();
+        Http::assertSent(fn ($request) => str_ends_with($request->url(), '/verify-webhook-signature')
+            && $request['webhook_id'] === 'WH-TEST' && $request['webhook_event'] === $payload
+            && $request['transmission_sig'] === 'test-signature');
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v2/checkout/orders'));
+        $this->assertDatabaseCount('appointments', 0);
+    }
+
+    public function test_paypal_webhook_does_not_trust_completed_event_if_remote_capture_is_pending(): void
+    {
+        config(['paypal.webhook_id' => 'WH-TEST']);
+        $this->fakeGateway('PENDIENTE');
+        $id = $this->startOnline();
+        $payment = Payment::where('booking_request_id', $id)->firstOrFail();
+        $this->withHeaders($this->paypalHeaders())->postJson('/pagos/paypal/webhook', [
+            'id' => 'EV-CAPTURE-PENDING', 'event_type' => 'PAYMENT.CAPTURE.COMPLETED',
+            'resource' => ['id' => 'CAP-TEST', 'status' => 'COMPLETED', 'supplementary_data' => ['related_ids' => ['order_id' => $payment->reference]]],
+        ])->assertOk();
+        $this->assertSame('pending', $payment->fresh()->status);
+        $this->assertSame('processing', BookingRequest::findOrFail($id)->status);
+        $this->assertDatabaseCount('appointments', 0);
+    }
+
+    public function test_paypal_capture_webhook_confirms_once_after_backend_verification(): void
+    {
+        config(['paypal.webhook_id' => 'WH-TEST']);
+        $this->fakeGateway();
+        $id = $this->startOnline();
+        $payment = Payment::where('booking_request_id', $id)->firstOrFail();
+        $payload = ['id' => 'EV-CAPTURE-COMPLETE', 'event_type' => 'PAYMENT.CAPTURE.COMPLETED',
+            'resource' => ['id' => 'CAP-TEST', 'supplementary_data' => ['related_ids' => ['order_id' => $payment->reference]]]];
+        $this->withHeaders($this->paypalHeaders())->postJson('/pagos/paypal/webhook', $payload)->assertOk();
+        $this->postJson('/pagos/paypal/webhook', $payload)->assertOk();
+        $this->assertSame('confirmed', $payment->fresh()->status);
+        $this->assertNotNull($payment->fresh()->capture_id);
+        $this->assertDatabaseCount('appointments', 1);
+        $this->assertSame('completed', BookingRequest::findOrFail($id)->status);
+        $captures = Http::recorded(fn ($request) => str_ends_with($request->url(), '/capture'));
+        $this->assertCount(1, $captures);
+    }
+
+    public function test_paypal_webhook_rejects_a_remote_order_with_the_wrong_amount(): void
+    {
+        config(['paypal.webhook_id' => 'WH-TEST']);
+        $this->fakeGateway('APROBADO', true);
+        $id = $this->startOnline();
+        $payment = Payment::where('booking_request_id', $id)->firstOrFail();
+        $this->withHeaders($this->paypalHeaders())->postJson('/pagos/paypal/webhook', ['id' => 'EV-WRONG-AMOUNT',
+            'event_type' => 'CHECKOUT.ORDER.APPROVED', 'resource' => ['id' => $payment->reference]])->assertUnprocessable();
+        $this->assertSame('pending', $payment->fresh()->status);
+        $this->assertDatabaseCount('appointments', 0);
+        Http::assertNotSent(fn ($request) => str_ends_with($request->url(), '/capture'));
+    }
+
+    public function test_paypal_webhook_acknowledges_unsupported_signed_events_without_changing_payments(): void
+    {
+        config(['paypal.webhook_id' => 'WH-TEST']);
+        Http::fake([
+            '*/v1/oauth2/token' => Http::response(['access_token' => 'test-token']),
+            '*/verify-webhook-signature' => Http::response(['verification_status' => 'SUCCESS']),
+        ]);
+        $this->withHeaders($this->paypalHeaders())->postJson('/pagos/paypal/webhook', ['id' => 'EV-UNSUPPORTED',
+            'event_type' => 'UNSUPPORTED.EVENT', 'resource' => ['id' => 'NO-ORDER']])->assertOk()->assertJsonPath('received', true);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v2/checkout/orders'));
+        $this->assertDatabaseCount('appointments', 0);
+        $this->assertDatabaseCount('payments', 0);
     }
 
     public function test_confirmed_presence_can_be_cancelled_by_reception_as_defined_in_v6(): void
@@ -339,38 +497,25 @@ class ClinicalPaymentsTest extends TestCase
         $this->assertDatabaseCount('payments', 1);
     }
 
-    public function test_authenticated_webhook_recovers_a_lost_generation_response_without_charging_again(): void
+    public function test_authenticated_webhook_recovers_a_lost_creation_response_without_charging_again(): void
     {
-        config(['wizpay.webhook_key' => 'secret-recovery-test']);
+        config(['paypal.webhook_id' => 'WH-TEST']);
         $this->fakeGateway('APROBADO', false, true);
         $id = $this->startOnline();
         $payment = Payment::where('booking_request_id', $id)->firstOrFail();
         $this->assertSame('unknown', $payment->status);
         $this->assertNull($payment->reference);
         $this->postJson('/api/online-bookings/'.$id.'/retry')->assertUnprocessable();
-        $this->withHeader('Authorization', 'Bearer secret-recovery-test')->postJson('/webhooks/wizpay', ['environment' => 'SANDBOX',
-            'event' => 'payment.qr.success', 'reference' => 'WP-RECOVERED', 'order_id' => 'CVS-'.$id.'-1', 'qr_id' => '12345', 'amount' => 125.50, 'currency' => 'BOB'])->assertOk();
+        $this->withHeaders($this->paypalHeaders())->postJson('/pagos/paypal/webhook', ['id' => 'EV-RECOVER', 'event_type' => 'CHECKOUT.ORDER.APPROVED',
+            'resource' => ['id' => 'PP-CVS-'.$id.'-1']])->assertOk();
         $this->assertDatabaseCount('payments', 1);
         $this->assertDatabaseCount('appointments', 1);
         $this->assertSame('completed', BookingRequest::findOrFail($id)->status);
     }
 
-    public function test_confirmation_arriving_before_generation_response_cannot_be_overwritten_as_pending(): void
+    public function test_confirmation_arriving_before_creation_response_cannot_be_overwritten_as_pending(): void
     {
-        Http::fake(function ($request) {
-            if (str_ends_with($request->url(), '/qr/generate')) {
-                preg_match('/^CVS-(\d+)-(\d+)$/', $request['order_id'], $parts);
-                $p = Payment::where('booking_request_id', $parts[1])->where('attempt', $parts[2])->firstOrFail();
-                // The authenticated webhook has recovered the reference while generation is still returning.
-                $p->update(['reference' => 'WP-RACE']);
-                app(OnlineBookingService::class)->reconcile(BookingRequest::findOrFail($parts[1]), true);
-
-                return Http::response(['reference' => 'WP-RACE', 'qr' => ['numero_referencia' => 54321, 'imagen' => 'aW1hZ2U=', 'monto' => 125.50, 'moneda' => 'BOB']], 201);
-            }
-            $p = Payment::where('reference', basename($request->url()))->firstOrFail();
-
-            return Http::response(['reference' => $p->reference, 'status' => 'APROBADO', 'amount' => 125.50, 'order_id' => 'CVS-'.$p->booking_request_id.'-'.$p->attempt]);
-        });
+        $this->fakeGateway('APROBADO', false, false, null, true);
         $id = $this->startOnline();
         $this->assertSame('confirmed', Payment::where('booking_request_id', $id)->firstOrFail()->status);
         $this->assertSame('completed', BookingRequest::findOrFail($id)->status);

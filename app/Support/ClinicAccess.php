@@ -9,7 +9,7 @@ final class ClinicAccess
 {
     public const VIEWS = [
         'Superadmin' => ['CU01', 'CU02', 'CU03', 'CU04', 'CU05', 'CU06', 'CU07', 'CU08', 'CU22', 'CU24', 'CU25'],
-        'Administrador' => ['CU01', 'CU02', 'CU03', 'CU04', 'CU05', 'CU07', 'CU22'],
+        'Administrador' => ['CU01', 'CU02', 'CU03', 'CU04', 'CU05', 'CU06', 'CU07', 'CU22'],
         'Recepcionista' => ['CU01', 'CU02', 'CU06', 'CU24', 'CU25', 'CU08', 'CU17'],
         'Médico' => ['CU01', 'CU02'],
         'Paciente' => ['CU01', 'CU02', 'CU08'],

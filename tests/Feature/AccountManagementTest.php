@@ -26,7 +26,7 @@ class AccountManagementTest extends TestCase
         $this->assertSame('clinica_vida_salud_test', config('database.connections.pgsql.database'));
         $this->superadmin = $this->account('Superadmin');
         $patient = Patient::create(['first_name' => 'Ana', 'last_name' => 'Prueba', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000000', 'status' => 'Activo']);
-        $this->patientUser = User::create(['name' => 'Ana paciente', 'email' => 'paciente@access.test', 'password' => 'AnteriorSegura2026',
+        $this->patientUser = $this->verifiedAccount(['name' => 'Ana paciente', 'email' => 'paciente@access.test', 'password' => 'AnteriorSegura2026',
             'role' => 'Paciente', 'patient_id' => $patient->id, 'status' => 'Activo']);
         $this->patientUser->forceFill(['email_verified_at' => now()])->save();
     }
@@ -35,7 +35,7 @@ class AccountManagementTest extends TestCase
     {
         $doctorId = $role === 'Médico' ? Doctor::create(['registration' => 'ACCESS-01', 'first_name' => 'Ana', 'last_name' => 'Médica', 'email' => 'doctor@access.test', 'phone' => '70000001', 'status' => 'Activo'])->id : null;
 
-        return User::create(['name' => $role, 'email' => 'cuenta'.User::count().'@access.test', 'password' => 'AnteriorSegura2026', 'role' => $role, 'doctor_id' => $doctorId, 'status' => 'Activo']);
+        return $this->verifiedAccount(['name' => $role, 'email' => 'cuenta'.User::count().'@access.test', 'password' => 'AnteriorSegura2026', 'role' => $role, 'doctor_id' => $doctorId, 'status' => 'Activo']);
     }
 
     public function test_superadmin_lists_staff_and_patient_accounts_without_passwords_or_hashes(): void
@@ -43,7 +43,7 @@ class AccountManagementTest extends TestCase
         $response = $this->actingAs($this->superadmin)->getJson('/api/supervision/accounts')->assertOk();
         $response->assertJsonFragment(['id' => $this->patientUser->id, 'role' => 'Paciente']);
         foreach ($response->json() as $account) {
-            $this->assertSame(['id', 'name', 'username', 'email', 'role', 'status'], array_keys($account));
+            $this->assertSame(['id', 'name', 'username', 'email', 'role', 'status', 'email_verified_at'], array_keys($account));
         }
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
     }

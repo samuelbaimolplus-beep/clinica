@@ -12,7 +12,7 @@ class PatientController extends Controller
 {
     public function show(int $id)
     {
-        return Patient::findOrFail($id);
+        return Patient::with('account:id,patient_id,username,email,status,email_verified_at')->findOrFail($id);
     }
 
     public function index(Request $request)
@@ -20,7 +20,7 @@ class PatientController extends Controller
         $data = $request->validate(['search' => 'nullable|string|max:150']);
         $search = mb_strtolower(trim($data['search'] ?? ''));
 
-        return Patient::query()->when($search !== '', fn ($q) => $q->where(function ($q) use ($search) {
+        return Patient::with('account:id,patient_id,username,email,status,email_verified_at')->when($search !== '', fn ($q) => $q->where(function ($q) use ($search) {
             // strpos interpreta la búsqueda literalmente, sin comodines SQL proporcionados por el usuario.
             $q->whereRaw('strpos(lower(coalesce(identity, ?)), ?) > 0', ['', $search])
                 ->orWhereRaw('strpos(lower(first_name), ?) > 0', [$search])

@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use App\Notifications\VerifyClinicEmail;
 use App\Services\Audit\AuditLogger;
+use App\Services\Auth\EmailActivation;
 use App\Support\ClinicAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,27 +22,13 @@ class AccountRecoveryController extends Controller
         $user = User::whereRaw('lower(email) = ?', [mb_strtolower(trim($data['email']))])->first();
         if ($user && ClinicAccess::isActive($user)) {
             if (! $user->email_verified_at) {
-                $user->notify(new VerifyClinicEmail);
+                app(EmailActivation::class)->send($user);
             } elseif ($data['purpose'] === 'recover') {
                 Password::sendResetLink(['email' => $user->email]);
             }
         }
 
         return ['message' => 'Si la cuenta está habilitada, recibirá las instrucciones en su correo.'];
-    }
-
-    public function verify(Request $request, int $id, string $hash)
-    {
-        DB::transaction(function () use ($id, $hash) {
-            $user = User::whereKey($id)->lockForUpdate()->firstOrFail();
-            abort_unless(hash_equals(sha1($user->email), $hash), 403);
-            if (! $user->email_verified_at) {
-                $user->forceFill(['email_verified_at' => now()])->save();
-                app(AuditLogger::class)->record('auth', 'email_verified', $user, actorId: $user->id);
-            }
-        });
-
-        return view('auth.account-result', ['message' => 'Correo verificado. Ya puede volver a iniciar sesión o solicitar la recuperación de contraseña.']);
     }
 
     public function reset(Request $request)

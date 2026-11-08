@@ -22,8 +22,8 @@ export function installAccountManagementViews(ui) {
     async function accounts() {
         const records = await api('supervision/accounts');
         modal('Todas las cuentas de acceso', notice('Consulta de personal y pacientes, exclusiva de Superadmin. Los datos de las contraseñas permanecen protegidos.')
-            + table(['Usuario', 'Nombre', 'Correo', 'Rol', 'Estado', 'Acción'], records.map(account => [
-                esc(account.username), esc(account.name), esc(account.email), esc(account.role), badge(account.status), button('Cambiar contraseña', `data-account-password="${account.id}"`),
+            + table(['Usuario', 'Nombre', 'Correo', 'Rol', 'Estado', 'Activación', 'Acción'], records.map(account => [
+                esc(account.username), esc(account.name), esc(account.email), esc(account.role), badge(account.status), esc(account.email_verified_at?'Correo confirmado':'Pendiente de código'), button('Cambiar contraseña', `data-account-password="${account.id}"`),
             ])));
         on('[data-account-password]', 'click', event => changePassword(records.find(account => account.id === Number(event.currentTarget.dataset.accountPassword))));
     }

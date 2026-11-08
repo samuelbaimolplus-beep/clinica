@@ -39,17 +39,17 @@ class SuperadminAccessTest extends TestCase
     {
         parent::setUp();
         $this->assertSame('clinica_vida_salud_test', config('database.connections.pgsql.database'));
-        config(['clinic.appointments_enabled' => true, 'wizpay.key' => null]);
+        config(['clinic.appointments_enabled' => true, 'paypal.enabled' => false]);
         $this->travelTo(now()->setDate(2026, 11, 9)->setTime(7, 0));
         foreach (['superadmin' => 'Superadmin', 'admin' => 'Administrador', 'reception' => 'Recepcionista'] as $property => $role) {
-            $this->$property = User::create(['name' => $role, 'email' => $property.'@supervision.test', 'password' => 'PruebaSegura2026', 'role' => $role, 'status' => 'Activo']);
+            $this->$property = $this->verifiedAccount(['name' => $role, 'email' => $property.'@supervision.test', 'password' => 'PruebaSegura2026', 'role' => $role, 'status' => 'Activo']);
         }
         $this->specialty = Specialty::create(['name' => 'Especialidad supervisión', 'status' => 'Activo', 'fee_minor' => 10000]);
         $this->doctor = Doctor::create(['registration' => 'SUP-01', 'first_name' => 'Médica', 'last_name' => 'Supervisión', 'email' => 'doctor@supervision.test', 'phone' => '70000000', 'status' => 'Activo']);
         $this->doctor->specialties()->attach($this->specialty);
         Schedule::create(['doctor_id' => $this->doctor->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30]);
         $this->patient = Patient::create(['first_name' => 'Paciente', 'last_name' => 'Sin documento', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000001', 'status' => 'Activo']);
-        $this->patientUser = User::create(['name' => 'Paciente', 'email' => 'patient@supervision.test', 'password' => 'PruebaSegura2026', 'role' => 'Paciente', 'patient_id' => $this->patient->id, 'status' => 'Activo']);
+        $this->patientUser = $this->verifiedAccount(['name' => 'Paciente', 'email' => 'patient@supervision.test', 'password' => 'PruebaSegura2026', 'role' => 'Paciente', 'patient_id' => $this->patient->id, 'status' => 'Activo']);
         $this->patientUser->forceFill(['email_verified_at' => now()])->save();
     }
 

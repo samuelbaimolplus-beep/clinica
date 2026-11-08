@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Auth\EmailActivation;
 use App\Services\Auth\SessionSecurity;
 use App\Support\ClinicAccess;
 use Illuminate\Http\Request;
@@ -28,8 +29,11 @@ class AuthController extends Controller
             app(AuditLogger::class)->record('auth', 'login', $user, 'failure', ['reason' => 'inactive_account']);
             throw ValidationException::withMessages(['email' => 'FA03: La cuenta está inactiva. Contacte al administrador.']);
         }
-        if ($user->role === 'Paciente' && ! $user->email_verified_at) {
-            throw ValidationException::withMessages(['email' => 'Verifique su correo electrónico antes de iniciar sesión. Puede solicitar el enlace desde Recuperar acceso.']);
+        if (! $user->email_verified_at) {
+            app(EmailActivation::class)->send($user);
+
+            return response()->json(['message' => 'Debe activar su cuenta con el código enviado a su correo.',
+                'activation_required' => true, 'email' => $user->email], 403)->header('Cache-Control', 'no-store');
         }
         try {
             Auth::login($user);
@@ -54,7 +58,7 @@ class AuthController extends Controller
         $user = $request->user();
 
         return response()->json(['user' => $user, 'csrf' => csrf_token(), 'today' => now()->toDateString(),
-            'access' => collect(array_keys(ClinicAccess::VIEWS))->mapWithKeys(fn ($role) => [$role => ClinicAccess::views($role)]),
+            'access' => $user ? collect(array_keys(ClinicAccess::VIEWS))->mapWithKeys(fn ($role) => [$role => ClinicAccess::views($role)]) : (object) [],
             'terms_version' => config('clinic.terms_version'), 'message' => $message])->header('Cache-Control', 'no-store');
     }
 

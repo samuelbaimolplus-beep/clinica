@@ -18,7 +18,7 @@ export function installClinicalViews(ui) {
             ['Paciente',esc(full(a.patient))],['Especialidad',esc(a.specialty.name)],['Médico',esc(full(a.doctor))],
             ['Fecha',esc(a.date)],['Horario',esc(`${time(a.start_time)}–${time(a.end_time)}`)],['Estado',badge(a.status)],
             ['Pago',esc(a.complimentary ? 'Exención válida de seguimiento' : `${money(a.payment?.amount_minor)} · ${status(a.payment?.status)}`)],
-            ['Medio de pago',esc(a.complimentary ? 'Seguimiento gratuito' : ({cash:'Efectivo',qr:'QR presencial',transfer:'Transferencia',wizpay:'WizPay de pruebas'}[a.payment?.method] || '—'))],
+            ['Medio de pago',esc(a.complimentary ? 'Seguimiento gratuito' : ({cash:'Efectivo',qr:'QR presencial',transfer:'Transferencia',paypal:'PayPal Sandbox'}[a.payment?.method] || a.payment?.method || '—'))],
             ['Referencia de pago o exención',esc(a.complimentary
                 ? (a.parent_appointment_id ? `Consulta original ${code('CIT',a.parent_appointment_id)}` : 'Exención de seguimiento validada')
                 : (a.payment?.bank_reference || a.payment?.reference || (a.payment?.id ? `Pago n.º ${a.payment.id}` : '—')))],
@@ -45,10 +45,10 @@ export function installClinicalViews(ui) {
         let blocks = [];
         let queryVersion = 0;
         const operationKey = crypto.randomUUID();
-        return {html: (online ? notice('La consulta de horarios no reserva el cupo. Al confirmar «Retener cupo y generar QR de pruebas» se inicia la retención; la ficha se emite al verificar el pago en el servidor.') : '')
+        return {html: (online ? notice('Elija un horario y continúe a PayPal para pagar. Su ficha estará disponible cuando se confirme el pago. PayPal Sandbox utiliza únicamente dinero de prueba.') : '')
             + (online && !options.online_payment_available ? notice('El pago online está temporalmente indisponible. Puede consultar horarios; contacte a Recepción para obtener una cita presencial.', 'error') : '')
             + (online && supervisor ? notice('Supervisión global: puede ver todas las operaciones y consultar los horarios online. La reserva personal se realiza desde una cuenta de Paciente.') : '')
-            + (online ? panel(supervisor?'Operaciones online de todos los pacientes':'Mis operaciones online (últimas 50)',table(['Operación',...(supervisor?['Paciente','Médico']:[]),'Fecha','Hora','Estado','Acción'],requests.map(r=>[esc(r.id),...(supervisor?[esc(full(r.patient)),esc(full(r.doctor))]:[]),esc(r.date),esc(time(r.start_time)),esc(status(r.status)),button('Consultar',`data-online="${r.id}"`)]))) : '')
+            + (online && (requests.length || supervisor) ? panel(supervisor?'Operaciones online de todos los pacientes':'Mis reservas recientes',table(['Operación',...(supervisor?['Paciente','Médico']:[]),'Fecha','Hora','Estado','Acción'],requests.map(r=>[esc(r.id),...(supervisor?[esc(full(r.patient)),esc(full(r.doctor))]:[]),esc(r.date),esc(time(r.start_time)),esc(status(r.status)),button('Consultar',`data-online="${r.id}"`)]))) : '')
             + panel(followup?'Formalizar seguimiento':'Obtener cita',`<form id="clinical-booking">${formErrors}
                 ${followup?select('Consulta atendida con recomendación','parent_appointment_id',[['','Seleccione…'],...parents.map(a=>[a.id,`${code('CIT',a.id)} · ${full(a.patient)} · ${a.followup_suggested_at}`])],'','required'):''}
                 ${followup?select('Si cambia la fecha/hora sugerida, ¿quién origina el cambio?','followup_change_cause',[['patient','Paciente'],['clinic','Clínica']])+textarea('Motivo del cambio y acuerdo (obligatorio si lo origina la clínica)','followup_change_reason','','maxlength="3000"'):''}
@@ -56,18 +56,19 @@ export function installClinicalViews(ui) {
                 <div class="grid two">${select('Especialidad','specialty_id',[['','Seleccione…'],...options.specialties.map(s=>[s.id,s.name])],'','required')}
                 ${select('Preferencia de médico','preferred_doctor',[['','Equilibrar según disponibilidad y carga']])}
                 ${field('Fecha','date','date',localDate(),`required min="${localDate()}"`)}</div>
-                <div id="clinical-slots">${notice('Seleccione especialidad y fecha para consultar cupos.')}</div>
+                <div id="clinical-slots">${notice('Seleccione especialidad y fecha para consultar cupos.')}</div><div id="clinical-selection" aria-live="polite"></div>
                 ${online?'':textarea('Motivo (opcional)','reason','','maxlength="3000"')}
-                <div id="clinical-payment"></div>${online&&(supervisor||!options.online_payment_available)?notice(supervisor?'Vista de supervisión: no se reserva en nombre de otro usuario.':'No se puede iniciar el pago mientras el servicio esté indisponible.'):submit(online?'Retener cupo y generar QR de pruebas':'Verificar y emitir ficha')}</form>`), bind:()=>{
+                <div id="clinical-payment"></div>${online&&(supervisor||!options.online_payment_available)?notice(supervisor?'Vista de supervisión: no se reserva en nombre de otro usuario.':'No se puede iniciar el pago mientras el servicio esté indisponible.'):submit(online?'Reservar y pagar con PayPal Sandbox':'Verificar y emitir ficha')}</form>`), bind:()=>{
             const updatePayment = () => {
                 const specialty = options.specialties.find(s=>String(s.id)===$('#specialty_id').value);
                 const parent = parents.find(a=>String(a.id)===$('#parent_appointment_id')?.value);
                 const free = parent && selected && (parent.followup_suggested_at.slice(0,16).replace('T',' ')===`${$('#date').value} ${selected.start_time}` || $('#followup_change_cause')?.value==='clinic');
-                $('#clinical-payment').innerHTML = online ? notice(specialty?`Importe: ${money(specialty.fee_minor)}`:'Seleccione una especialidad para consultar el importe.') : free ? notice('Seguimiento en la fecha/hora recomendadas o con cambio causado por la clínica: exención de pago.') : paymentFields(specialty?.fee_minor);
+                $('#clinical-payment').innerHTML = online ? notice(specialty?`Tarifa: ${money(specialty.fee_minor)}. PayPal cobra USD de prueba; la orden mostrará la conversión fijada por el servidor (tasa de demostración: ${options.bob_per_usd || '—'} Bs por USD).`:'Seleccione una especialidad para consultar el importe.') : free ? notice('Seguimiento en la fecha/hora recomendadas o con cambio causado por la clínica: exención de pago.') : paymentFields(specialty?.fee_minor);
             };
             const load = async () => {
                 const version = ++queryVersion;
                 selected = null;
+                $('#clinical-selection').innerHTML='';
                 updatePayment();
                 $('#clinical-slots').innerHTML = notice('Consultando cupos…');
                 if (!$('#specialty_id').value || !$('#date').value) { $('#clinical-slots').innerHTML = notice('Seleccione especialidad y fecha.'); return; }
@@ -75,7 +76,12 @@ export function installClinicalViews(ui) {
                 if (version!==queryVersion || !$('#clinical-slots')) return;
                 blocks = result.blocks;
                 $('#clinical-slots').innerHTML = blocks.length ? table(['Médico','Inicio','Fin','Estado del cupo','Elegir'],blocks.map((b,i)=>[esc(b.doctor_name),esc(b.start_time),esc(b.end_time),esc(b.demand_blocked?'Bloqueo provisional de esta especialidad':'Libre'),button('Seleccionar',`data-choose="${i}"`)])) : notice(result.message || 'No hay cupos libres. Consulte otra fecha o profesional.');
-                on('[data-choose]','click',e=>{selected=blocks[Number(e.currentTarget.dataset.choose)]; document.querySelectorAll('[data-choose]').forEach(b=>b.classList.toggle('selected',b===e.currentTarget));updatePayment();});
+                on('[data-choose]','click',e=>{
+                    selected=blocks[Number(e.currentTarget.dataset.choose)];
+                    document.querySelectorAll('[data-choose]').forEach(b=>{const chosen=b===e.currentTarget;b.classList.toggle('selected',chosen);b.setAttribute('aria-pressed',String(chosen));b.textContent=chosen?'Seleccionado':'Seleccionar';});
+                    $('#clinical-selection').innerHTML=notice(`Horario elegido: ${selected.doctor_name} · ${$('#date').value} · ${selected.start_time} a ${selected.end_time}.`,'success');
+                    updatePayment();
+                });
             };
             on('#specialty_id','change',async()=>{
                 $('#preferred_doctor').innerHTML=[['','Equilibrar según disponibilidad y carga'],...options.doctors.filter(d=>d.specialties.some(s=>String(s.id)===$('#specialty_id').value)).map(d=>[d.id,full(d)])].map(([v,l])=>`<option value="${esc(v)}">${esc(l)}</option>`).join('');
@@ -99,6 +105,13 @@ export function installClinicalViews(ui) {
                 else { const a=await api('appointments','POST',data);await navigate(followup?'CU21':'CU09');ficha(a); }
             });
             updatePayment();
+            if(online&&!supervisor){
+                const params=new URLSearchParams(location.search),returned=params.get('paypal_booking');
+                if(returned&&/^[0-9]+$/.test(returned)){
+                    params.delete('paypal_booking');window.history.replaceState(null,'',`${location.pathname}${params.size?'?'+params:''}#reservar-cita`);
+                    api(`online-bookings/${returned}/status`,'POST',{}).then(showOnline).catch(error=>toast(error.message,true));
+                }
+            }
         }};
     }
 
@@ -107,11 +120,12 @@ export function installClinicalViews(ui) {
         const r=result.booking,p=result.payment;
         if(r.status==='cancelled') { await navigate('CU18');modal('Solicitud descartada',notice('Se liberó la retención después de comprobar que no existen pagos en proceso. No se creó una cita ni una ficha.'));return; }
         if(r.status==='expired') { await navigate('CU18');modal('Solicitud expirada',notice('La solicitud venció sin un pago confirmado ni en proceso. Puede consultar disponibilidad e iniciar otra solicitud.'));return; }
-        const image=String(result.qr_image||'').replace(/^data:image\/png;base64,/, '');
-        const qr=/^[A-Za-z0-9+/=\r\n]+$/.test(image)?`<img data-payment-qr="${r.id}-${r.attempt}" src="data:image/png;base64,${image}" alt="QR de pago de pruebas" style="max-width:280px;width:100%">`:'';
-        modal('Pago online de pruebas',notice(`Operación ${r.id} · Intento ${r.attempt}/2 · ${money(r.amount_minor)}`)
+        let approval='';
+        try {const u=new URL(result.approval_url||'');if(u.protocol==='https:'&&u.hostname==='www.sandbox.paypal.com'&&u.pathname==='/checkoutnow'&&!u.username&&!u.password)approval=u.href;}catch{}
+        modal('Pago con PayPal Sandbox',notice(`Operación ${r.id} · Intento ${r.attempt}/2 · ${money(r.amount_minor)}`)
+            +(p?.provider_amount_minor?notice(`PayPal: USD ${(p.provider_amount_minor/100).toFixed(2)} de prueba · Tasa fijada: ${p.exchange_rate} Bs/USD.`):'')
             +notice(`Solicitud: ${status(r.status)}. Pago: ${status(p?.status || 'Sin pago')}. Límite del intento: ${new Date(r.expires_at).toLocaleString('es-BO')}.`)
-            +(p?.status==='pending'&&new Date(r.expires_at)>new Date()?qr:'')
+            +(state.user.role==='Paciente'&&p?.status==='pending'&&approval?`<a class="btn primary" href="${esc(approval)}" rel="noreferrer">Continuar en PayPal Sandbox</a>`:'')
             +notice('La aplicación comprueba el pago en el servidor. Si la pasarela mantiene una transacción pendiente, conserva el cupo hasta conciliarla y bloquea un segundo cobro.')
             +button('Consultar estado',`data-check-payment="${r.id}"`)
             +(state.user.role==='Paciente'&&r.status==='held'&&r.attempt<2?button('Segundo intento',`data-retry-payment="${r.id}"`):'')
@@ -120,7 +134,6 @@ export function installClinicalViews(ui) {
         on('[data-check-payment]','click',async()=>showOnline(state.user.role==='Superadmin'?await api(`online-bookings/${r.id}`):await api(`online-bookings/${r.id}/status`,'POST',{})));
         on('[data-retry-payment]','click',async()=>showOnline(await api(`online-bookings/${r.id}/retry`,'POST',{})));
         on('[data-cancel-booking]','click',async()=>showOnline(await api(`online-bookings/${r.id}/cancel`,'POST',{})));
-        if(p?.status==='pending')setTimeout(()=>document.querySelector(`[data-payment-qr="${r.id}-${r.attempt}"]`)?.remove(),Math.max(0,new Date(r.expires_at).getTime()-Date.now()));
     }
 
     async function reschedule(a) {

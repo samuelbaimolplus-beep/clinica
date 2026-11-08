@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\User;
+use App\Services\Auth\EmailActivation;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -36,6 +37,8 @@ class CreateClinicSuperadmin extends Command
                 throw new \RuntimeException('No se pudo guardar el acceso privado; no se creó la cuenta.');
             }
             $this->info('Superadmin creado. Acceso en storage/app/private/acceso-superadmin.txt (excluido de Git).');
+            DB::afterCommit(fn () => app(EmailActivation::class)->send($user));
+            $this->info('Debe activar la cuenta con el código enviado a su correo antes de acceder.');
 
             return self::SUCCESS;
         });

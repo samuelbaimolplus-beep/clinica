@@ -2,11 +2,19 @@ export function installCatalogViews(ui) {
     const { $, state, views, api, esc, full, code, badge, field, select, textarea, personOptions, localDate, table, button, modal, formErrors, actionButtons, on, closeModal, bindForm, references, navigate, toast, confirmAction, panel, details, notice, time } = ui;
 // CU03–CU06: registros persistentes y activación sin eliminar información.
 const configs = {
-    users:{title:'Usuarios registrados',new:'Registrar usuario',headers:['Usuario','Correo','Nombre','Rol','Médico vinculado','Estado'], row:r=>[esc(r.username),esc(r.email),esc(r.name),esc(r.role),esc(full(state.refs.doctors.find(d=>d.id===r.doctor_id))),badge(r.status)]},
+    users:{title:'Usuarios registrados',new:'Registrar usuario',headers:['Usuario','Correo','Nombre','Rol','Médico vinculado','Estado','Activación'], row:r=>[esc(r.username),esc(r.email),esc(r.name),esc(r.role),esc(full(state.refs.doctors.find(d=>d.id===r.doctor_id))),badge(r.status),esc(r.email_verified_at?'Correo confirmado':'Pendiente de código')]},
     doctors:{title:'Médicos registrados',new:'Registrar médico',headers:['Código','N.º registro','Médico','Teléfono','Especialidades','Estado'],row:r=>[code('MED',r.id),esc(r.registration),esc(full(r)),esc(r.phone),esc(r.specialties.map(s=>s.name).join(', ')),badge(r.status)]},
     specialties:{title:'Especialidades',new:'Registrar especialidad',headers:['Código','Nombre','Descripción','Estado'],row:r=>[code('ESP',r.id),esc(r.name),esc(r.description||'—'),badge(r.status)]},
-    patients:{title:'Pacientes registrados',new:'Registrar paciente',headers:['Código','CI','Paciente','Nacimiento','Sexo','Teléfono','Estado'],row:r=>[code('PAC',r.id),esc(r.identity),esc(full(r)),esc(r.birth_date),esc(r.sex),esc(r.phone),badge(r.status)]},
+    patients:{title:'Pacientes registrados',new:'Registrar paciente y cuenta',headers:['Código','CI','Paciente','Nacimiento','Sexo','Teléfono','Estado','Cuenta de acceso'],row:r=>[code('PAC',r.id),esc(r.identity),esc(full(r)),esc(r.birth_date),esc(r.sex),esc(r.phone),badge(r.status),r.account?`${esc(r.account.username)} · ${r.account.email_verified_at?'Activada':'Pendiente de código'}`:'Sin cuenta']},
 };
+function accountFields(patient={},includeEmail=true) {
+    return (includeEmail?field('Correo para activar la cuenta','email','email',patient.email,'required maxlength="255" autocomplete="off"'):'')
+        +field('Nombre de usuario','username','text','','required minlength="3" maxlength="50" autocomplete="off"')
+        +field('Contraseña inicial','password','password','','required minlength="10" maxlength="128" autocomplete="new-password"')
+        +field('Repetir contraseña inicial','password_confirmation','password','','required minlength="10" maxlength="128" autocomplete="new-password"')
+        +`<label class="terms-accept full"><input name="identity_verified" type="checkbox" value="1" required>He verificado presencialmente la identidad del paciente y revisado su correo de contacto.</label>`
+        +`<div class="full">${notice('Se enviará un código al correo del paciente. La cuenta permanecerá bloqueada hasta que lo confirme desde «Activar mi cuenta». Entregue las credenciales únicamente al titular.')}</div>`;
+}
 function entityFields(entity,r={}) {
     const req='required maxlength="100"';
     const person = field('Nombres','first_name','text',r.first_name,req)+field('Apellidos','last_name','text',r.last_name,'required maxlength="150"')+field('Teléfono','phone','tel',r.phone,'required maxlength="30"');
@@ -24,7 +32,7 @@ function entityFields(entity,r={}) {
 }
 async function crudView(entity) {
     const rows=await api(`entities/${entity}`), config=configs[entity];
-    const rowsHtml = items=>table([...config.headers,'Acciones'],items.map(r=>[...config.row(r),(button('Consultar',`data-show="${r.id}"`,'link'))+button('Modificar',`data-edit="${r.id}"`,'link')+button(r.status==='Activo'?'Desactivar':'Activar',`data-toggle="${r.id}"`,'link')+(entity==='patients'&&r.status==='Activo'?button('Vincular cuenta',`data-invite="${r.id}"`,'link'):'')]));
+    const rowsHtml = items=>table([...config.headers,'Acciones'],items.map(r=>[...config.row(r),(button('Consultar',`data-show="${r.id}"`,'link'))+button('Modificar',`data-edit="${r.id}"`,'link')+button(r.status==='Activo'?'Desactivar':'Activar',`data-toggle="${r.id}"`,'link')+(entity==='patients'&&r.status==='Activo'&&!r.account?button('Crear cuenta',`data-create-account="${r.id}"`,'link'):'')]));
     function impactHtml(record) {
         const affected = record.affected_appointments || [];
         if (!affected.length) return '';
@@ -38,8 +46,19 @@ async function crudView(entity) {
         if (record.affected_appointments?.length) modal('Resultado del cambio', impactHtml(record));
     }
     function edit(record={}) {
-        modal(record.id?'Modificar registro':config.new,`<form id="entity-form">${formErrors}<div class="grid two">${entityFields(entity,record)}</div>${actionButtons(button('Cancelar','data-dismiss','')+'<button type="submit" class="btn success">Guardar</button>')}</form>`);
+        const patientAccount=entity==='patients'&&!record.id;
+        modal(record.id?'Modificar registro':config.new,`<form id="entity-form">${formErrors}<div class="grid two">${entityFields(entity,record)}${patientAccount?`<label class="terms-accept full"><input id="create-account" type="checkbox" checked>Crear también su cuenta de acceso</label><div id="patient-account-fields" class="grid two full">${accountFields({},false)}</div>`:''}</div>${actionButtons(button('Cancelar','data-dismiss','')+'<button type="submit" class="btn success">Guardar</button>')}</form>`);
         on('[data-dismiss]','click',closeModal);
+        if(patientAccount) {
+            const update=()=>{
+                const enabled=$('#create-account').checked;
+                $('#patient-account-fields').hidden=!enabled;
+                $('#patient-account-fields').querySelectorAll('input').forEach(input=>input.disabled=!enabled);
+                const email=$('#entity-form [name="email"]');email.required=enabled;
+                email.closest('label').querySelector('span').textContent=enabled?'Correo electrónico para activar la cuenta':'Correo electrónico (opcional)';
+            };
+            on('#create-account','change',update);update();
+        }
         if(entity==='users') {
             const update=()=>{const doctor=$('#doctor_id');$('#doctor-link').hidden=$('#role').value!=='Médico';doctor.required=!$('#doctor-link').hidden;doctor.disabled=$('#doctor-link').hidden;if(doctor.disabled)doctor.value='';};
             on('#role','change',update);update();
@@ -48,9 +67,10 @@ async function crudView(entity) {
             delete data.code;
             if(entity==='doctors')data.specialty_ids=new FormData(form).getAll('specialty_ids');
             if(entity==='users'&&data.role!=='Médico')data.doctor_id=null;
-            const saved=await api(`entities/${entity}${record.id?'/'+record.id:''}`,record.id?'PUT':'POST',data);
+            const withAccount=patientAccount&&$('#create-account').checked;
+            const saved=await api(withAccount?'patients/with-account':`entities/${entity}${record.id?'/'+record.id:''}`,record.id?'PUT':'POST',data);
             closeModal();await references();if(entity==='users'&&record.id===state.user.id)state.user=(await api('session')).user;
-            await navigate(state.view);toast('Registro guardado correctamente.');showImpact(saved);
+            await navigate(state.view);toast(withAccount?(saved.activation_email_sent?'Paciente y cuenta registrados. Se envió el código de activación a su correo.':'Paciente y cuenta registrados. Solicite el código desde Activar mi cuenta.'):entity==='users'&&!saved.email_verified_at?'Cuenta guardada pendiente de activación por correo.':'Registro guardado correctamente.');showImpact(saved);
         });
     }
     function bindRows(){
@@ -60,13 +80,14 @@ async function crudView(entity) {
             if (entity === 'patients') fields.push(['Correo electrónico', esc(record.email || '—')], ['Dirección', esc(record.address || '—')]);
             modal('Consultar registro',details(fields)+impactHtml(record));
         });
-        on('[data-invite]','click',e=>{
-            const id=Number(e.currentTarget.dataset.invite);
+        on('[data-create-account]','click',e=>{
+            const id=Number(e.currentTarget.dataset.createAccount);
             const patient=rows.find(r=>r.id===id);
-            modal('Vincular cuenta de paciente',`<p>${esc(full(patient))} · CI: ${esc(patient.identity||'Sin documento')}</p><form id="invite-form">${formErrors}<label class="terms-accept"><input name="identity_verified" value="1" type="checkbox" required>He verificado presencialmente la identidad del paciente.</label><div class="actions"><button type="submit" class="btn success">Generar código de vinculación</button></div></form>`);
-            bindForm('invite-form',async data=>{
-                const result=await api(`patients/${id}/account-invitation`,'POST',data);
-                modal('Código de vinculación',`<p>Entregue este código únicamente al paciente verificado. Se muestra una sola vez y vence en 48 horas. Al generar otro código, el anterior queda invalidado.</p>${field('Código para el registro online','activation-code','text',result.activation_code,'readonly autocomplete="off"')}<p>El paciente debe escribir sus datos de identidad tal como están registrados y aceptar las condiciones desde «Crear cuenta de paciente».</p>`);
+            modal('Crear cuenta del paciente',`<p>${esc(full(patient))} · CI: ${esc(patient.identity||'Sin documento')}</p><form id="patient-account-form">${formErrors}<div class="grid two">${accountFields(patient)}</div>${actionButtons(button('Cancelar','data-dismiss','')+'<button type="submit" class="btn success">Crear cuenta y enviar código</button>')}</form>`);
+            on('[data-dismiss]','click',closeModal);
+            bindForm('patient-account-form',async(data,form)=>{
+                const result=await api(`patients/${id}/account`,'POST',data);
+                form.reset();closeModal();await references();await navigate(state.view);toast(result.message);
             });
         });
         on('[data-edit]','click',e=>edit(rows.find(r=>r.id===Number(e.currentTarget.dataset.edit))));
@@ -81,8 +102,9 @@ async function crudView(entity) {
             },r.status==='Activo');
         });
     }
-    return {html:`<div class="toolbar">${field('Buscar por código, nombre o identificador','search','search','','placeholder="Buscar registros…"')}${button('+ '+config.new,'id="new-entity"')}</div>${panel(config.title,`<div id="records">${rowsHtml(rows)}</div>`)}`,bind:()=>{
+    return {html:`<div class="toolbar">${field('Buscar por código, nombre o identificador','search','search','','placeholder="Buscar registros…"')}${button('+ '+config.new,'id="new-entity"')}${entity==='users'?button('+ Cuenta de paciente','id="new-patient-account"'):''}</div>${panel(config.title,`<div id="records">${rowsHtml(rows)}</div>`)}`,bind:()=>{
         on('#new-entity','click',()=>edit());bindRows();
+        on('#new-patient-account','click',async()=>{await navigate('CU06');$('#new-entity')?.click();});
         on('#search','input',e=>{const q=e.target.value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();$('#records').innerHTML=rowsHtml(rows.filter(r=>JSON.stringify(r).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(q)));bindRows();});
     }};
 }

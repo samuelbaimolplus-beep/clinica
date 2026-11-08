@@ -21,6 +21,11 @@ class User extends Authenticatable
 
     protected static function booted(): void
     {
+        static::updating(function (User $user) {
+            if ($user->isDirty('email')) {
+                $user->email_verified_at = null;
+            }
+        });
         static::creating(function (User $user) {
             // Compatibilidad con altas por consola y clientes anteriores al campo username.
             if (! filled($user->username)) {

@@ -52,9 +52,9 @@ class ClinicTest extends TestCase
         foreach (['patient', 'otherPatient'] as $i => $property) {
             $this->$property = Patient::create(['identity' => 'TEST-'.$i, 'first_name' => 'Paciente', 'last_name' => 'Prueba '.$i, 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '71111111', 'status' => 'Activo']);
         }
-        $this->admin = User::create(['name' => 'Administración', 'email' => 'admin@test.local', 'password' => 'ClavePrueba2026', 'role' => 'Administrador', 'status' => 'Activo']);
-        $this->reception = User::create(['name' => 'Recepción', 'email' => 'recepcion@test.local', 'password' => 'ClavePrueba2026', 'role' => 'Recepcionista', 'status' => 'Activo']);
-        $this->physician = User::create(['name' => 'Profesional', 'email' => 'medico@test.local', 'password' => 'ClavePrueba2026', 'role' => 'Médico', 'status' => 'Activo', 'doctor_id' => $this->doctor->id]);
+        $this->admin = $this->verifiedAccount(['name' => 'Administración', 'email' => 'admin@test.local', 'password' => 'ClavePrueba2026', 'role' => 'Administrador', 'status' => 'Activo']);
+        $this->reception = $this->verifiedAccount(['name' => 'Recepción', 'email' => 'recepcion@test.local', 'password' => 'ClavePrueba2026', 'role' => 'Recepcionista', 'status' => 'Activo']);
+        $this->physician = $this->verifiedAccount(['name' => 'Profesional', 'email' => 'medico@test.local', 'password' => 'ClavePrueba2026', 'role' => 'Médico', 'status' => 'Activo', 'doctor_id' => $this->doctor->id]);
     }
 
     private function booking(array $overrides = []): array

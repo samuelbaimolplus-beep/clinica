@@ -15,7 +15,7 @@ class AccountManagementController extends Controller
     {
         abort_unless($request->user()->role === 'Superadmin', 403);
 
-        return response()->json(User::orderBy('name')->get(['id', 'name', 'username', 'email', 'role', 'status']))
+        return response()->json(User::orderBy('name')->get(['id', 'name', 'username', 'email', 'role', 'status', 'email_verified_at']))
             ->header('Cache-Control', 'no-store');
     }
 

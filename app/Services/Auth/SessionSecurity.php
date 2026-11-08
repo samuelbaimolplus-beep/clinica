@@ -34,7 +34,7 @@ class SessionSecurity
         $reason = null;
         if (! $user || ! ClinicAccess::isActive($user)) {
             $reason = 'inactive_account';
-        } elseif ($user->role === 'Paciente' && ! $user->email_verified_at) {
+        } elseif (! $user->email_verified_at) {
             $reason = 'email_unverified';
         } elseif ($request->session()->get('clinic.auth_user_id') === $user->id
             && $request->session()->has('clinic.auth_fingerprint')

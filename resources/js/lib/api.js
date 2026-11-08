@@ -40,6 +40,7 @@ export function createApiClient({getToken, setToken, onUnauthorized, fetchImpl =
             const error = new Error(data.message || 'No se pudo completar la operación.');
             error.status = response.status;
             error.errors = data.errors;
+            error.data = data;
             throw error;
         }
         return data;

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Notifications\VerifyClinicEmail;
 use App\Support\Username;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -16,7 +17,7 @@ class UsernameLoginTest extends TestCase
 
     private function account(array $changes = []): User
     {
-        return User::create(array_replace(['name' => 'Samuel de prueba', 'username' => 'samuel', 'email' => 'samuel@username.test',
+        return $this->verifiedAccount(array_replace(['name' => 'Samuel de prueba', 'username' => 'samuel', 'email' => 'samuel@username.test',
             'password' => 'PruebaSegura2026', 'role' => 'Administrador', 'status' => 'Activo'], $changes));
     }
 
@@ -69,16 +70,23 @@ class UsernameLoginTest extends TestCase
         }
     }
 
-    public function test_patient_chooses_username_but_still_requires_email_verification(): void
+    public function test_patient_username_is_assigned_at_clinic_and_account_requires_email_code(): void
     {
+        $this->actingAs($this->account());
         $data = ['first_name' => 'Ana', 'last_name' => 'Paciente', 'username' => '  ANA.PACIENTE  ', 'identity' => 'USERNAME-01',
             'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000000', 'email' => 'ana@username.test',
-            'password' => 'PruebaSegura2026', 'password_confirmation' => 'PruebaSegura2026', 'terms_accepted' => true, 'terms_version' => config('clinic.terms_version')];
-        $response = $this->postJson('/api/register', $data)->assertCreated()->assertJsonPath('user.username', 'ana.paciente')->assertJsonPath('user.role', 'Paciente');
-        $this->assertGuest();
-        $this->postJson('/api/login', ['email' => 'ana.paciente', 'password' => 'PruebaSegura2026'])->assertUnprocessable();
-        $user = User::findOrFail($response->json('user.id'));
-        $user->forceFill(['email_verified_at' => now()])->save();
+            'password' => 'PruebaSegura2026', 'password_confirmation' => 'PruebaSegura2026', 'identity_verified' => true];
+        $response = $this->postJson('/api/patients/with-account', $data)->assertCreated()->assertJsonPath('account.username', 'ana.paciente');
+        $user = User::findOrFail($response->json('account.id'));
+        $code = null;
+        Notification::assertSentTo($user, VerifyClinicEmail::class, function ($notification) use (&$code) {
+            $code = $notification->code;
+
+            return true;
+        });
+        $this->postJson('/api/logout')->assertOk();
+        $this->postJson('/api/login', ['email' => 'ana.paciente', 'password' => 'PruebaSegura2026'])->assertForbidden();
+        $this->postJson('/api/account/activate', ['email' => $user->email, 'code' => $code])->assertOk();
         $this->postJson('/api/login', ['email' => 'ANA.PACIENTE', 'password' => 'PruebaSegura2026'])->assertOk();
         $this->getJson('/api/entities/users')->assertForbidden();
     }

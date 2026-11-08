@@ -11,7 +11,6 @@ use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
-use Illuminate\Support\Facades\URL;
 use Tests\TestCase;
 
 class AccountSecurityTest extends TestCase
@@ -38,15 +37,19 @@ class AccountSecurityTest extends TestCase
         return $user;
     }
 
-    public function test_patient_login_requires_verified_email_and_signed_verification_does_not_log_in(): void
+    public function test_patient_login_requires_email_code_and_activation_does_not_log_in(): void
     {
         $user = $this->account(false, true);
-        $this->postJson('/api/login', ['email' => $user->email, 'password' => 'AnteriorSegura2026'])->assertUnprocessable();
+        $this->postJson('/api/login', ['email' => $user->email, 'password' => 'AnteriorSegura2026'])->assertForbidden();
         $this->postJson('/api/account/email', ['email' => $user->email, 'purpose' => 'verify'])->assertOk();
-        Notification::assertSentTo($user, VerifyClinicEmail::class);
-        $this->get('/account/verify/'.$user->id.'/'.sha1($user->email))->assertForbidden();
-        $url = URL::temporarySignedRoute('clinic.email.verify', now()->addHour(), ['id' => $user->id, 'hash' => sha1($user->email)]);
-        $this->get($url)->assertOk();
+        $code = null;
+        Notification::assertSentTo($user, VerifyClinicEmail::class, function ($notification) use (&$code) {
+            $code = $notification->code;
+
+            return true;
+        });
+        $this->get('/account/verify/'.$user->id.'/'.sha1($user->email))->assertNotFound();
+        $this->postJson('/api/account/activate', ['email' => $user->email, 'code' => $code])->assertOk();
         $this->assertGuest();
         $this->assertNotNull($user->fresh()->email_verified_at);
         $this->postJson('/api/login', ['email' => $user->email, 'password' => 'AnteriorSegura2026'])->assertOk();

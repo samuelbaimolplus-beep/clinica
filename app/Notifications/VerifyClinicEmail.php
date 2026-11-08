@@ -4,10 +4,11 @@ namespace App\Notifications;
 
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
-use Illuminate\Support\Facades\URL;
 
 class VerifyClinicEmail extends Notification
 {
+    public function __construct(public readonly string $code) {}
+
     public function via(object $notifiable): array
     {
         return ['mail'];
@@ -15,12 +16,9 @@ class VerifyClinicEmail extends Notification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $url = URL::temporarySignedRoute('clinic.email.verify', now()->addMinutes(60), [
-            'id' => $notifiable->id, 'hash' => sha1($notifiable->email),
-        ]);
-
         return (new MailMessage)->subject('Verifique su correo en Clínica Vida Salud')
-            ->greeting('Clínica Vida Salud')->line('Confirme este correo para utilizar su cuenta y recuperar su contraseña.')
-            ->action('Verificar correo', $url)->line('El enlace vence en 60 minutos. Si no solicitó esta cuenta, ignore este mensaje.');
+            ->greeting('Clínica Vida Salud')->line('La clínica ha registrado su cuenta. Para activarla, ingrese este código en la pantalla «Activar mi cuenta»:')
+            ->line($this->code)->action('Activar mi cuenta', url('/').'#activar-cuenta')
+            ->line('El código vence en 15 minutos y solo puede utilizarse una vez. No lo comparta con otras personas.');
     }
 }

@@ -20,7 +20,7 @@ class ReferenceController extends Controller
         return [
             'doctors' => Doctor::with('specialties')->when($role === 'Médico', fn ($q) => $q->whereKey($request->user()->doctor_id))->orderBy('last_name')->get(),
             'specialties' => Specialty::orderBy('name')->get(),
-            'patients' => $request->user()->hasStaffRole('Recepcionista') || ($role === 'Administrador' && config('clinic.appointments_enabled'))
+            'patients' => $request->user()->can('manage-patients')
                 ? Patient::orderBy('last_name')->get() : [],
         ];
     }

@@ -42,13 +42,13 @@ class V3WorkflowTest extends TestCase
         $this->assertSame('clinica_vida_salud_test', config('database.connections.pgsql.database'));
         $this->travelTo(Carbon::parse('2026-11-09 07:00:00', 'America/La_Paz'));
         config(['clinic.appointments_enabled' => false]);
-        $this->admin = User::create(['name' => 'Administración V3', 'email' => 'admin-v3@example.test', 'role' => 'Administrador', 'status' => 'Activo', 'password' => 'ClavePrueba2026']);
-        $this->reception = User::create(['name' => 'Recepción V3', 'email' => 'reception-v3@example.test', 'role' => 'Recepcionista', 'status' => 'Activo', 'password' => 'ClavePrueba2026']);
+        $this->admin = $this->verifiedAccount(['name' => 'Administración V3', 'email' => 'admin-v3@example.test', 'role' => 'Administrador', 'status' => 'Activo', 'password' => 'ClavePrueba2026']);
+        $this->reception = $this->verifiedAccount(['name' => 'Recepción V3', 'email' => 'reception-v3@example.test', 'role' => 'Recepcionista', 'status' => 'Activo', 'password' => 'ClavePrueba2026']);
         $this->doctor = Doctor::create(['registration' => 'V3-DOC', 'first_name' => 'Ana', 'last_name' => 'Médica', 'email' => 'doc-v3@example.test', 'phone' => '70000001', 'status' => 'Activo']);
         $this->specialty = Specialty::create(['name' => 'Especialidad V3', 'status' => 'Activo']);
         $this->doctor->specialties()->attach($this->specialty);
         $this->patient = Patient::create(['identity' => null, 'first_name' => 'Paciente', 'last_name' => 'V3', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000002', 'address' => 'Dirección privada', 'status' => 'Activo']);
-        $this->patientUser = User::create(['name' => 'Paciente V3', 'email' => 'patient-v3@example.test', 'role' => 'Paciente', 'patient_id' => $this->patient->id, 'status' => 'Activo', 'password' => 'ClavePrueba2026']);
+        $this->patientUser = $this->verifiedAccount(['name' => 'Paciente V3', 'email' => 'patient-v3@example.test', 'role' => 'Paciente', 'patient_id' => $this->patient->id, 'status' => 'Activo', 'password' => 'ClavePrueba2026']);
         $this->patientUser->forceFill(['email_verified_at' => now()])->save();
         $this->shift = Schedule::create($this->shiftData());
     }
@@ -84,7 +84,7 @@ class V3WorkflowTest extends TestCase
         $this->assertSame($before, $after);
         $this->assertSame('Programada', $appointment->fresh()->status);
         $this->patchJson('/api/entities/patients/'.$this->patient->id.'/status', ['status' => 'Activo'])->assertOk();
-        $this->actingAs($this->admin)->getJson('/api/entities/patients/'.$this->patient->id)->assertForbidden();
+        $this->actingAs($this->admin)->getJson('/api/entities/patients/'.$this->patient->id)->assertOk();
         $this->actingAs($this->patientUser)->patchJson('/api/entities/patients/'.$this->patient->id.'/status', ['status' => 'Inactivo'])->assertForbidden();
     }
 

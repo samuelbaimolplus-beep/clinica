@@ -7,7 +7,7 @@ use App\Services\Payments\OnlineBookingService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
-class ReconcileWizPayPayment implements ShouldQueue
+class ReconcilePayPalPayment implements ShouldQueue
 {
     use Queueable;
 

@@ -225,7 +225,9 @@ class AppointmentService
 
     public function event(Appointment $a, User $actor, string $action, array $details): void
     {
-        $a->events()->create(['user_id' => $actor->id, 'action' => $action, 'details' => $details]);
+        DB::statement('CALL public.registrar_evento_cita(?, ?, ?, ?::jsonb)', [
+            $a->id, $actor->id, $action, json_encode((object) $details, JSON_THROW_ON_ERROR),
+        ]);
     }
 
     public function needsPayment(Appointment $a): bool

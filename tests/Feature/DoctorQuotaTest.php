@@ -32,7 +32,7 @@ class DoctorQuotaTest extends TestCase
         $this->assertSame('clinica_vida_salud_test', config('database.connections.pgsql.database'));
         $this->travelTo(Carbon::parse('2026-11-04 07:00:00', 'America/La_Paz'));
         config(['clinic.appointments_enabled' => false]);
-        $this->admin = User::create(['name' => 'Administración', 'email' => 'quota-admin@example.test',
+        $this->admin = $this->verifiedAccount(['name' => 'Administración', 'email' => 'quota-admin@example.test',
             'password' => 'ClaveSegura2026', 'role' => 'Administrador', 'status' => 'Activo']);
         $this->doctor = Doctor::create(['registration' => 'QUOTA-DOC', 'first_name' => 'Ana', 'last_name' => 'Prueba',
             'email' => 'quota-doc@example.test', 'phone' => '70000000', 'status' => 'Activo']);
@@ -124,7 +124,7 @@ class DoctorQuotaTest extends TestCase
 
     public function test_only_administrators_can_configure_and_inactive_doctors_are_rejected(): void
     {
-        $reception = User::create(['name' => 'Recepción', 'email' => 'quota-reception@example.test', 'password' => 'ClaveSegura2026',
+        $reception = $this->verifiedAccount(['name' => 'Recepción', 'email' => 'quota-reception@example.test', 'password' => 'ClaveSegura2026',
             'role' => 'Recepcionista', 'status' => 'Activo']);
         $this->actingAs($reception)->putJson('/api/doctor-quotas', ['doctor_id' => $this->doctor->id,
             'presential_percent' => 50, 'online_percent' => 50])->assertForbidden();

@@ -60,7 +60,8 @@ class ClinicalWorkflowController extends Controller
     {
         $payment = $booking->payments()->latest('attempt')->first();
 
-        return ['booking' => $booking, 'payment' => $payment, 'qr_image' => $payment?->qr_image,
+        return ['booking' => $booking, 'payment' => $payment,
+            'approval_url' => $payment?->method === 'paypal' ? $payment->approval_url : null,
             'appointment' => $booking->appointment()->with('doctor', 'specialty', 'patient', 'payment')->first()];
     }
 
