@@ -1,12 +1,12 @@
 # Despliegue de Clínica Vida Salud en Render y Neon
 
-El repositorio de este despliegue es exclusivamente **https://github.com/samuelbaimolplus-beep/clinica**, rama `main`. El servicio nuevo se llama `clinica-vida-salud` y la base nueva `clinica`. El proyecto `vetproy` se conserva intacto: no se reutiliza su servicio, su base ni su APP_KEY. Se puede usar el mismo proyecto de Neon con una base y un rol independientes.
+El repositorio de este despliegue es exclusivamente **https://github.com/samuelbaimolplus-beep/clinica**, rama `main`. El servicio nuevo se llama `clinica-vida-salud`; el usuario proporcionó una conexión nueva a la base `neondb`. El proyecto `vetproy` se conserva intacto: no se reutiliza su servicio, su base ni su APP_KEY.
 
 ## 1. Crear la base en Neon
 
-En Neon, crear una base vacía llamada `clinica`, con un rol propietario exclusivo de esa base. Elegir una región cercana a la del servicio Render. Copiar desde **Connect** la cadena de conexión **directa** (sin `-pooler`), conservando `sslmode=require`. Guardarla como secreto `DATABASE_URL` en Render. Nunca ponerla en este repositorio, el Dockerfile ni en una variable `VITE_*`.
+La conexión proporcionada apunta a `neondb`, que se verificó vacía antes de restaurar. Para una instalación nueva, usar una base independiente con un rol propietario exclusivo y una región cercana a Render. Copiar desde **Connect** la cadena de conexión **directa** (sin `-pooler`), conservando `sslmode=require&channel_binding=require`. Guardarla como secreto `DATABASE_URL` en Render y definir `CLINIC_DEPLOY_DATABASE=neondb` y `PGCHANNELBINDING=require`. Nunca poner la contraseña en este repositorio, el Dockerfile ni en una variable `VITE_*`.
 
-Las migraciones crean las tablas, índices, procedimientos y triggers del proyecto, incluidos los nombres en español. No es necesario importar el SQL de entrega para una instalación vacía. El arranque comprueba que la base de la URL coincida con `CLINIC_DEPLOY_DATABASE=clinica` antes de migrar. No usar la base de vetproy, `migrate:fresh` ni `db:seed` sobre datos existentes.
+Las migraciones crean las tablas, índices, procedimientos y triggers del proyecto, incluidos los nombres en español. No es necesario importar el SQL de entrega para una instalación vacía. El arranque comprueba que la base de la URL coincida con `CLINIC_DEPLOY_DATABASE=neondb` antes de migrar. No usar la base de vetproy, `migrate:fresh` ni `db:seed` sobre datos existentes.
 
 **En esta entrega se conservarán los datos actuales.** Restaurar el respaldo local en la nueva base antes del primer despliegue. Para crear o actualizar el respaldo, sin modificar el `.env` local:
 
@@ -17,15 +17,16 @@ php deploy/backup.php
 
 El archivo `.dump` y su manifiesto `.json` quedan en `storage/app/private/despliegue`, excluidos de Git y de la imagen Docker. El respaldo usa un snapshot consistente de solo lectura y conserva el esquema, las cuentas con sus contraseñas cifradas mediante hash, los pacientes, las citas, los pagos y la auditoría. Las sesiones, la caché, las colas técnicas y los tokens temporales de recuperación se dejan vacíos para comenzar con sesiones nuevas. No se cambian las contraseñas existentes ni la verificación de correo.
 
-En una terminal privada, definir `NEON_DATABASE_URL` con la conexión directa de la nueva base `clinica` (no enviarla por chat ni guardarla en un archivo del repositorio). Después:
+En una terminal privada, definir `NEON_DATABASE_URL` con la conexión directa de la nueva base `neondb` (no enviarla por chat ni guardarla en un archivo del repositorio). Después:
 
 ```powershell
 $env:PG_RESTORE_BINARY='C:/Program Files/PostgreSQL/17/bin/pg_restore.exe'
+$env:CLINIC_DEPLOY_DATABASE='neondb'
 php deploy/restore.php storage/app/private/despliegue/NOMBRE_MANIFIESTO.json
 Remove-Item Env:NEON_DATABASE_URL
 ```
 
-El restaurador verifica el SHA-256, exige el host directo de Neon con TLS y la base `clinica`, rechaza un destino que ya tenga tablas, restaura en una sola transacción sin propietarios ni privilegios locales y compara las cantidades de filas con el manifiesto. No usa `--clean` ni elimina tablas existentes. El despliegue posterior aplica solo las migraciones pendientes. No importar a la base de vetproy. Si hubo cambios locales después del respaldo, generar uno nuevo antes de la restauración definitiva.
+El restaurador verifica el SHA-256, exige el host directo de Neon con TLS y la base seleccionada explícitamente en `CLINIC_DEPLOY_DATABASE`, rechaza un destino que ya tenga tablas, restaura en una sola transacción sin propietarios ni privilegios locales y compara las cantidades de filas con el manifiesto. El campo `target_database=clinica` del respaldo identifica el proyecto de origen; el destino real se selecciona con la variable anterior. No usa `--clean` ni elimina tablas existentes. El despliegue posterior aplica solo las migraciones pendientes. No importar a la base de vetproy. Si hubo cambios locales después del respaldo, generar uno nuevo antes de la restauración definitiva.
 
 ## 2. Crear el servicio nuevo en Render
 
@@ -38,7 +39,7 @@ Introducir los secretos solicitados:
 | Variable | Valor |
 | --- | --- |
 | `APP_KEY` | Generar una clave nueva con `php artisan key:generate --show`. Copiar el resultado a Render, sin usar `key:generate` sin `--show` en local. Mantener la misma clave en futuros despliegues. |
-| `DATABASE_URL` | Conexión directa de Neon a la base nueva `clinica`, con TLS. |
+| `DATABASE_URL` | Conexión directa de Neon a la base nueva `neondb`, con TLS. |
 | `MAIL_HOST` | Host del proveedor de correo que admita SMTP en el puerto configurado. |
 | `MAIL_USERNAME` y `MAIL_PASSWORD` | Credenciales del proveedor de correo. |
 | `MAIL_FROM_ADDRESS` | Remitente autorizado por el proveedor. |
@@ -71,7 +72,7 @@ Render Free se suspende tras 15 minutos sin tráfico, puede tardar alrededor de 
 
 ## Referencias oficiales
 
-Validación local realizada: imagen Docker construida con dependencias de producción y assets; cachés de configuración, rutas y vistas generadas; configuración Apache válida; `/up`, `/` y `/api/session` respondieron HTTP 200 en un contenedor temporal con sesión de pruebas. Las cinco pruebas de despliegue pasan (19 aserciones), incluidas sesiones, caché y cola sobre PostgreSQL con el esquema en español. El respaldo se restauró en una base temporal local y se verificaron las cantidades de las 19 tablas conservadas, dejando vacíos los datos técnicos temporales. Esto no acredita todavía conexión a Neon ni despliegue en Render.
+Validación realizada: imagen Docker construida con dependencias de producción y assets; cachés de configuración, rutas y vistas generadas; configuración Apache válida; `/up`, `/` y `/api/session` respondieron HTTP 200 en un contenedor temporal con sesión de pruebas. Las seis pruebas de despliegue pasan (20 aserciones), incluidas sesiones, caché y cola sobre PostgreSQL con el esquema en español. El respaldo se restauró primero en una base temporal local y después en la base autorizada `neondb` de Neon: se verificaron las cantidades de las 19 tablas conservadas, dejando vacíos los datos técnicos temporales. La conexión cliente se comprobó con TLS 1.3 y channel binding obligatorio. Laravel leyó 14 cuentas, 13 pacientes, 6 médicos, 28 citas, 13 pagos y 160 eventos de auditoría; no hay migraciones pendientes. La conexión local permanece intacta. Falta confirmar que las variables anteriores estén guardadas en Render y verificar el servicio desplegado.
 
 - [Laravel y Docker en Render](https://render.com/docs/deploy-php-laravel-docker)
 - [Blueprints de Render](https://render.com/docs/blueprint-spec)

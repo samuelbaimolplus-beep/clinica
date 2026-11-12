@@ -27,7 +27,9 @@ services:
       - key: DB_CONNECT_TIMEOUT
         value: "10"
       - key: CLINIC_DEPLOY_DATABASE
-        value: clinica
+        value: neondb
+      - key: PGCHANNELBINDING
+        value: require
       - key: SESSION_DRIVER
         value: database
       - key: SESSION_SECURE_COOKIE

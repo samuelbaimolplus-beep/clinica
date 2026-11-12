@@ -32,6 +32,15 @@ class DeploymentConfigurationTest extends TestCase
         $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
     }
 
+    public function test_neon_default_database_is_accepted_when_explicitly_selected(): void
+    {
+        $process = $this->validateDeployment([
+            'DATABASE_URL' => 'postgresql://test:test@unreachable.neon.tech/neondb?sslmode=require&channel_binding=require',
+            'CLINIC_DEPLOY_DATABASE' => 'neondb',
+        ]);
+        $this->assertTrue($process->isSuccessful(), $process->getErrorOutput());
+    }
+
     public function test_startup_refuses_the_vetproy_database_even_if_selected_as_expected(): void
     {
         $process = $this->validateDeployment([
