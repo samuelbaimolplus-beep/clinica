@@ -1,5 +1,7 @@
 <?php
 
+/** Evolución versionada del esquema. Ejecute migraciones sobre la conexión elegida; nunca use migrate:fresh en la base principal. */
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -7,6 +9,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /** Aplica el cambio de esquema correspondiente a esta migración. */
     public function up(): void
     {
         Schema::table('patients', fn (Blueprint $t) => $t->string('identity', 40)->nullable()->change());
@@ -45,6 +48,7 @@ return new class extends Migration
             SQL);
     }
 
+    /** Describe la reversión de esta migración; se utiliza únicamente al solicitar un rollback. */
     public function down(): void
     {
         // Evitar pérdida de cuentas: el rollback requiere resolverlas explícitamente.

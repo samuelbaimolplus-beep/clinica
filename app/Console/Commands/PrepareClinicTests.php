@@ -1,5 +1,7 @@
 <?php
 
+/** Prepara el esquema de la base exclusiva de pruebas, con comprobación del nombre antes de migrar. */
+
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
@@ -11,6 +13,7 @@ class PrepareClinicTests extends Command
 
     protected $description = 'Aplica migraciones exclusivamente en clinica_vida_salud_test, sin borrar datos.';
 
+    /** Ejecuta la responsabilidad de este middleware, comando o trabajo; sus controles se explican en el encabezado de la clase. */
     public function handle(): int
     {
         config(['database.default' => 'pgsql', 'database.connections.pgsql.url' => null, 'database.connections.pgsql.database' => 'clinica_vida_salud_test']);

@@ -1,3 +1,4 @@
+/** Consultas globales de pagos, exenciones y cuentas para Superadmin. */
 export function installSupervisionViews(ui) {
     const {views, api, panel, notice, table, esc, full, badge, button, on, navigate} = ui;
     const money = amount => `Bs ${(Number(amount) / 100).toFixed(2)}`;

@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\Schedules\QuotaAllocator;
+use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios\QuotaAllocator;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;

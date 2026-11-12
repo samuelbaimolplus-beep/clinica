@@ -1,3 +1,4 @@
+/** Administración de cuentas y contraseñas por personal autorizado, sin mostrar claves existentes. */
 export function installAccountManagementViews(ui) {
     const {views, state, api, panel, notice, button, table, esc, badge, modal, on, field,
         formErrors, submit, bindForm, closeModal, toast, navigate} = ui;

@@ -1,5 +1,7 @@
 <?php
 
+/** Componente VerifyClinicEmail: colabora con los módulos del sistema sin reemplazar sus controles del servidor. */
+
 namespace App\Notifications;
 
 use Illuminate\Notifications\Messages\MailMessage;
@@ -7,13 +9,16 @@ use Illuminate\Notifications\Notification;
 
 class VerifyClinicEmail extends Notification
 {
+    /** Recibe las dependencias o datos que necesita esta instancia. */
     public function __construct(public readonly string $code) {}
 
+    /** Declara los canales de entrega de esta notificación. */
     public function via(object $notifiable): array
     {
         return ['mail'];
     }
 
+    /** Compone el correo de activación para su destinatario. */
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)->subject('Verifique su correo en Clínica Vida Salud')

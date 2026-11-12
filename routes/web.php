@@ -1,34 +1,46 @@
 <?php
 
-use App\Http\Controllers\AccountActivationController;
-use App\Http\Controllers\AccountManagementController;
-use App\Http\Controllers\AccountPasswordController;
-use App\Http\Controllers\AccountProfileController;
-use App\Http\Controllers\AccountRecoveryController;
-use App\Http\Controllers\AccountUsernameController;
-use App\Http\Controllers\AgendaAdjustmentController;
-use App\Http\Controllers\AppointmentController;
-use App\Http\Controllers\AuditController;
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\Catalog\DoctorController;
-use App\Http\Controllers\Catalog\ImpactController;
-use App\Http\Controllers\Catalog\PatientController;
-use App\Http\Controllers\Catalog\SpecialtyController;
-use App\Http\Controllers\Catalog\StatusController;
-use App\Http\Controllers\Catalog\UserController;
-use App\Http\Controllers\ClinicalWorkflowController;
-use App\Http\Controllers\ManagedPatientAccountController;
-use App\Http\Controllers\MedicalAvailabilityController;
-use App\Http\Controllers\PayPalWebhookController;
-use App\Http\Controllers\ReferenceController;
-use App\Http\Controllers\ReportController;
-use App\Http\Controllers\ScheduleController;
-use App\Http\Controllers\ScheduleImpactController;
-use App\Http\Controllers\SupervisionController;
+/** Puntos de entrada de web: agrupan operaciones y sus controles de acceso antes de llegar al dominio. */
+
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Http\AccountActivationController;
+use App\Paquetes\P01_UsuariosYAcceso\CU03_GestionarUsuariosYRoles\Http\AccountManagementController;
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Http\AccountPasswordController;
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Http\AccountProfileController;
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Http\AccountRecoveryController;
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Http\AccountUsernameController;
+use App\Paquetes\P04_HorariosYDisponibilidad\CU24_GestionarBloqueosProvisionales\Http\AgendaAdjustmentController;
+use App\Paquetes\P05_CitasMedicas\CU09_ProgramarCitaMedica\Http\AppointmentController;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Http\AuditController;
+use App\Paquetes\P01_UsuariosYAcceso\CU01_IniciarSesion\Http\AuthController;
+use App\Paquetes\P02_PersonalMedicoYEspecialidades\CU04_GestionarMedicos\Http\DoctorController;
+use App\Compartido\Catalogos\Http\ImpactController;
+use App\Paquetes\P03_Pacientes\CU06_GestionarPacientes\Http\PatientController;
+use App\Paquetes\P02_PersonalMedicoYEspecialidades\CU05_GestionarEspecialidades\Http\SpecialtyController;
+use App\Compartido\Catalogos\Http\StatusController;
+use App\Paquetes\P01_UsuariosYAcceso\CU03_GestionarUsuariosYRoles\Http\UserController;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Http\OnlineBookingController;
+use App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Http\ManagedPatientAccountController;
+use App\Paquetes\P04_HorariosYDisponibilidad\CU08_ConsultarDisponibilidadMedica\Http\MedicalAvailabilityController;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\Compartido\Integraciones\PayPalWebhookController;
+use App\Compartido\Http\ReferenceController;
+use App\Paquetes\P06_HistorialYReportes\CU16_GenerarReportesAdministrativos\Http\ReportController;
+use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Http\ScheduleController;
+use App\Paquetes\P05_CitasMedicas\CU17_ConsultarCitasAfectadas\Http\ScheduleImpactController;
+use App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Http\PatientAccountsController;
 use App\Http\Middleware\ClinicalAccessAudit;
 use App\Http\Middleware\ClinicSession;
 use App\Http\Middleware\ReceptionAgendaAccess;
 use App\Http\Middleware\RequireAppointments;
+use App\Paquetes\P01_UsuariosYAcceso\CU02_CerrarSesion\Http\LogoutController;
+use App\Paquetes\P05_CitasMedicas\Compartido\Http\AppointmentQueryController;
+use App\Paquetes\P05_CitasMedicas\Compartido\Http\AppointmentActionController;
+use App\Paquetes\P05_CitasMedicas\CU10_ReprogramarCitaMedica\Http\ReprogrammingController;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\CU20_SolicitarReembolso\Http\RefundRequestController;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\CU26_ResolverSolicitudDeReembolso\Http\RefundResolutionController;
+use App\Paquetes\P04_HorariosYDisponibilidad\CU08_ConsultarDisponibilidadMedica\Http\AvailableSlotsController;
+use App\Paquetes\P04_HorariosYDisponibilidad\CU25_HabilitarCuposOnline\Http\ProtectedOnlineSlotsController;
+use App\Paquetes\P05_CitasMedicas\CU10_ReprogramarCitaMedica\Http\ReceptionInboxController;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\CU19_VerificarPagoOExencion\Http\PaymentsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -51,7 +63,7 @@ Route::prefix('api')->group(function () {
     Route::post('account/email', [AccountRecoveryController::class, 'send'])->middleware('throttle:6,1');
     Route::post('account/activate', AccountActivationController::class)->middleware('throttle:6,1');
     Route::post('account/reset', [AccountRecoveryController::class, 'reset'])->middleware('throttle:6,1');
-    Route::post('logout', [AuthController::class, 'logout']);
+    Route::post('logout', [LogoutController::class, 'logout']);
     Route::middleware(ClinicSession::class)->group(function () {
         Route::patch('account/username', AccountUsernameController::class)->middleware('throttle:6,1');
         Route::patch('account/password', AccountPasswordController::class)->middleware('throttle:6,1');
@@ -67,7 +79,7 @@ Route::prefix('api')->group(function () {
         Route::middleware(ReceptionAgendaAccess::class)->group(function () {
             Route::get('agenda-adjustments', [AgendaAdjustmentController::class, 'index']);
             Route::post('agenda-adjustments/proposal', [AgendaAdjustmentController::class, 'propose']);
-            Route::get('agenda-adjustments/protected', [AgendaAdjustmentController::class, 'protectedBlocks']);
+            Route::get('agenda-adjustments/protected', [ProtectedOnlineSlotsController::class, 'protectedBlocks']);
             Route::post('agenda-adjustments', [AgendaAdjustmentController::class, 'store']);
             Route::patch('agenda-adjustments/{id}/release', [AgendaAdjustmentController::class, 'release'])->whereNumber('id');
             Route::post('agenda-adjustments/release', [AgendaAdjustmentController::class, 'releaseSelected']);
@@ -123,28 +135,28 @@ Route::prefix('api')->group(function () {
 
         // Los coordinadores clínicos verifican permisos, cupos y pago antes de emitir ficha.
         Route::middleware([RequireAppointments::class, ClinicalAccessAudit::class])->group(function () {
-            Route::get('reception-inbox', [SupervisionController::class, 'receptionInbox']);
-            Route::get('supervision/patient-accounts', [SupervisionController::class, 'patientAccounts']);
-            Route::get('supervision/payments', [SupervisionController::class, 'payments']);
-            $workflow = ClinicalWorkflowController::class;
-            Route::get('online-bookings', [$workflow, 'onlineList']);
-            Route::get('online-bookings/{id}', [$workflow, 'onlineShow'])->whereNumber('id');
-            Route::post('online-bookings', [$workflow, 'onlineStart'])->middleware('throttle:12,1');
-            Route::post('online-bookings/{id}/status', [$workflow, 'onlineStatus'])->whereNumber('id')->middleware('throttle:6,1');
-            Route::post('online-bookings/{id}/retry', [$workflow, 'onlineRetry'])->whereNumber('id')->middleware('throttle:6,1');
-            Route::post('online-bookings/{id}/cancel', [$workflow, 'onlineCancel'])->whereNumber('id')->middleware('throttle:6,1');
-            Route::get('reschedule-requests', [$workflow, 'rescheduleList']);
-            Route::post('reschedule-requests/{id}/reject', [$workflow, 'rejectReschedule'])->whereNumber('id');
-            Route::post('appointments/{id}/reschedule-request', [$workflow, 'requestReschedule'])->whereNumber('id');
-            Route::get('refunds', [$workflow, 'refunds']);
-            Route::post('appointments/{id}/refund', [$workflow, 'requestRefund'])->whereNumber('id');
-            Route::post('refunds/{id}/decision', [$workflow, 'decideRefund'])->whereNumber('id');
-            Route::post('refunds/{id}/complete', [$workflow, 'completeRefund'])->whereNumber('id');
-            Route::get('availability', [ScheduleController::class, 'availability']);
-            Route::get('appointments', [AppointmentController::class, 'index']);
+            Route::get('workspace', \App\Paquetes\P05_CitasMedicas\Compartido\Http\WorkspaceController::class);
+            Route::get('reception-inbox', [ReceptionInboxController::class, 'receptionInbox']);
+            Route::get('supervision/patient-accounts', [PatientAccountsController::class, 'patientAccounts']);
+            Route::get('supervision/payments', [PaymentsController::class, 'payments']);
+            Route::get('online-bookings', [OnlineBookingController::class, 'onlineList']);
+            Route::get('online-bookings/{id}', [OnlineBookingController::class, 'onlineShow'])->whereNumber('id');
+            Route::post('online-bookings', [OnlineBookingController::class, 'onlineStart'])->middleware('throttle:12,1');
+            Route::post('online-bookings/{id}/status', [OnlineBookingController::class, 'onlineStatus'])->whereNumber('id')->middleware('throttle:6,1');
+            Route::post('online-bookings/{id}/retry', [OnlineBookingController::class, 'onlineRetry'])->whereNumber('id')->middleware('throttle:6,1');
+            Route::post('online-bookings/{id}/cancel', [OnlineBookingController::class, 'onlineCancel'])->whereNumber('id')->middleware('throttle:6,1');
+            Route::get('reschedule-requests', [ReprogrammingController::class, 'rescheduleList']);
+            Route::post('reschedule-requests/{id}/reject', [ReprogrammingController::class, 'rejectReschedule'])->whereNumber('id');
+            Route::post('appointments/{id}/reschedule-request', [ReprogrammingController::class, 'requestReschedule'])->whereNumber('id');
+            Route::get('refunds', [RefundRequestController::class, 'refunds']);
+            Route::post('appointments/{id}/refund', [RefundRequestController::class, 'requestRefund'])->whereNumber('id');
+            Route::post('refunds/{id}/decision', [RefundResolutionController::class, 'decideRefund'])->whereNumber('id');
+            Route::post('refunds/{id}/complete', [RefundResolutionController::class, 'completeRefund'])->whereNumber('id');
+            Route::get('availability', [AvailableSlotsController::class, 'availability']);
+            Route::get('appointments', [AppointmentQueryController::class, 'index']);
             Route::post('appointments', [AppointmentController::class, 'store']);
-            Route::put('appointments/{id}/reschedule', [AppointmentController::class, 'reschedule'])->whereNumber('id');
-            Route::post('appointments/{id}/{action}', [AppointmentController::class, 'action'])->whereNumber('id');
+            Route::put('appointments/{id}/reschedule', [ReprogrammingController::class, 'reschedule'])->whereNumber('id');
+            Route::post('appointments/{id}/{action}', [AppointmentActionController::class, 'action'])->whereNumber('id');
             Route::get('reports', [ReportController::class, 'index']);
         });
     });

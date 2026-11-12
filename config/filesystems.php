@@ -1,5 +1,7 @@
 <?php
 
+/** Configuración de filesystems. Los valores de entorno se leen desde Laravel; no incluya credenciales reales en este archivo. */
+
 return [
 
     /*

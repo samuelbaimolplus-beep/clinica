@@ -1,3 +1,4 @@
+/** Gestión personal de usuario, contraseña y contacto; exige confirmar la contraseña actual. */
 export function installSessionViews(ui) {
     const {views, state, panel, details, esc, badge, button, on, logout, notice, field,
         formErrors, submit, bindForm, api, navigate, toast, textarea} = ui;

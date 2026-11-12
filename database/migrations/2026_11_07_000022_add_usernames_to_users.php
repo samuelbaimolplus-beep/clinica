@@ -1,5 +1,7 @@
 <?php
 
+/** Evolución versionada del esquema. Ejecute migraciones sobre la conexión elegida; nunca use migrate:fresh en la base principal. */
+
 use App\Support\Username;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -8,6 +10,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /** Aplica el cambio de esquema correspondiente a esta migración. */
     public function up(): void
     {
         Schema::table('users', fn (Blueprint $table) => $table->string('username', 50)->nullable());
@@ -28,6 +31,7 @@ return new class extends Migration
         DB::statement("ALTER TABLE users ADD CONSTRAINT users_username_format CHECK (username = lower(btrim(username)) AND username ~ '^[a-z0-9][a-z0-9._-]{2,49}$')");
     }
 
+    /** Describe la reversión de esta migración; se utiliza únicamente al solicitar un rollback. */
     public function down(): void
     {
         DB::statement('ALTER TABLE users DROP CONSTRAINT users_username_format');

@@ -1,5 +1,7 @@
 <?php
 
+/** Configuración de database_names. Los valores de entorno se leen desde Laravel; no incluya credenciales reales en este archivo. */
+
 // Nombres físicos de PostgreSQL. Laravel conserva sus convenciones internas.
 return [
     'tables' => [

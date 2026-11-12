@@ -1,5 +1,7 @@
 <?php
 
+/** Datos ficticios para desarrollo o pruebas; no representan personas reales ni sustituyen el alta operativa. */
+
 namespace Database\Seeders;
 
 use App\Models\Appointment;
@@ -9,7 +11,7 @@ use App\Models\Schedule;
 use App\Models\Specialty;
 use App\Models\Unavailability;
 use App\Models\User;
-use App\Services\AppointmentService;
+use App\Paquetes\P05_CitasMedicas\Compartido\Servicios\AppointmentService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -17,6 +19,7 @@ use Illuminate\Support\Str;
 
 class DemoDataSeeder extends Seeder
 {
+    /** Carga los datos iniciales o ficticios definidos por este seeder. */
     public function run(): void
     {
         $credentials = [];
@@ -70,7 +73,7 @@ class DemoDataSeeder extends Seeder
                 $user = User::where('email', $email)->first();
                 if (! $user) {
                     $password = Str::password(20, symbols: false);
-                    $user = User::create(['name' => $name, 'email' => $email, 'password' => $password, 'role' => $role, 'doctor_id' => $doctorId, 'status' => 'Activo']);
+                    $user = User::create(['birth_date' => '1990-01-01', 'name' => $name, 'email' => $email, 'password' => $password, 'role' => $role, 'doctor_id' => $doctorId, 'status' => 'Activo']);
                     $credentials[] = "Rol: {$role}\nCorreo: {$email}\nContraseña: {$password}\n";
                 }
 

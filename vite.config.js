@@ -1,3 +1,4 @@
+/** Compila los puntos de entrada de la interfaz. Los archivos de public/build son generados y no se editan manualmente. */
 import { defineConfig } from 'vite';
 import laravel from 'laravel-vite-plugin';
 

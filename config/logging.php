@@ -1,5 +1,7 @@
 <?php
 
+/** Configuración de logging. Los valores de entorno se leen desde Laravel; no incluya credenciales reales en este archivo. */
+
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;

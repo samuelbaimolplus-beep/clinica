@@ -1,3 +1,4 @@
+{{-- Vista de welcome. Blade escapa datos; la interfaz usa los endpoints autorizados de Laravel. --}}
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>

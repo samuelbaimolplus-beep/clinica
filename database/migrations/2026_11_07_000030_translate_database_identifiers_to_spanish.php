@@ -1,21 +1,26 @@
 <?php
 
+/** Evolución versionada del esquema. Ejecute migraciones sobre la conexión elegida; nunca use migrate:fresh en la base principal. */
+
 use App\Database\SpanishPostgresConnection;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
+    /** Aplica el cambio de esquema correspondiente a esta migración. */
     public function up(): void
     {
         $this->renameSchema(false);
     }
 
+    /** Describe la reversión de esta migración; se utiliza únicamente al solicitar un rollback. */
     public function down(): void
     {
         $this->renameSchema(true);
     }
 
+    /** Implementa la operación de renameSchema dentro de la responsabilidad indicada al inicio de este archivo. */
     private function renameSchema(bool $reverse): void
     {
         $connection = DB::connection();

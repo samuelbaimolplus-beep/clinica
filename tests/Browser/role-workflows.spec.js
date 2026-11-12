@@ -11,13 +11,14 @@ const access = {
 };
 const specialty = {id:1,name:'Medicina general',status:'Activo',fee_minor:10000};
 const doctor = {id:1,first_name:'Ana',last_name:'Prueba',registration:'BROWSER-1',status:'Activo',specialties:[specialty]};
-const patient = {id:1,first_name:'Paciente',last_name:'Prueba',status:'Activo'};
+const patient = {id:1,first_name:'Paciente',last_name:'Prueba',birth_date:'2000-01-01',phone:'70000000',status:'Activo'};
 const paymentUrl = 'https://www.sandbox.paypal.com/checkoutnow?token=PP-PRUEBA-001';
 const slot = {doctor_id:1,doctor_name:'Ana Prueba',start_time:'10:30',end_time:'11:00',modality:'online'};
 
 async function mockClinic(page, role, options={}) {
     const user = role ? {id:1,name:`Cuenta ${role}`,username:'cuenta_prueba',email:'cuenta@example.test',role,status:'Activo'} : null;
-    const state = {calls:[],pending:0,confirmed:false,authenticated:!options.initiallyGuest,activated:!options.requireActivation,patients:[{...patient}]};
+    const state = {calls:[],pending:0,confirmed:false,authenticated:!options.initiallyGuest,activated:!options.requireActivation,patients:[{...patient}],schedules:options.schedules||[]};
+    state.appointments=options.appointments||[];state.refunds=options.refunds||[];state.requests=[];
     const booking = {id:1,date:'2030-11-11',start_time:'10:30',end_time:'11:00',status:'processing',attempt:1,amount_minor:10000,expires_at:new Date(Date.now()+300000).toISOString()};
     const payment = {id:1,method:'paypal',status:'pending',amount_minor:10000,provider_amount_minor:1000,provider_currency:'USD',exchange_rate:'10',approval_url:'https://www.sandbox.paypal.com/checkoutnow?token=PP-PRUEBA-001'};
     const appointment = {id:1,patient,doctor,specialty,date:booking.date,start_time:booking.start_time,end_time:booking.end_time,status:'Programada',payment:{...payment,method:'paypal',reference:'PP-PRUEBA-001',status:'confirmed'},...options.appointmentOverrides};
@@ -32,18 +33,29 @@ async function mockClinic(page, role, options={}) {
             if(options.alreadyActive) {await route.fulfill({status:409,json:{message:'Ya tiene una sesión activa.'}});return;}
             data={user,csrf:'browser-test-csrf'};
         }
+        else if(path==='workspace')data={today:{total:0,expected:0,waiting:0,attended:0},next:[],requests:0,refunds:0,setup:['Administrador','Superadmin'].includes(role)?{specialties:1,doctors:1,scheduled_doctors:1}:null};
+        else if(path==='logout'){state.authenticated=false;data={message:'Sesión cerrada.'};}
         else if(path==='references') {
             if(options.referencesFailOnce && !state.failedReferences) {state.failedReferences=true;await route.fulfill({status:503,json:{message:'No se pudo cargar el panel.'}});return;}
-            data={doctors:[doctor],specialties:[specialty],patients:[patient]};
+            data={doctors:[doctor],specialties:[specialty],patients:state.patients};
         }
         else if(path==='medical-availability/options')data={online_payment_available:options.paymentAvailable!==false,bob_per_usd:'10',payment_provider:'paypal',doctors:[doctor],specialties:[specialty]};
         else if(path==='medical-availability')data={blocks:[{...slot,...options.slotOverrides}],modality:url.searchParams.get('modality')||'online'};
-        else if(path==='appointments'&&route.request().method()==='POST')data=appointment;
+        else if(path==='appointments'&&route.request().method()==='POST'){data=appointment;state.appointments=[appointment];}
+        else if(/^appointments\/\d+\/(attendance|attend|reschedule-request)$/.test(path)) {
+            const [,id,action]=path.split('/'),a=state.appointments.find(a=>a.id===Number(id));
+            if(action==='reschedule-request'){data={id:1,appointment_id:Number(id),status:'pending',reason:route.request().postDataJSON().reason};state.requests.push(data);}
+            else {Object.assign(a,action==='attendance'?{status:'Confirmada',attendance_at:new Date().toISOString(),care_ready:true}:{status:'Atendida'});data=a;}
+        }
+        else if(/^refunds\/\d+\/decision$/.test(path)){data=state.refunds.find(r=>r.id===Number(path.split('/')[1]));data.status=route.request().postDataJSON().decision==='approve'?'approved':'rejected';}
+        else if(/^refunds\/\d+\/complete$/.test(path)){data=state.refunds.find(r=>r.id===Number(path.split('/')[1]));Object.assign(data,route.request().postDataJSON(),{status:'completed'});}
         else if(path==='online-bookings'&&route.request().method()==='POST')data={booking,payment,approval_url:payment.approval_url};
         else if(path==='online-bookings/1/status')data={booking,payment,appointment:state.confirmed?appointment:null};
         else if(path==='online-bookings/1/cancel')data={booking:{...booking,status:'cancelled'},payment:{...payment,status:'failed'}};
         else if(path==='online-bookings')data=[];
-        else if(path==='schedules')data={schedules:[],unavailabilities:[],quota:{presential_percent:50,online_percent:50}};
+        else if(path==='schedules'&&route.request().method()==='GET')data={schedules:state.schedules,unavailabilities:[],quota:{presential_percent:50,online_percent:50}};
+        else if(path==='schedules'||/^schedules\/\d+$/.test(path)){const input=route.request().postDataJSON();const id=path.includes('/')?Number(path.split('/')[1]):state.schedules.length+1;state.schedules=state.schedules.filter(s=>s.id!==id);state.schedules.push({...input,id});data={...input,id,affected_appointments:[]};}
+        else if(path==='availability')data=[{start:'12:00',end:'12:30',status:'Disponible'}];
         else if(path==='reception-inbox')data={pending:state.pending,latest_id:state.pending?1:null};
         else if(path==='audit/filters')data={users:[],modules:[],actions:[],results:[]};
         else if(path==='audit'||path==='supervision/payments')data={data:[],total:0,current_page:1,last_page:1};
@@ -66,7 +78,11 @@ async function mockClinic(page, role, options={}) {
         }
         else if(path==='entities/doctors')data=[doctor];
         else if(path==='entities/specialties')data=[specialty];
+        else if(path==='entities/patients'&&route.request().method()==='POST'){data={...patient,...route.request().postDataJSON(),id:2};state.patients.push(data);}
         else if(path==='entities/patients')data=state.patients;
+        else if(path==='appointments'&&route.request().method()==='GET')data=state.appointments;
+        else if(path==='refunds')data=state.refunds;
+        else if(path==='reschedule-requests')data=state.requests;
         else if(['appointments','reschedule-requests','refunds','schedule-impacts','agenda-adjustments','supervision/patient-accounts'].includes(path))data=[];
         else {
             await route.fulfill({status:500,json:{message:`Ruta no simulada: ${path}`}});
@@ -77,11 +93,51 @@ async function mockClinic(page, role, options={}) {
     return state;
 }
 
+test('horarios: primero muestra la semana, evita cruces y modifica el turno seleccionado',async({page})=>{
+    const state=await mockClinic(page,'Administrador',{schedules:[{id:1,doctor_id:1,weekday:1,start_time:'08:00:00',end_time:'12:00:00',duration:30}]});
+    await page.goto('/#horarios');
+    await expect(page.locator('.week-grid')).toBeVisible();
+    await expect(page.locator('[data-schedule="1"]')).toContainText('08:00–12:00');
+    await expect(page.locator('#schedule-form')).toHaveCount(0);
+    await page.locator('[data-new-shift="1"]').click();
+    await expect(page.locator('#schedule-form [name=start_time]')).toHaveValue('12:00');
+    await page.locator('#schedule-form [name=start_time]').fill('11:00');
+    await expect(page.locator('#schedule-conflicts')).toContainText('Se cruza con 08:00–12:00');
+    await page.locator('#schedule-form button[type=submit]').click();
+    expect(state.calls.filter(c=>c.path==='schedules'&&c.method==='POST')).toHaveLength(0);
+    await page.getByRole('button',{name:'Cancelar',exact:true}).click();
+    await page.locator('[data-schedule="1"]').click();
+    await page.locator('#schedule-form [name=end_time]').fill('13:00');
+    await page.locator('#schedule-form button[type=submit]').click();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await expect(page.locator('[data-schedule="1"]')).toContainText('08:00–13:00');
+    expect(state.calls.find(c=>c.path==='schedules/1').method).toBe('PUT');
+    await page.screenshot({path:'storage/app/private/horarios-semana-local.png',fullPage:true});
+});
+
+test('el inicio ofrece tareas con permisos y abre horarios sin mostrar un formulario vacío',async({page})=>{
+    await mockClinic(page,'Administrador');await page.goto('/');
+    await expect(page.locator('h1')).toHaveText('Inicio y acciones');
+    await page.locator('.setup-step[data-open-view="CU07"]').click();
+    await expect(page.locator('.week-grid')).toBeVisible();
+    await expect(page.locator('#schedule-form')).toHaveCount(0);
+});
+
+test('la reprogramación usa el médico y fecha del diálogo aunque los filtros estén vacíos',async({page})=>{
+    const a={id:3,patient,doctor,specialty,patient_id:1,doctor_id:1,specialty_id:1,date:'2030-11-11',start_time:'10:30',end_time:'11:00',status:'Programada',modality:'presential',payment:{status:'confirmed'}};
+    await mockClinic(page,'Recepcionista',{appointments:[a]});await page.goto('/#reprogramaciones');
+    await page.locator('[data-change="3"]').click();
+    await expect(page.locator('#clinical-reschedule [name=start_time] option[value="12:00"]')).toHaveCount(1);
+    const url=await page.evaluate(()=>performance.getEntriesByType('resource').filter(r=>r.name.includes('/api/availability?')).at(-1)?.name);
+    expect(new URL(url).searchParams.get('doctor_id')).toBe('1');
+    expect(new URL(url).searchParams.get('date')).toBe('2030-11-11');
+});
+
 for(const [role,home] of [['Superadmin','CU03'],['Administrador','CU03'],['Recepcionista','CU06'],['Médico','CU12'],['Paciente','CU18']]) {
     test(`${role}: inicio y menú restringidos`, async ({page}) => {
         const errors=[];page.on('pageerror',e=>errors.push(e.message));
         await mockClinic(page,role);await page.goto('/');
-        await expect(page.locator(`.nav-btn[data-view="${home}"]`)).toHaveAttribute('aria-current','page');
+        await expect(page.locator('[data-home]')).toHaveAttribute('aria-current','page');
         const visible=await page.locator('.nav-btn').evaluateAll(nodes=>nodes.map(n=>n.dataset.view));
         expect(visible.sort()).toEqual(access[role].filter(id=>id!=='CU01').sort());
         if (['Superadmin','Paciente'].includes(role)) await page.screenshot({path:`storage/app/private/vista-${role.toLowerCase()}.png`,fullPage:true});
@@ -117,7 +173,7 @@ for(const width of [360,768]) {
         await expect(page.locator('#menu-toggle')).toHaveAttribute('aria-expanded','true');
         await expect(page.locator('#nav-search')).toBeFocused();
         await page.getByRole('searchbox',{name:'Buscar en el menú'}).fill('medicos');
-        await expect(page.locator('.nav-btn:visible')).toHaveCount(2);
+        await expect(page.locator('.nav-btn:visible')).toHaveCount(3);
         await page.getByRole('button',{name:'Médicos',exact:true}).click();
         await expect(page.getByRole('heading',{name:'Médicos',exact:true})).toBeVisible();
         await expect(page.locator('#menu-backdrop')).toBeHidden();
@@ -126,7 +182,7 @@ for(const width of [360,768]) {
         await expect(page.locator('#menu-toggle')).toBeFocused();
         await expect(page.locator('#menu-toggle')).toHaveAttribute('aria-expanded','false');
         await page.goto('/#pacientes');
-        await page.getByRole('button',{name:'+ Registrar paciente y cuenta',exact:true}).click();
+        await page.getByRole('button',{name:'+ Registrar paciente',exact:true}).click();
         await expect(page.getByRole('dialog')).toBeVisible();
         const dialog=await page.getByRole('dialog').boundingBox();
         expect(dialog.x).toBeGreaterThanOrEqual(0);expect(dialog.x+dialog.width).toBeLessThanOrEqual(width);
@@ -168,7 +224,7 @@ test('todos los módulos se adaptan a móvil y el historial del navegador conser
 
 for (const role of ['Superadmin','Administrador']) {
     test(`${role}: formulario de personal respeta la asignación de Superadmin`, async ({page}) => {
-        await mockClinic(page,role);await page.goto('/');
+        await mockClinic(page,role);await page.goto('/#usuarios');
         await page.getByRole('button',{name:'+ Registrar usuario',exact:true}).click();
         await expect(page.getByLabel('Nombre de usuario', {exact:true})).toBeVisible();
         await expect(page.locator('#role option[value="Superadmin"]')).toHaveCount(role==='Superadmin'?1:0);
@@ -184,7 +240,7 @@ test('el acceso admite un nombre de usuario sin formato de correo electrónico',
     await page.getByLabel('Usuario o correo electrónico', {exact:true}).fill('ana.paciente');
     await page.locator('#password').fill('ClaveDePrueba2026');
     await page.getByRole('button',{name:'Iniciar sesión',exact:true}).click();
-    await expect(page.locator('.nav-btn.selected')).toHaveAttribute('data-view','CU18');
+    await expect(page.locator('[data-home]')).toHaveAttribute('aria-current','page');
     expect(state.calls.find(c=>c.path==='login').data.email).toBe('ana.paciente');
 });
 
@@ -194,17 +250,26 @@ async function submitLogin(page) {
     await page.getByRole('button',{name:'Iniciar sesión',exact:true}).click();
 }
 
+async function selectBookingSlot(page,{staff=false,consult=false}={}) {
+    if(staff){await page.locator('[data-pick="patient"]').first().click();await page.locator('#flow-next').click();}
+    await page.locator('[data-pick="specialty"]').first().click();
+    await page.locator('#flow-next').click();
+    await page.locator('#booking-date').fill('2030-11-11');
+    await page.locator('[data-flow-slot]').first().click();
+    if(!consult)await expect(page.locator('.confirmation-ticket')).toBeVisible();
+}
+
 test('el login actualiza los permisos de una pestaña abierta antes de agregar el rol', async ({page}) => {
     await mockClinic(page,'Superadmin',{initiallyGuest:true,staleAccessBeforeLogin:true});await page.goto('/');
     await submitLogin(page);
-    await expect(page.locator('.nav-btn.selected')).toHaveAttribute('data-view','CU03');
+    await expect(page.locator('[data-home]')).toHaveAttribute('aria-current','page');
     await expect(page.locator('#login-form')).toHaveCount(0);
 });
 
 test('el login recupera la sesión activa sin atascarse en el formulario', async ({page}) => {
     await mockClinic(page,'Superadmin',{initiallyGuest:true,alreadyActive:true});await page.goto('/');
     await submitLogin(page);
-    await expect(page.locator('.nav-btn.selected')).toHaveAttribute('data-view','CU03');
+    await expect(page.locator('[data-home]')).toHaveAttribute('aria-current','page');
 });
 
 test('si no se conserva la sesión no se muestra bienvenida y se explica el fallo', async ({page}) => {
@@ -218,12 +283,12 @@ test('un fallo al cargar el panel se puede reintentar sin volver a enviar creden
     const state=await mockClinic(page,'Superadmin',{initiallyGuest:true,referencesFailOnce:true});await page.goto('/');
     await submitLogin(page);
     await page.locator('#boot-retry').click();
-    await expect(page.locator('.nav-btn.selected')).toHaveAttribute('data-view','CU03');
+    await expect(page.locator('[data-home]')).toHaveAttribute('aria-current','page');
     expect(state.calls.filter(c=>c.path==='login')).toHaveLength(1);
 });
 
 test('Superadmin puede cambiar la contraseña de un paciente sin consultar la contraseña anterior', async ({page}) => {
-    const state=await mockClinic(page,'Superadmin');await page.goto('/');
+    const state=await mockClinic(page,'Superadmin');await page.goto('/#usuarios');
     await page.getByRole('button',{name:'Consultar todas las cuentas'}).click();
     await page.getByRole('row').filter({hasText:'ana.paciente'}).getByRole('button',{name:'Cambiar contraseña'}).click();
     await expect(page.getByRole('dialog')).toContainText('La contraseña actual no se puede consultar');
@@ -249,11 +314,10 @@ test('cualquier cuenta puede elegir su usuario desde Mi sesión', async ({page})
 });
 
 test('Paciente consulta, retiene y obtiene ficha únicamente después de la confirmación del servidor', async ({page}) => {
-    const state=await mockClinic(page,'Paciente');await page.goto('/');
-    await page.locator('#specialty_id').selectOption('1');await page.locator('#date').fill('2030-11-11');
-    await page.getByRole('button',{name:'Seleccionar',exact:true}).click();
+    const state=await mockClinic(page,'Paciente');await page.goto('/#reservar-cita');
+    await selectBookingSlot(page);
     expect(state.calls.filter(c=>c.path==='online-bookings'&&c.method==='POST')).toHaveLength(0);
-    await page.getByRole('button',{name:'Reservar y pagar con PayPal Sandbox'}).click();
+    await page.getByRole('button',{name:'Continuar a PayPal Sandbox',exact:true}).click();
     await expect(page.getByRole('dialog')).toContainText('Pago con PayPal Sandbox');
     await expect(page.getByRole('dialog')).not.toContainText('Ficha CIT-');
     await expect(page.getByRole('link',{name:'Continuar en PayPal Sandbox'})).toHaveAttribute('href',paymentUrl);
@@ -273,13 +337,9 @@ for (const [name,appointmentOverrides,expected] of [
     test(`ficha de ${name} muestra su referencia y distingue un bloqueo provisional`,async({page})=>{
         await mockClinic(page,'Recepcionista',{appointmentOverrides,slotOverrides:{modality:'presential',demand_blocked:true}});
         await page.goto('/#CU09');
-        await page.locator('#patient_id').selectOption('1');
-        await page.locator('#specialty_id').selectOption('1');
-        await page.locator('#date').fill('2030-11-11');
-        await expect(page.locator('#clinical-slots')).toContainText('Bloqueo provisional de esta especialidad');
-        await page.getByRole('button',{name:'Seleccionar',exact:true}).click();
+        await selectBookingSlot(page,{staff:true});
         await page.locator('[name="payment_confirmed"]').check();
-        await page.getByRole('button',{name:'Verificar y emitir ficha',exact:true}).click();
+        await page.getByRole('button',{name:'Confirmar cita y emitir ficha',exact:true}).click();
         await expect(page.getByRole('dialog')).toContainText(expected);
     });
 }
@@ -295,17 +355,17 @@ test('el retorno de PayPal consulta al servidor y no confirma por el token de la
 });
 
 test('sin pasarela hay horarios y aviso pero no un botón para iniciar un cobro', async ({page}) => {
-    const state=await mockClinic(page,'Paciente',{paymentAvailable:false});await page.goto('/');
-    await expect(page.locator('#main')).toContainText('El pago online está temporalmente indisponible');
-    await expect(page.getByRole('button',{name:'Reservar y pagar con PayPal Sandbox'})).toHaveCount(0);
+    const state=await mockClinic(page,'Paciente',{paymentAvailable:false});await page.goto('/#reservar-cita');
+    await expect(page.locator('#main')).toContainText('El pago online no está habilitado');
+    await selectBookingSlot(page);
+    await expect(page.getByRole('button',{name:'Continuar a PayPal Sandbox',exact:true})).toBeDisabled();
     expect(state.calls.some(c=>c.path==='online-bookings'&&c.method==='POST')).toBe(false);
 });
 
 test('Paciente puede descartar la solicitud cuando el servidor confirma que no existe pago en proceso', async ({page}) => {
-    await mockClinic(page,'Paciente');await page.goto('/');
-    await page.locator('#specialty_id').selectOption('1');await page.locator('#date').fill('2030-11-11');
-    await page.getByRole('button',{name:'Seleccionar',exact:true}).click();
-    await page.getByRole('button',{name:'Reservar y pagar con PayPal Sandbox'}).click();
+    await mockClinic(page,'Paciente');await page.goto('/#reservar-cita');
+    await selectBookingSlot(page);
+    await page.getByRole('button',{name:'Continuar a PayPal Sandbox',exact:true}).click();
     await page.getByRole('button',{name:'Descartar solicitud sin pago'}).click();
     await expect(page.getByRole('dialog')).toContainText('Solicitud descartada');
     await expect(page.getByRole('dialog')).not.toContainText('Ficha CIT-');
@@ -313,8 +373,9 @@ test('Paciente puede descartar la solicitud cuando el servidor confirma que no e
 
 test('Superadmin supervisa reservas sin emitirlas en nombre de un paciente', async ({page}) => {
     await mockClinic(page,'Superadmin');await page.goto('/#CU18');
-    await expect(page.locator('#main')).toContainText('Operaciones online de todos los pacientes');
-    await expect(page.getByRole('button',{name:'Reservar y pagar con PayPal Sandbox'})).toHaveCount(0);
+    await expect(page.locator('#main')).toContainText('Vista de supervisión');
+    await selectBookingSlot(page);
+    await expect(page.getByRole('button',{name:'Continuar a PayPal Sandbox',exact:true})).toBeDisabled();
 });
 
 test('el inicio no permite registrarse y presenta la activación por código de correo', async ({page}) => {
@@ -338,16 +399,18 @@ test('el inicio no permite registrarse y presenta la activación por código de 
 for(const role of ['Superadmin','Administrador','Recepcionista']) {
     test(`${role}: registra paciente y cuenta pendiente de activación en un formulario`,async({page})=>{
         const state=await mockClinic(page,role);await page.goto('/#CU06');
-        await page.getByRole('button',{name:'+ Registrar paciente y cuenta',exact:true}).click();
+        await page.getByRole('button',{name:'+ Registrar paciente',exact:true}).click();
         await page.getByLabel('Nombres',{exact:true}).fill('Ana');
         await page.getByLabel('Apellidos',{exact:true}).fill('Paciente');
         await page.getByLabel('Teléfono',{exact:true}).fill('70000000');
         await page.getByLabel('Fecha de nacimiento',{exact:true}).fill('2000-01-01');
+        await page.locator('#create-account').check();
         await page.getByLabel('Correo electrónico para activar la cuenta',{exact:true}).fill('ana@example.test');
         await page.getByLabel('Nombre de usuario',{exact:true}).fill('ana.paciente');
         await page.getByLabel('Contraseña inicial',{exact:true}).fill('ClaveDePrueba2026');
         await page.getByLabel('Repetir contraseña inicial',{exact:true}).fill('ClaveDePrueba2026');
         await page.locator('[name="identity_verified"]').check();
+        await page.locator('[name="terms_accepted"]').check();
         await page.getByRole('button',{name:'Guardar',exact:true}).click();
         await expect(page.getByRole('dialog')).not.toBeVisible();
         await expect(page.locator('#records')).toContainText('ana.paciente · Pendiente de código');
@@ -356,14 +419,63 @@ for(const role of ['Superadmin','Administrador','Recepcionista']) {
 }
 
 test('el login bloqueado abre la activación y solo permite acceder después del código',async({page})=>{
-    await mockClinic(page,'Administrador',{initiallyGuest:true,requireActivation:true});await page.goto('/');
+    const state=await mockClinic(page,'Administrador',{initiallyGuest:true,requireActivation:true});await page.goto('/');
     await submitLogin(page);
     await expect(page.locator('#activation-form')).toBeVisible();
     await expect(page.locator('.nav-btn')).toHaveCount(0);
     await page.getByLabel('Código de activación',{exact:true}).fill('12345678');
     await page.getByRole('button',{name:'Confirmar código y activar'}).click();
+    await expect(page.locator('#login-form')).toBeVisible();
     await submitLogin(page);
-    await expect(page.locator('.nav-btn.selected')).toHaveAttribute('data-view','CU03');
+    await expect(page.locator('[data-home]')).toHaveAttribute('aria-current','page');
+    expect(state.calls.filter(c=>c.path==='login')).toHaveLength(2);
+});
+
+test('el historial del paciente se presenta como propio y explica sus cambios sin pedir elegir paciente',async({page})=>{
+    const ownAppointment={
+        id:25,patient,doctor,specialty,date:'2030-11-11',start_time:'10:30',end_time:'11:00',
+        status:'Atendida',created_at:'2030-11-01T10:00:00Z',attendance_at:'2030-11-11T10:25:00Z',
+        events:[{created_at:'2030-11-02T10:00:00Z',action:'Reprogramación',details:{
+            before:{doctor_id:2,date:'2030-11-10',start_time:'09:00',end_time:'09:30'},
+            after:{doctor_id:1,date:'2030-11-11',start_time:'10:30',end_time:'11:00'},
+            cause:'patient',reason:'El paciente solicitó otro horario',
+        }}],
+    };
+    const state=await mockClinic(page,'Paciente',{appointments:[ownAppointment]});
+    await page.goto('/#mis-citas');
+    await expect(page.locator('h1')).toHaveText('Mis citas e historial');
+    await expect(page.locator('#main')).toContainText('Sus citas y su atención');
+    await expect(page.locator('#board-search')).toBeVisible();
+    await expect(page.locator('.appointment-card')).toContainText('Ana Prueba');
+    await expect(page.locator('#main')).not.toContainText('Selecciona un paciente');
+    await expect(page.locator('#patient_id')).toHaveCount(0);
+    await page.getByRole('button',{name:'Ver detalle',exact:true}).click();
+    await expect(page.getByRole('dialog')).toContainText('Cita reprogramada');
+    await expect(page.getByRole('dialog')).toContainText('Programación anterior');
+    await expect(page.getByRole('dialog')).toContainText('Nueva programación');
+    await expect(page.getByRole('dialog')).toContainText('Origen: Solicitud del paciente');
+    await expect(page.getByRole('dialog')).not.toContainText('doctor_id');
+    await expect(page.getByRole('dialog')).not.toContainText('{"before"');
+    await expect(page.getByRole('dialog')).not.toContainText('2030-11-01T10:00:00Z');
+    expect(state.calls.find(c=>c.path==='appointments').method).toBe('GET');
+});
+
+test('el médico consulta los datos necesarios de su agenda sin información de pago',async({page})=>{
+    const ownAppointment={
+        id:26,patient:{...patient,identity:'PRIVATE-CI',phone:'70000000',email:'private@example.test',address:'Dirección privada'},
+        doctor,specialty,date:'2030-11-11',start_time:'10:30',end_time:'11:00',status:'Atendida',
+        created_at:'2030-11-01T10:00:00Z',events:[],
+        payment:{amount_minor:10000,status:'confirmed',bank_reference:'BANK-PRIVATE'},
+    };
+    await mockClinic(page,'Médico',{appointments:[ownAppointment]});
+    await page.goto('/#agenda');
+    await page.getByRole('button',{name:'Ver detalle',exact:true}).click();
+    const dialog=page.getByRole('dialog');
+    await expect(dialog).toContainText('Paciente Prueba');
+    await expect(dialog).not.toContainText('Pago');
+    await expect(dialog).not.toContainText('PRIVATE-CI');
+    await expect(dialog).not.toContainText('70000000');
+    await expect(dialog).not.toContainText('BANK-PRIVATE');
 });
 
 test('Paciente puede cambiar su contraseña y consultar sus datos tras activar su cuenta',async({page})=>{
@@ -385,5 +497,116 @@ test('Recepción recibe aviso de solicitud nueva y puede abrir su bandeja', asyn
 
 test('Paciente llega a reservas también desde la consulta de disponibilidad', async ({page}) => {
     await mockClinic(page,'Paciente');await page.goto('/#CU08');
-    await page.locator('#go-online-booking').click();await expect(page.locator('#clinical-booking')).toBeVisible();
+    await selectBookingSlot(page,{consult:true});
+    await expect(page.locator('.nav-btn.selected')).toHaveAttribute('data-view','CU18');
+    await expect(page.locator('.confirmation-ticket')).toContainText('10:30');
+});
+
+test('Recepción registra un menor sin cuenta ni correo y continúa la cita con esa misma ficha',async({page})=>{
+    const state=await mockClinic(page,'Recepcionista');await page.goto('/#CU09');
+    await page.locator('#booking-register-patient').click();
+    await expect(page.locator('#create-account')).not.toBeChecked();
+    await page.getByLabel('Nombres',{exact:true}).fill('Menor');
+    await page.getByLabel('Apellidos',{exact:true}).fill('Demostración');
+    await page.getByLabel('Teléfono',{exact:true}).fill('70000022');
+    await page.getByLabel('Fecha de nacimiento',{exact:true}).fill('2018-01-01');
+    await page.getByRole('combobox',{name:'Sexo',exact:true}).selectOption('Femenino');
+    await expect(page.locator('#create-account')).toBeDisabled();
+    await page.getByRole('button',{name:'Guardar',exact:true}).click();
+    await expect(page.locator('[data-pick="patient"][data-value="2"]')).toHaveAttribute('aria-pressed','true');
+    await expect(page.locator('.flow-summary')).toContainText('Menor Demostración');
+    expect(state.calls.filter(c=>c.path==='patients/with-account')).toHaveLength(0);
+    const request=state.calls.find(c=>c.path==='entities/patients'&&c.method==='POST');
+    expect(request.data.birth_date).toBe('2018-01-01');expect(request.data.email).toBe('');
+    expect(request.data.password).toBeUndefined();expect(request.data.terms_accepted).toBeUndefined();
+    await page.locator('#flow-next').click();await expect(page.locator('[data-pick="specialty"]')).toBeVisible();
+});
+
+test('la cita presencial exige selección y recepción del dinero antes de emitir la ficha',async({page})=>{
+    const state=await mockClinic(page,'Recepcionista');await page.goto('/#CU09');
+    await page.locator('#flow-next').click();await expect(page.locator('#flow-error')).toContainText('Seleccione una ficha');
+    await selectBookingSlot(page,{staff:true});
+    await page.getByRole('button',{name:'Confirmar cita y emitir ficha',exact:true}).click();
+    expect(state.calls.filter(c=>c.path==='appointments'&&c.method==='POST')).toHaveLength(0);
+    await page.locator('[name=payment_confirmed]').check();
+    await page.screenshot({path:'storage/app/private/recorrido-cita-confirmacion.png',fullPage:true});
+    await page.getByRole('button',{name:'Confirmar cita y emitir ficha',exact:true}).click();
+    await expect(page.getByRole('dialog')).toContainText('No necesita crearle una cuenta');
+    expect(state.calls.find(c=>c.path==='appointments'&&c.method==='POST').data.payment_confirmed).toBe(true);
+});
+
+const today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'America/La_Paz'});
+const careAppointment=overrides=>({id:60,patient,doctor,specialty,patient_id:1,doctor_id:1,specialty_id:1,date:today(),start_time:'10:30',end_time:'11:00',status:'Programada',payment:{status:'confirmed'},...overrides});
+
+test('la agenda de Recepción muestra la llegada como acción y después el siguiente paso',async({page})=>{
+    const state=await mockClinic(page,'Recepcionista',{appointments:[careAppointment({})]});await page.goto('/#agenda');
+    await page.getByRole('button',{name:'Registrar asistencia',exact:true}).click();
+    await expect(page.getByRole('dialog')).toContainText('Paciente Prueba');
+    await page.getByRole('button',{name:'Guardar',exact:true}).click();
+    await expect(page.locator('.stage-badge')).toContainText('En espera de atención');
+    await expect(page.locator('.operation-success')).toContainText('lista de espera para el médico');
+    await expect(page.getByRole('button',{name:'Finalizar consulta',exact:true})).toHaveCount(0);
+    expect(state.calls.some(c=>c.path==='appointments/60/attendance')).toBe(true);
+    await page.screenshot({path:'storage/app/private/recorrido-agenda-llegada.png',fullPage:true});
+});
+
+test('el médico puede finalizar al paciente presente y no al que todavía no llegó',async({page})=>{
+    const a=careAppointment({status:'Confirmada',attendance_at:new Date().toISOString(),care_ready:true});
+    const state=await mockClinic(page,'Médico',{appointments:[a,{...careAppointment({}),id:61}]});await page.goto('/#CU14');
+    await expect(page.locator('[data-record="61"] [data-care="attend"]')).toHaveCount(0);
+    await page.getByRole('button',{name:'Finalizar consulta',exact:true}).click();
+    await page.getByRole('button',{name:'Guardar',exact:true}).click();
+    await expect(page.locator('[data-record="60"]')).toContainText('Consulta finalizada');
+    expect(state.calls.find(c=>c.path==='appointments/60/attend').data.consultation_finished).toBe('1');
+});
+
+test('la solicitud del paciente conserva la cita y el identificador al enviar el diálogo',async({page})=>{
+    const state=await mockClinic(page,'Paciente',{appointments:[careAppointment({})]});await page.goto('/#CU10');
+    await page.getByRole('button',{name:'Solicitar cambio',exact:true}).click();
+    await page.getByLabel('Motivo y disponibilidad propuesta').fill('Solicito el día siguiente por la mañana.');
+    await page.getByRole('button',{name:'Enviar solicitud a Recepción',exact:true}).click();
+    await expect(page.locator('.request-card')).toContainText('Pendiente de Recepción');
+    expect(state.calls.find(c=>c.path==='appointments/60/reschedule-request').data.reason).toContain('día siguiente');
+    expect(state.appointments[0].status).toBe('Programada');
+});
+
+test('aprobar el reembolso no registra la entrega hasta confirmar sus datos',async({page})=>{
+    const state=await mockClinic(page,'Administrador',{refunds:[{id:5,appointment_id:60,status:'pending',amount_minor:10000,reason:'Cancelación de la clínica'}],appointments:[careAppointment({status:'Cancelada'})]});
+    await page.goto('/#CU26');await page.getByRole('button',{name:'Aprobar',exact:true}).click();
+    await page.getByRole('button',{name:'Aprobar y dejar devolución pendiente',exact:true}).click();
+    await expect(page.locator('.refund-card')).toContainText('falta registrar la entrega');
+    expect(state.calls.some(c=>c.path==='refunds/5/complete')).toBe(false);
+    await page.getByRole('button',{name:'Registrar dinero devuelto',exact:true}).click();
+    await page.getByLabel('Fecha y hora de entrega',{exact:true}).fill('2026-11-08T08:00');
+    await page.getByLabel('Medio utilizado',{exact:true}).fill('Efectivo de prueba');
+    await page.getByRole('button',{name:'Registrar devolución realizada',exact:true}).click();
+    expect(state.calls.some(c=>c.path==='refunds/5/complete')).toBe(false);
+    await page.locator('[name=delivery_confirmed]').check();
+    await page.getByRole('button',{name:'Registrar devolución realizada',exact:true}).click();
+    await expect(page.locator('.refund-card')).toContainText('Devolución registrada');
+});
+
+test('cerrar sesión limpia el diálogo y el borrador del paciente',async({page})=>{
+    await mockClinic(page,'Recepcionista');await page.goto('/#CU09');
+    await page.locator('[data-pick="patient"]').first().click();
+    await page.locator('#logout-button').click();await page.locator('#confirm-action').click();
+    await expect(page.locator('#login-form')).toBeVisible();
+    await expect(page.locator('#modal-body')).toBeEmpty();
+    await submitLogin(page);await page.goto('/#CU09');
+    await expect(page.locator('[data-pick="patient"][aria-pressed="true"]')).toHaveCount(0);
+});
+
+for(const width of [360,1440])test(`recorrido completo de cita a ${width}px sin desbordamiento`,async({page})=>{
+    await page.setViewportSize({width,height:900});await mockClinic(page,'Recepcionista');await page.goto('/#CU09');
+    for(const step of ['patient','specialty']){
+        await page.locator(`[data-pick="${step}"]`).first().click();
+        expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+        await page.locator('#flow-next').click();
+    }
+    await expect(page.locator('[data-flow-slot]').first()).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await page.locator('[data-flow-slot]').first().click();
+    await expect(page.locator('.confirmation-ticket')).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await page.screenshot({path:`storage/app/private/recorrido-cita-${width}.png`,fullPage:true});
 });

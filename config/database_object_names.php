@@ -1,5 +1,7 @@
 <?php
 
+/** Configuración de database_object_names. Los valores de entorno se leen desde Laravel; no incluya credenciales reales en este archivo. */
+
 // Correspondencia reversible de índices, restricciones, secuencias, función y trigger.
 return [
     'payments_capture_id_unique' => 'pagos_captura_proveedor_id_unico',

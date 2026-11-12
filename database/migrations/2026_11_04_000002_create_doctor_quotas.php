@@ -1,5 +1,7 @@
 <?php
 
+/** Evolución versionada del esquema. Ejecute migraciones sobre la conexión elegida; nunca use migrate:fresh en la base principal. */
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -7,6 +9,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /** Aplica el cambio de esquema correspondiente a esta migración. */
     public function up(): void
     {
         Schema::create('doctor_quotas', function (Blueprint $table) {
@@ -21,6 +24,7 @@ return new class extends Migration
                 AND presential_percent + online_percent = 100)');
     }
 
+    /** Describe la reversión de esta migración; se utiliza únicamente al solicitar un rollback. */
     public function down(): void
     {
         if (DB::table('doctor_quotas')->exists()) {

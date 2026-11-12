@@ -1,5 +1,7 @@
 <?php
 
+/** Configuración de paypal. Los valores de entorno se leen desde Laravel; no incluya credenciales reales en este archivo. */
+
 return [
     'enabled' => (bool) env('PAYPAL_ENABLED', false),
     'client_id' => env('PAYPAL_CLIENT_ID'),

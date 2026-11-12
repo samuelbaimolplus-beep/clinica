@@ -1,3 +1,4 @@
+/** Activación y recuperación de cuentas creadas presencialmente; no ofrece autorregistro. */
 // Activación por correo y recuperación para cuentas registradas por la clínica.
 export function installPatientViews(ui) {
     const {views, main, panel, formErrors, field, select, submit, button, on, bindForm, api, toast, loginView} = ui;

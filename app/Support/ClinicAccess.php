@@ -1,5 +1,7 @@
 <?php
 
+/** Matriz central de vistas por rol; Superadmin hereda gestión, los demás roles mantienen su ámbito. */
+
 namespace App\Support;
 
 use App\Models\User;
@@ -15,6 +17,7 @@ final class ClinicAccess
         'Paciente' => ['CU01', 'CU02', 'CU08'],
     ];
 
+    /** Devuelve los CU navegables por rol y por disponibilidad del módulo de citas. */
     public static function views(string $role): array
     {
         $views = self::VIEWS[$role] ?? [];
@@ -32,6 +35,7 @@ final class ClinicAccess
         return $views;
     }
 
+    /** Comprueba que cuenta y ficha vinculada estén activas para el rol correspondiente. */
     public static function isActive(User $user): bool
     {
         return $user->status === 'Activo' && match ($user->role) {

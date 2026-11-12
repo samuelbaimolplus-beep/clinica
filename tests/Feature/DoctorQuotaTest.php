@@ -10,7 +10,7 @@ use App\Models\Schedule;
 use App\Models\Specialty;
 use App\Models\Unavailability;
 use App\Models\User;
-use App\Services\Audit\AuditLogger;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseTransactions;

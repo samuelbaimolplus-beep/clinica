@@ -11,8 +11,8 @@ use App\Models\Payment;
 use App\Models\Schedule;
 use App\Models\Specialty;
 use App\Models\User;
-use App\Services\Payments\OnlineBookingService;
-use App\Services\Payments\PayPalGateway;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Servicios\OnlineBookingService;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\Compartido\Integraciones\PayPalGateway;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\Client\ConnectionException;
@@ -70,6 +70,53 @@ class ClinicalPaymentsTest extends TestCase
         $r = $this->actingAs($this->reception)->postJson('/api/appointments', $this->data($changes))->assertCreated();
 
         return Appointment::findOrFail($r->json('id'));
+    }
+
+    public function test_physician_appointment_responses_exclude_patient_contact_and_payment_data(): void
+    {
+        $appointment = $this->book();
+        $this->patient->update(['identity' => 'PRIVATE-CI', 'email' => 'private@patient.test', 'address' => 'Private address']);
+
+        $agenda = $this->actingAs($this->physician)->getJson('/api/appointments?mode=agenda')->assertOk()->assertJsonCount(1);
+        $agenda->assertJsonPath('0.id', $appointment->id)
+            ->assertJsonPath('0.patient.first_name', 'María')
+            ->assertJsonMissingPath('0.patient.identity')
+            ->assertJsonMissingPath('0.patient.phone')
+            ->assertJsonMissingPath('0.patient.email')
+            ->assertJsonMissingPath('0.patient.address')
+            ->assertJsonMissingPath('0.payment')
+            ->assertJsonMissingPath('0.payment_id')
+            ->assertJsonMissingPath('0.booking_request_id')
+            ->assertJsonMissingPath('0.created_by')
+            ->assertJsonMissingPath('0.requires_arrival_payment');
+
+        $this->actingAs($this->reception)->postJson('/api/appointments/'.$appointment->id.'/attendance')->assertOk();
+        $consultation = $this->actingAs($this->physician)
+            ->postJson('/api/appointments/'.$appointment->id.'/attend', ['consultation_finished' => true])->assertOk();
+        $consultation->assertJsonMissingPath('payment')
+            ->assertJsonMissingPath('payment_id')
+            ->assertJsonMissingPath('requires_arrival_payment')
+            ->assertJsonMissingPath('patient.phone')
+            ->assertJsonMissingPath('patient.address');
+    }
+
+    public function test_refund_list_returns_only_fields_needed_for_the_refund_workflow(): void
+    {
+        $appointment = $this->book();
+        $this->actingAs($this->reception)->postJson('/api/appointments/'.$appointment->id.'/cancel', [
+            'reason' => 'Indisponibilidad de la clínica', 'cause' => 'clinic',
+        ])->assertOk();
+        $this->actingAs($this->patientUser)->postJson('/api/appointments/'.$appointment->id.'/refund', [
+            'reason' => 'La clínica no pudo atender la cita',
+        ])->assertCreated();
+
+        $response = $this->getJson('/api/refunds')->assertOk()->assertJsonCount(1);
+        $response->assertJsonPath('0.appointment_id', $appointment->id)
+            ->assertJsonMissingPath('0.appointment')
+            ->assertJsonMissingPath('0.payment')
+            ->assertJsonMissingPath('0.payment_id')
+            ->assertJsonMissingPath('0.created_by')
+            ->assertJsonMissingPath('0.resolved_by');
     }
 
     private function paypalOrder(Payment $payment, string $state = 'APPROVED', ?string $captureState = null, bool $wrongAmount = false): array

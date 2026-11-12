@@ -1,3 +1,4 @@
+/** Avisos periódicos de nuevas solicitudes sin duplicar las operaciones de resolución. */
 // CU10: aviso persistente y consulta periódica sin introducir un proveedor externo.
 export function installReceptionInbox({state, api, navigate, toast}) {
     const button = document.querySelector('#reception-inbox');

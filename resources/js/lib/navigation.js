@@ -1,3 +1,4 @@
+/** Menú y rutas legibles derivados de los permisos recibidos del servidor. */
 // Las opciones visibles siempre se cruzan con los permisos entregados por el servidor.
 export const navigationGroups = [
     ['Mi cuenta', [['CU02', 'Mi cuenta y seguridad']]],
@@ -20,7 +21,7 @@ export const rolePanels = {
 export function visibleNavigation(role, allowed) {
     const labels = role === 'Paciente' ? {CU10:'Solicitar reprogramación',CU15:'Mis citas e historial'}
         : role === 'Médico' ? {CU12:'Mi agenda',CU14:'Finalizar mis consultas'}
-        : role === 'Superadmin' ? {CU14:'Supervisar consultas',CU18:'Reservas online (supervisión)'} : {};
+        : role === 'Superadmin' ? {CU14:'Gestionar y finalizar consultas',CU18:'Reservas online (supervisión)'} : {};
     const groups = role === 'Paciente' ? {'Recepción':'Mis solicitudes','Consulta y supervisión':'Mis consultas'}
         : role === 'Superadmin' ? {'Portal del paciente':'Supervisión del paciente'} : {};
     return navigationGroups.map(([title, links]) => [groups[title] || title, links.filter(([id]) => allowed.includes(id)).map(([id,label])=>[id,labels[id] || label])])
@@ -34,6 +35,7 @@ export function homeView(role, allowed) {
 
 // Los identificadores internos conservan la autorización; las direcciones son legibles.
 export const viewRoutes = {
+    inicio:'inicio',
     CU02:'mi-cuenta', CU03:'usuarios', CU04:'medicos', CU05:'especialidades', CU06:'pacientes',
     CU07:'horarios', CU08:'disponibilidad', CU09:'nueva-cita', CU10:'reprogramaciones',
     CU11:'cancelaciones', CU12:'agenda', CU13:'asistencia', CU14:'consultas', CU15:'mis-citas',
@@ -50,7 +52,7 @@ export const viewDescriptions = {
     CU03:'Administre las cuentas del personal y sus permisos de acceso.',
     CU04:'Gestione el equipo médico y las especialidades que atiende.',
     CU05:'Organice los servicios de la clínica y sus tarifas de consulta.',
-    CU06:'Encuentre a un paciente o registre su ficha y su cuenta de acceso.',
+    CU06:'Registre o busque una ficha para gestionar la atención. La cuenta del portal es opcional.',
     CU07:'Organice los turnos de atención y la distribución de cupos.',
     CU08:'Consulte los horarios disponibles por especialidad y médico.',
     CU09:'Seleccione al paciente, el horario y el medio de pago para emitir su ficha.',

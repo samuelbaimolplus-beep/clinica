@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\AccountManagementController;
+use App\Paquetes\P01_UsuariosYAcceso\CU03_GestionarUsuariosYRoles\Http\AccountManagementController;
 use App\Models\AuditEvent;
 use App\Models\Doctor;
 use App\Models\Patient;

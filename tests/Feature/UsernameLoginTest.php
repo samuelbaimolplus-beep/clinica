@@ -53,7 +53,7 @@ class UsernameLoginTest extends TestCase
     public function test_staff_username_is_normalized_editable_and_unique_without_changing_permissions(): void
     {
         $admin = $this->account();
-        $data = ['name' => 'Recepción', 'username' => '  RECEPCION.UNO  ', 'email' => 'recepcion@username.test', 'password' => 'PruebaSegura2026', 'role' => 'Recepcionista', 'status' => 'Activo'];
+        $data = ['birth_date' => '1990-01-01', 'name' => 'Recepción', 'username' => '  RECEPCION.UNO  ', 'email' => 'recepcion@username.test', 'password' => 'PruebaSegura2026', 'role' => 'Recepcionista', 'status' => 'Activo'];
         $response = $this->actingAs($admin)->postJson('/api/entities/users', $data)->assertCreated()->assertJsonPath('username', 'recepcion.uno');
         $id = $response->json('id');
         $this->postJson('/api/entities/users', array_replace($data, ['email' => 'otro@username.test']))->assertUnprocessable()->assertJsonValidationErrors('username');
@@ -64,7 +64,7 @@ class UsernameLoginTest extends TestCase
     public function test_invalid_usernames_cannot_overlap_the_email_login_namespace(): void
     {
         $this->actingAs($this->account());
-        $data = ['name' => 'Inválido', 'email' => 'nuevo@username.test', 'password' => 'PruebaSegura2026', 'role' => 'Recepcionista', 'status' => 'Activo'];
+        $data = ['birth_date' => '1990-01-01', 'name' => 'Inválido', 'email' => 'nuevo@username.test', 'password' => 'PruebaSegura2026', 'role' => 'Recepcionista', 'status' => 'Activo'];
         foreach (['samuel@otro.test', 'con espacios', 'ab', '_prefijo', str_repeat('a', 51)] as $username) {
             $this->postJson('/api/entities/users', $data + ['username' => $username])->assertUnprocessable()->assertJsonValidationErrors('username');
         }
@@ -75,7 +75,7 @@ class UsernameLoginTest extends TestCase
         $this->actingAs($this->account());
         $data = ['first_name' => 'Ana', 'last_name' => 'Paciente', 'username' => '  ANA.PACIENTE  ', 'identity' => 'USERNAME-01',
             'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000000', 'email' => 'ana@username.test',
-            'password' => 'PruebaSegura2026', 'password_confirmation' => 'PruebaSegura2026', 'identity_verified' => true];
+            'password' => 'PruebaSegura2026', 'password_confirmation' => 'PruebaSegura2026', 'identity_verified' => true, 'terms_accepted' => true, 'terms_version' => config('clinic.terms_version')];
         $response = $this->postJson('/api/patients/with-account', $data)->assertCreated()->assertJsonPath('account.username', 'ana.paciente');
         $user = User::findOrFail($response->json('account.id'));
         $code = null;

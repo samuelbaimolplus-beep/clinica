@@ -1,5 +1,7 @@
 <?php
 
+/** Evolución versionada del esquema. Ejecute migraciones sobre la conexión elegida; nunca use migrate:fresh en la base principal. */
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -7,6 +9,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /** Aplica el cambio de esquema correspondiente a esta migración. */
     public function up(): void
     {
         Schema::table('payments', function (Blueprint $t) {
@@ -20,6 +23,7 @@ return new class extends Migration
         DB::statement("ALTER TABLE public.pagos ADD CONSTRAINT pagos_snapshot_paypal_validacion CHECK (metodo <> 'paypal' OR (monto_proveedor_centavos IS NOT NULL AND monto_proveedor_centavos > 0 AND moneda_proveedor IS NOT NULL AND moneda_proveedor = 'USD' AND tasa_bob_por_usd IS NOT NULL AND tasa_bob_por_usd > 0))");
     }
 
+    /** Describe la reversión de esta migración; se utiliza únicamente al solicitar un rollback. */
     public function down(): void
     {
         if (DB::table('payments')->where('method', 'paypal')->exists()) {

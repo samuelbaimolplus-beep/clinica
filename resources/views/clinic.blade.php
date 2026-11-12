@@ -1,3 +1,4 @@
+{{-- Vista de clinic. Blade escapa datos; la interfaz usa los endpoints autorizados de Laravel. --}}
 <!doctype html>
 <html lang="es">
 <head>

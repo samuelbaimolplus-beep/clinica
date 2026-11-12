@@ -1,5 +1,7 @@
 <?php
 
+/** Inicialización de Laravel: configura dependencias, rutas, middleware o respuestas de la aplicación. */
+
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -15,9 +17,15 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Ngrok se conecta desde loopback. Los demás proxies se declaran explícitamente, nunca '*'.
+        $middleware->trustProxies(headers: Request::HEADER_X_FORWARDED_FOR | Request::HEADER_X_FORWARDED_PROTO);
+        $middleware->append(\App\Http\Middleware\PrivacyHeaders::class);
         $middleware->validateCsrfTokens(except: ['pagos/paypal/webhook']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->respond(function (\Symfony\Component\HttpFoundation\Response $response, Throwable $exception, Request $request) {
+            return \App\Http\Middleware\PrivacyHeaders::apply($request, $response);
+        });
         $exceptions->render(function (QueryException $e, Request $r) {
             if ($r->is('api/*')) {
                 $conflict = in_array($e->errorInfo[0] ?? null, ['23505', '23P01'], true);

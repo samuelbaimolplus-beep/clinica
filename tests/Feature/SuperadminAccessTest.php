@@ -97,14 +97,14 @@ class SuperadminAccessTest extends TestCase
         $this->getJson('/api/entities/users/'.$this->superadmin->id)->assertNotFound();
         $this->patchJson('/api/entities/users/'.$this->superadmin->id.'/status', ['status' => 'Inactivo'])->assertForbidden();
         $this->putJson('/api/entities/users/'.$this->superadmin->id, ['name' => 'Modificado'])->assertForbidden();
-        $this->postJson('/api/entities/users', ['name' => 'Escalada', 'email' => 'escalada@supervision.test', 'password' => 'PruebaSegura2026', 'role' => 'Superadmin', 'status' => 'Activo'])->assertUnprocessable();
+        $this->postJson('/api/entities/users', ['birth_date' => '1990-01-01', 'name' => 'Escalada', 'email' => 'escalada@supervision.test', 'password' => 'PruebaSegura2026', 'role' => 'Superadmin', 'status' => 'Activo'])->assertUnprocessable();
         $this->assertSame('Activo', $this->superadmin->fresh()->status);
     }
 
     public function test_only_superadmin_manages_other_superadmins_but_cannot_remove_own_access(): void
     {
         $this->actingAs($this->superadmin);
-        $response = $this->postJson('/api/entities/users', ['name' => 'Equipo', 'email' => 'equipo@supervision.test', 'password' => 'PruebaSegura2026', 'role' => 'Superadmin', 'status' => 'Activo'])->assertCreated();
+        $response = $this->postJson('/api/entities/users', ['birth_date' => '1990-01-01', 'name' => 'Equipo', 'email' => 'equipo@supervision.test', 'password' => 'PruebaSegura2026', 'role' => 'Superadmin', 'status' => 'Activo'])->assertCreated();
         $this->assertTrue(Hash::check('PruebaSegura2026', User::findOrFail($response->json('id'))->password));
         $this->patchJson('/api/entities/users/'.$this->superadmin->id.'/status', ['status' => 'Inactivo'])->assertUnprocessable();
         $this->patchJson('/api/entities/users/'.$response->json('id').'/status', ['status' => 'Inactivo'])->assertOk();
@@ -120,14 +120,17 @@ class SuperadminAccessTest extends TestCase
         }
     }
 
-    public function test_superadmin_does_not_impersonate_a_physician_or_patient(): void
+    public function test_superadmin_can_complete_clinical_work_without_impersonating_a_patient(): void
     {
         $a = $this->appointment();
         $this->actingAs($this->superadmin);
-        $this->postJson('/api/appointments/'.$a->id.'/attend', ['consultation_finished' => true])->assertForbidden();
+        $this->postJson('/api/appointments/'.$a->id.'/attend', ['consultation_finished' => true])->assertUnprocessable();
+        $payment=Payment::create(['method'=>'cash','amount_minor'=>10000,'status'=>'confirmed','confirmed_at'=>now()]);
+        $a->update(['status'=>'Confirmada','attendance_at'=>now(),'payment_id'=>$payment->id]);
+        $this->postJson('/api/appointments/'.$a->id.'/attend', ['consultation_finished' => true])->assertOk();
         $this->postJson('/api/online-bookings', [])->assertForbidden();
         $this->postJson('/api/appointments/'.$a->id.'/reschedule-request', ['reason' => 'Cambio'])->assertForbidden();
-        $this->assertSame('Programada', $a->fresh()->status);
+        $this->assertSame('Atendida', $a->fresh()->status);
         $this->assertDatabaseCount('booking_requests', 0);
     }
 

@@ -8,7 +8,7 @@ use App\Models\Patient;
 use App\Models\Specialty;
 use App\Models\User;
 use App\Notifications\VerifyClinicEmail;
-use App\Services\Patients\CreatePatientAccount;
+use App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Servicios\CreatePatientAccount;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
@@ -56,7 +56,7 @@ class FoundationModulesTest extends TestCase
         $user = User::findOrFail($response->json('account.id'));
         $this->assertSame('Paciente', $user->role);
         $this->assertNull($user->email_verified_at);
-        $this->assertNull($user->terms_accepted_at);
+        $this->assertNotNull($user->terms_accepted_at);
         $this->assertTrue(Hash::check('PruebaSegura2026', $user->password));
         $this->assertSame('ana@example.test', $user->email);
         $this->assertSame('CI-123', $user->patient->identity);

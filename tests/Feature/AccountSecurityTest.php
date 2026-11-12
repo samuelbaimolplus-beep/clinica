@@ -28,7 +28,7 @@ class AccountSecurityTest extends TestCase
     {
         $patientId = $patient ? Patient::create(['identity' => 'ACCOUNT-V6', 'first_name' => 'Ana', 'last_name' => 'Prueba',
             'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000000', 'status' => 'Activo'])->id : null;
-        $user = User::create(['name' => 'Cuenta de prueba', 'email' => 'cuenta@example.test', 'password' => 'AnteriorSegura2026',
+        $user = User::create(['birth_date' => '1990-01-01', 'terms_accepted_at' => now(), 'terms_version' => config('clinic.terms_version'), 'name' => 'Cuenta de prueba', 'email' => 'cuenta@example.test', 'password' => 'AnteriorSegura2026',
             'role' => $patient ? 'Paciente' : 'Recepcionista', 'patient_id' => $patientId, 'status' => 'Activo']);
         if ($verified) {
             $user->forceFill(['email_verified_at' => now()])->save();

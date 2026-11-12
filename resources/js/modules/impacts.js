@@ -1,3 +1,4 @@
+/** CU17: citas afectadas conservadas, con acciones de Recepción para contactar y resolver. */
 export function installImpactViews(ui) {
     const { views, api, panel, notice, table, esc, code, time, badge, full, state, button, on, modal, details } = ui;
     const originText = origin => {

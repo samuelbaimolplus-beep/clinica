@@ -1,5 +1,7 @@
 <?php
 
+/** Evolución versionada del esquema. Ejecute migraciones sobre la conexión elegida; nunca use migrate:fresh en la base principal. */
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -7,6 +9,7 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /** Aplica el cambio de esquema correspondiente a esta migración. */
     public function up(): void
     {
         // A stable interval identity shared by both modalities. Availability is derived, never cached here.
@@ -29,6 +32,7 @@ return new class extends Migration
         DB::statement("ALTER TABLE payments ADD CONSTRAINT payments_valid_values CHECK (amount_minor > 0 AND attempt BETWEEN 1 AND 2 AND status IN ('initializing','unknown','pending','confirmed','failed'))");
     }
 
+    /** Describe la reversión de esta migración; se utiliza únicamente al solicitar un rollback. */
     public function down(): void
     {
         throw new RuntimeException('Las franjas identificadas pertenecen al historial clínico y económico.');

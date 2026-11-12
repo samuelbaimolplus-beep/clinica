@@ -1,5 +1,7 @@
 # Clínica Vida Salud
 
+El funcionamiento vigente se describe en [Recorridos de atención y cuentas opcionales](docs/REVISION_RECORRIDOS_Y_ACCESO_2026-11-08.md). La clínica trabaja con fichas de pacientes de cualquier edad, sin exigir correo ni cuenta. El portal es opcional para pacientes con 18 años cumplidos que lo solicitan y aceptan los términos; todas las cuentas de personal también requieren mayoría de edad.
+
 La estructura física de PostgreSQL está en español: tablas, columnas, restricciones, índices y secuencias. El [script de creación](../Clinica_BD.sql) y el [diagrama UML](../Clinica_UML.svg) corresponden al esquema actualizado. La migración de nombres conserva los datos; la conexión de Laravel adapta sus convenciones internas al esquema en español.
 
 La migración `2026_11_07_000040_add_clinic_triggers_and_procedures` incorpora seis triggers: normalización de correos en tres entidades, validación de franjas en citas y reservas y protección de franjas ya utilizadas. Conserva el disparador de auditoría inmutable. La aplicación utiliza los procedimientos `registrar_auditoria` y `registrar_evento_cita`; `configurar_cupos_medico` permite configurar porcentajes enteros por médico con validación de actor administrativo, bloqueo de reservas retenidas y auditoría atómica. El SQL de entrega contiene las definiciones y ejemplos de `CALL`. Son rutinas con permisos del invocador; el parámetro de actor no sustituye la autorización de la aplicación. Las 26 entidades y 40 relaciones del UML no cambian.
@@ -22,7 +24,7 @@ php artisan serve --host=127.0.0.1 --port=8000
 
 Abrir <http://127.0.0.1:8000>. Las migraciones agregan o ajustan estructuras sin vaciar las tablas. No ejecutar `migrate:fresh` sobre la base del proyecto.
 
-Se necesitan PHP 8.3 o superior con `pdo_pgsql`, Composer, Node.js y PostgreSQL. En una instalación nueva, ejecutar `composer install` y `npm.cmd ci`, copiar `.env.example` a `.env`, configurar una base existente y ejecutar `php artisan key:generate`. Después aplicar migraciones, compilar y crear el administrador con `php artisan clinica:crear-admin correo@ejemplo.bo`.
+Se necesitan PHP 8.3 o superior con `pdo_pgsql`, Composer, Node.js y PostgreSQL. En una instalación nueva, ejecutar `composer install` y `npm.cmd ci`, copiar `.env.example` a `.env`, configurar una base existente y ejecutar `php artisan key:generate`. Después aplicar migraciones, compilar y crear el administrador con `php artisan clinica:crear-admin correo@ejemplo.bo --nacimiento=AAAA-MM-DD`, indicando su fecha real de nacimiento.
 
 Los accesos iniciales y de demostración permanecen en archivos privados locales de `storage/app/private`, excluidos de Git. La aplicación no publica contraseñas.
 
@@ -32,7 +34,7 @@ La interfaz utiliza nombres de tareas y direcciones legibles, sin mostrar los c�
 
 En móviles y tabletas el menú se abre sobre el contenido; se cierra al elegir una opción, tocar el fondo o pulsar Escape. Los formularios pasan a una columna y los listados se presentan como tarjetas en pantallas pequeñas. Se conserva la navegación por teclado, el enfoque visible, los estados de carga y la señalización de errores. La selección de un horario muestra un resumen antes de continuar al pago.
 
-- Superadmin: gestión de Administración y Recepción y supervisión global de los módulos. La reserva personal sigue correspondiendo al Paciente y la finalización de consulta al Médico responsable. Solo Superadmin puede gestionar otras cuentas Superadmin.
+- Superadmin: operaciones administrativas, de Recepción y gestión clínica, incluida finalización de consultas, con su identidad registrada en auditoría y conservando el médico responsable de la cita. La reserva personal del portal corresponde al titular; Superadmin programa citas de cualquier paciente por el flujo administrativo. Solo Superadmin puede gestionar otras cuentas Superadmin.
 - Administrador: personal, pacientes y creación de sus cuentas, médicos, especialidades y tarifas, horarios y porcentajes, historial, siete reportes, auditoría y resolución de reembolsos.
 - Recepción: pacientes y creación presencial de cuentas, disponibilidad, cobro presencial y ficha, reprogramación acordada, cancelación, asistencia, solicitudes de cambio y devolución, seguimiento, citas afectadas y operación de bloques CU24/CU25.
 - Médico: agenda propia, ausencia al llamado, finalización de consulta y recomendación de seguimiento.
@@ -45,9 +47,9 @@ Los bloqueos de demanda se crean y liberan únicamente hoy, mediante selección 
 
 ## Superadmin
 
-Para crear la primera cuenta en una instalación nueva: `php artisan clinica:crear-superadmin correo@ejemplo.bo`. El comando no reemplaza cuentas existentes y guarda el acceso aleatorio solo en `storage/app/private/acceso-superadmin.txt`, excluido de Git. Administrador no puede crear ni editar Superadmin.
+Para crear la primera cuenta en una instalación nueva: `php artisan clinica:crear-superadmin correo@ejemplo.bo --nacimiento=AAAA-MM-DD`, indicando su fecha real de nacimiento. El comando no reemplaza cuentas existentes y guarda el acceso aleatorio solo en `storage/app/private/acceso-superadmin.txt`, excluido de Git. Administrador no puede crear ni editar Superadmin.
 
-Se puede iniciar sesión con el nombre de usuario o el correo. Recepción, Administrador y Superadmin pueden registrar al paciente y crear su acceso en el mismo formulario de «Pacientes», o crear la cuenta de un paciente existente. «Usuarios y roles» incluye un acceso directo para crear cuentas de pacientes. Superadmin puede abrir «Consultar todas las cuentas» para cambiar contraseñas del personal y de los pacientes, sin consultar las anteriores. Los documentos previos conservan valor histórico; el flujo vigente es el alta presencial con activación por código.
+Se puede iniciar sesión con el nombre de usuario o el correo. Recepción, Administrador y Superadmin pueden registrar fichas sin cuenta ni correo. La opción de crear una cuenta está desmarcada inicialmente: solo se habilita para adultos que la solicitan, con identidad verificada y aceptación expresa de la versión vigente de términos. También se puede habilitar el portal desde una ficha adulta existente. «Usuarios y roles» incluye un acceso al directorio de pacientes. Superadmin puede abrir «Consultar todas las cuentas» para cambiar contraseñas del personal y de los pacientes, sin consultar las anteriores. Los documentos previos conservan valor histórico; el alta presencial y la activación por código se aplican a las cuentas opcionales, no a la atención clínica.
 
 Cada cuenta puede elegir o cambiar su propio usuario en **Mi sesión → Elegir mi usuario de acceso**. Debe confirmar su contraseña actual y elegir un usuario disponible; conserva su contraseña, correo y permisos.
 
@@ -81,15 +83,17 @@ La cola local usa `QUEUE_CONNECTION=sync`: el job se ejecuta en el proceso que l
 
 ## Organización del código
 
-- `app/Http/Controllers` y `app/Http/Requests`: entrada, autorización y validación.
-- `app/Services/Catalog`: catálogos e impacto de cambios administrativos.
-- `app/Services/Schedules`: turnos, capacidad, modalidades, movimientos y afectaciones.
-- `app/Services/Auth`: seguridad y revocación de sesión.
-- `app/Notifications`: verificación de correo; recuperación mediante el broker de Laravel.
-- `app/Observers` y `app/Services/Audit`: auditoría transaccional.
-- `app/Support/ClinicAccess.php`: navegación por rol.
-- `resources/js/modules`: pantallas separadas por responsabilidad.
-- `database/migrations`: integridad, exclusión de superposiciones e historial.
+La estructura del backend sigue P01–P08 de `../ofical.docx`. Comience por [la guía de defensa del código](docs/GUIA_DEFENSA_CODIGO.md) y el [índice de paquetes](app/Paquetes/README.md). El [mapa de los 26 CU](docs/MAPA_CU_PAQUETES.csv) indica archivos, métodos y rutas.
+
+- `app/Paquetes`: entradas HTTP, validaciones y servicios organizados por paquete y responsabilidad de CU.
+- `app/Compartido`: operaciones de catálogo y referencias usadas por varios paquetes.
+- `app/Models`: entidades Eloquent y relaciones compartidas.
+- `app/Http/Middleware`, `app/Providers`, `app/Support`: sesión, permisos y utilidades transversales.
+- `app/Database`, `database/migrations`: esquema en español, restricciones y rutinas.
+- `app/Observers`, `app/Jobs`, `app/Notifications`, `app/Console`: infraestructura de Laravel.
+- `resources`: interfaz, con sus ubicaciones actuales.
+
+Las consultas de agenda/historial y las transiciones de citas se comparten. La organización evita crear un archivo de reenvío por CU.
 
 ## Verificación
 
@@ -100,7 +104,7 @@ php artisan clinica:preparar-pruebas
 php artisan test --compact
 node --test tests/Frontend/api.test.mjs
 npm.cmd run build
-php vendor/bin/pint --dirty --test
+php vendor/bin/pint app/Paquetes app/Compartido routes/web.php --test
 ```
 
 El resultado de la entrega figura en el [registro de adecuación](docs/ADECUACION_WORD_V6_2026-11-07.md). La verificación visual y las pruebas reales de correo y pasarela no se presentan como realizadas.

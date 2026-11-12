@@ -1,5 +1,7 @@
 <?php
 
+/** Registra adaptación PostgreSQL, permisos, observadores y vínculos de recuperación de Laravel. */
+
 namespace App\Providers;
 
 use App\Database\SpanishPostgresConnection;

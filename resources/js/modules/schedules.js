@@ -1,108 +1,109 @@
+/** CU07: semana del médico, conflictos de turnos, ausencias y distribución de cupos. */
+import {conflictingShifts, suggestedShift} from '../lib/schedule-planner';
+
 export function installScheduleViews(ui) {
-    const { $, state, views, api, esc, full, code, time, days, localDate, doctorOptions, notice, panel, formErrors, select, field, submit, table, button, on, navigate, bindForm, toast } = ui;
-    let scheduleDoctor = '';
-    let scheduleTab = 'schedule';
+    const {$, state, views, api, esc, full, code, time, days, localDate, notice, panel, formErrors,
+        select, field, submit, table, button, on, navigate, bindForm, toast, modal, closeModal, details} = ui;
+    let tab = 'schedule';
     let capacityDate = localDate();
-    let editingSchedule = null;
+    const weekdays = [1, 2, 3, 4, 5, 6, 0];
+    const period = shift => `${time(shift.start_time)}–${time(shift.end_time)}`;
+    const dateTime = value => new Date(value).toLocaleString('es-BO', {dateStyle:'medium', timeStyle:'short', timeZone:'America/La_Paz'});
 
     views.CU07 = async () => {
-        const doctors = doctorOptions();
-        if (!doctors.length) return {html: notice('Registre al menos un médico activo para configurar sus horarios.')};
-        if (!doctors.some(([id]) => String(id) === String(scheduleDoctor))) scheduleDoctor = doctors[0][0];
-        const data = await api('schedules?' + new URLSearchParams({doctor_id: scheduleDoctor}));
-        let body;
-
-        if (scheduleTab === 'schedule') {
-            body = panel('Configurar horario semanal', `<form id="schedule-form">${formErrors}<div class="grid four">
-                ${select('Día de atención', 'weekday', days.map((day, index) => [index, day]), 1)}
-                ${field('Hora de inicio', 'start_time', 'time', '08:00', 'required')}
-                ${field('Hora de finalización', 'end_time', 'time', '12:00', 'required')}
-                ${field('Duración de cita (minutos)', 'duration', 'number', 30, 'required min="1"')}
-                </div><p id="schedule-mode">Nuevo turno. Cada turno protege sus primeras dos horas para presencial.</p>${submit('Guardar horario')}${button('Nuevo turno', 'id="new-shift"', '')}</form>`)
-                + panel('Horario vigente', table(['Día', 'Inicio', 'Fin', 'Duración', ''], data.schedules.map(schedule => [
-                    esc(days[schedule.weekday]), time(schedule.start_time), time(schedule.end_time), `${schedule.duration} min`,
-                    button('Modificar', `data-schedule="${schedule.id}"`, 'link'),
-                ])));
-        } else if (scheduleTab === 'block') {
-            body = panel('Nueva indisponibilidad', `<form id="unavailable-form">${formErrors}<div class="grid two">
-                ${select('Motivo', 'reason', ['Ausencia', 'Permiso', 'Vacaciones'])}
-                ${field('Médico', 'doctor_name', 'text', full(state.refs.doctors.find(doctor => String(doctor.id) === String(scheduleDoctor))), 'readonly')}
-                ${field('Inicio (fecha y hora)', 'starts_at', 'datetime-local', `${localDate()}T08:00`, 'required')}
-                ${field('Finalización (fecha y hora)', 'ends_at', 'datetime-local', `${localDate()}T12:00`, 'required')}
-                </div><div class="actions">${button('Consultar citas afectadas', 'id="preview-block"', '')}
-                <button class="btn success" type="submit">Registrar indisponibilidad</button></div>
-                <div id="affected-preview" style="margin-top:16px"></div></form>`)
-                + panel('Indisponibilidades registradas', table(['Inicio', 'Fin', 'Motivo'], data.unavailabilities.map(block => [esc(block.starts_at), esc(block.ends_at), esc(block.reason)])));
-        } else {
-            const quota = data.quota || {};
-            body = panel('Distribución de cupos por médico', `<form id="quota-form">${formErrors}
-                <p>Las primeras dos horas de cada turno son presenciales. En el resto se alternan las modalidades respetando los cupos del mayor resto; los empates favorecen presencial. El reparto inicial es 50% / 50%.</p>
-                <div class="grid two">
-                ${field('Porcentaje presencial', 'presential_percent', 'number', quota.presential_percent ?? 50, 'required min="0" max="100" step="1"')}
-                ${field('Porcentaje online', 'online_percent', 'number', quota.online_percent ?? 50, 'required min="0" max="100" step="1"')}
-                </div>${submit('Guardar distribución')}</form>`)
-                + panel('Capacidad por fecha', `<form id="capacity-form">${formErrors}
-                ${field('Fecha de atención', 'date', 'date', capacityDate, 'required')}${submit('Calcular cupos')}</form><div id="capacity-result"></div>`);
+        const doctors = state.refs.doctors;
+        if (!doctors.length) return {html:panel('Primero registre un médico', '<p>El horario se asigna a un profesional. Registre su ficha y luego configure sus días de atención.</p>'+button('Ir a médicos','data-open-view="CU04"'))};
+        if (!doctors.some(d => String(d.id) === String(state.scheduleDoctor))) state.scheduleDoctor = doctors.find(d => d.status === 'Activo')?.id || doctors[0].id;
+        const doctor = doctors.find(d => String(d.id) === String(state.scheduleDoctor));
+        const doctorId = doctor.id;
+        const data = await api('schedules?'+new URLSearchParams({doctor_id:doctorId}));
+        const schedules = data.schedules;
+        const canEdit = doctor.status === 'Activo';
+        const weeklyMinutes = schedules.reduce((sum,s)=>{
+            const minutes=t=>Number(t.slice(0,2))*60+Number(t.slice(3,5));
+            return sum + minutes(s.end_time)-minutes(s.start_time);
+        },0);
+        const week = `<div class="week-grid">${weekdays.map(day=>{
+            const shifts=schedules.filter(s=>Number(s.weekday)===day);
+            return `<section class="week-day ${shifts.length?'has-shifts':''}" aria-label="${esc(days[day])}"><h4>${esc(days[day])}<span>${shifts.length} ${shifts.length===1?'turno':'turnos'}</span></h4>
+                <div class="day-shifts">${shifts.map(s=>`<button type="button" class="shift-card" data-schedule="${s.id}" ${canEdit?'':'disabled'} aria-label="Modificar ${esc(days[day])} ${esc(period(s))}"><strong>${esc(period(s))}</strong><span>Consultas de ${s.duration} min</span><small>${canEdit?'Modificar turno':'Médico inactivo'}</small></button>`).join('') || '<p class="day-empty">Sin atención programada</p>'}</div>
+                ${canEdit?button('+ Añadir turno',`data-new-shift="${day}"`,'link'):''}</section>`;
+        }).join('')}</div>`;
+        let body='';
+        if(tab==='schedule') body=panel('Semana de atención',`<div class="section-toolbar"><p>Estos son los turnos que ya existen. Pulse uno para modificarlo o añada un turno en otro horario.</p>${canEdit?button('+ Añadir turno','id="new-shift"'):''}</div>${week}<p class="help-text">Los turnos se repiten cada semana. Dos turnos pueden ser consecutivos, pero no ocupar la misma franja. Las citas existentes se conservan cuando cambia un horario.</p>`);
+        else if(tab==='block') body=panel('Ausencias, permisos y vacaciones',`<div class="section-toolbar"><p>Revise los períodos en los que este médico no atenderá. Puede comprobar las citas afectadas antes de guardar.</p>${canEdit?button('+ Registrar ausencia','id="new-unavailability"'):''}</div>`
+            +(data.unavailabilities.length?table(['Desde','Hasta','Motivo'],data.unavailabilities.map(b=>[esc(dateTime(b.starts_at)),esc(dateTime(b.ends_at)),esc(b.reason)])):'<div class="friendly-empty"><strong>No hay ausencias registradas</strong><p>La disponibilidad sigue el horario semanal del médico.</p></div>'));
+        else {
+            const quota=data.quota||{presential_percent:50,online_percent:50};
+            body=panel('Cómo se reparten las consultas',`<div class="quota-summary"><div><strong>${quota.presential_percent}%</strong><span>Presencial</span></div><div><strong>${quota.online_percent}%</strong><span>Reserva online</span></div></div><p>Las primeras dos horas de cada turno se protegen para atención presencial. El resto se distribuye según estos porcentajes; las citas existentes se conservan.</p>${canEdit?button('Cambiar distribución','id="edit-quota"',''):''}`)
+                +panel('Ver capacidad de un día',`<form id="capacity-form">${formErrors}<div class="inline-form">${field('Fecha de atención','date','date',capacityDate,'required')}${submit('Ver cupos')}</div></form><div id="capacity-result" aria-live="polite"></div>`);
         }
-
-        return {
-            html: panel('', select('Médico activo', 'schedule-doctor', doctors, scheduleDoctor))
-                + `<div class="tabs">${[['schedule', 'Horario médico'], ['block', 'Indisponibilidades'], ['quota', 'Distribución de cupos']].map(([key, label]) =>
-                    `<button class="tab ${scheduleTab === key ? 'selected' : ''}" data-tab="${key}">${label}</button>`).join('')}</div>` + body,
-            bind: () => {
-                on('#schedule-doctor', 'change', async event => { scheduleDoctor = event.target.value; editingSchedule = null; await navigate('CU07'); });
-                on('[data-tab]', 'click', event => { scheduleTab = event.currentTarget.dataset.tab; return navigate('CU07'); });
-                if (scheduleTab === 'schedule') {
-                    editingSchedule = null;
-                    on('#new-shift', 'click', () => { editingSchedule = null; $('#schedule-form').reset(); $('#schedule-mode').textContent = 'Nuevo turno.'; });
-                    on('[data-schedule]', 'click', event => {
-                        const schedule = data.schedules.find(item => item.id === Number(event.currentTarget.dataset.schedule));
-                        editingSchedule = schedule.id;
-                        $('#schedule-mode').textContent = 'Modificando turno existente. Las citas afectadas conservarán su estado.';
-                        for (const key of ['weekday', 'duration', 'start_time', 'end_time']) {
-                            $(`[name=${key}]`).value = key.endsWith('time') ? time(schedule[key]) : schedule[key];
-                        }
-                        $('#schedule-form').scrollIntoView({block: 'center', behavior: 'smooth'});
-                    });
-                    bindForm('schedule-form', async values => {
-                        const result = await api(`schedules${editingSchedule ? '/' + editingSchedule : ''}`, editingSchedule ? 'PUT' : 'POST', {...values, doctor_id: scheduleDoctor});
-                        editingSchedule = null;
-                        await navigate('CU07'); toast(`Horario guardado. ${result.affected_appointments.length} cita(s) afectadas para gestión de Recepción.`);
-                    });
-                } else if (scheduleTab === 'block') {
-                    on('#preview-block', 'click', async () => {
-                        const form = $('#unavailable-form');
-                        if (!form.reportValidity()) return;
-                        const values = Object.fromEntries(new FormData(form));
-                        delete values.doctor_name;
-                        const result = await api('unavailabilities/preview', 'POST', {...values, doctor_id: scheduleDoctor});
-                        $('#affected-preview').innerHTML = notice(`${result.affected.length} cita(s) vigentes afectadas. ${result.affected.map(appointment => code('CIT', appointment.id)).join(', ')}`, result.affected.length ? 'warning' : 'success');
-                    });
-                    on('#starts_at,#ends_at', 'change', () => { $('#affected-preview').innerHTML = ''; });
-                    bindForm('unavailable-form', async values => {
-                        delete values.doctor_name;
-                        const result = await api('unavailabilities', 'POST', {...values, doctor_id: scheduleDoctor});
-                        await navigate('CU07'); toast(`Indisponibilidad registrada. ${result.affected.length} cita(s) afectadas.`);
-                    });
-                } else {
-                    bindForm('quota-form', async values => {
-                        await api('doctor-quotas', 'PUT', {...values, doctor_id: scheduleDoctor});
-                        await navigate('CU07'); toast('Distribución guardada. Las citas existentes se conservaron.');
-                    });
-                    bindForm('capacity-form', async values => {
-                        capacityDate = values.date;
-                        const result = await api('schedules/capacity?' + new URLSearchParams({doctor_id: scheduleDoctor, date: capacityDate}));
-                        let summary = `Bloques del horario: ${result.configured_blocks}. Bloqueados: ${result.blocked_blocks}. Capacidad: ${result.total_capacity}.`;
-                        summary += result.quota
-                            ? ` Presenciales: ${result.presential_capacity}. Online: ${result.online_capacity}.`
-                            : ' Configure los porcentajes para distribuir la capacidad.';
-                        summary += ` Protegidos para presencial: ${result.protected_capacity}.`;
-                        $('#capacity-result').innerHTML = notice(summary)
-                            + notice('La asignación se calcula por turno antes de excluir indisponibilidades. No muestra cupos libres después de las reservas ni modifica citas existentes.')
-                            + table(['Inicio', 'Fin', 'Modalidad', 'Protección inicial'], result.blocks.map(block => [esc(block.start_time), esc(block.end_time), block.modality === 'presential' ? 'Presencial' : 'Online', block.protected ? 'Sí' : 'No']));
-                    });
-                }
-            },
-        };
+        /** Presenta turnos existentes y señala cruces antes de guardar. */
+        function openShift(shift=null,day=1) {
+            const values=shift?{...shift,start_time:time(shift.start_time),end_time:time(shift.end_time)}:{weekday:day,duration:30,...suggestedShift(schedules,day)};
+            modal(shift?'Modificar turno':'Añadir turno',`<p class="dialog-context">${esc(full(doctor))} · ${shift?'Se actualizará el turno seleccionado.':'Se propone una franja libre del horario semanal.'}</p><form id="schedule-form">${formErrors}<div class="grid two">
+                ${select('Día de atención','weekday',weekdays.map(n=>[n,days[n]]),values.weekday)}
+                ${field('Duración de consulta (minutos)','duration','number',values.duration,'required min="1"')}
+                ${field('Hora de inicio','start_time','time',values.start_time,'required')}
+                ${field('Hora de finalización','end_time','time',values.end_time,'required')}</div>
+                <div id="schedule-existing" class="schedule-existing"></div><div id="schedule-conflicts" aria-live="polite"></div>
+                <p class="help-text">Las primeras dos horas del turno se reservan para presencial. Puede ajustar la distribución en «Cupos por modalidad».</p>
+                <div class="actions end">${button('Cancelar','data-dismiss','')}<button type="submit" class="btn success">${shift?'Guardar cambios':'Añadir turno'}</button></div></form>`);
+            const form=$('#schedule-form');
+            const check=()=>{
+                const values=Object.fromEntries(new FormData(form));
+                const existing=schedules.filter(s=>Number(s.weekday)===Number(values.weekday));
+                $('#schedule-existing').innerHTML=`<strong>Turnos del ${esc(days[Number(values.weekday)].toLowerCase())}</strong>`+(existing.length?existing.map(s=>`<span class="schedule-chip ${String(s.id)===String(shift?.id)?'editing':''}">${esc(period(s))}${String(s.id)===String(shift?.id)?' · modificando':''}</span>`).join(''):'<span>No hay turnos. Puede elegir una franja nueva.</span>');
+                const conflicts=conflictingShifts(schedules,values,shift?.id);
+                const invalid=values.start_time&&values.end_time&&values.end_time<=values.start_time;
+                const minutes=t=>Number(t.slice(0,2))*60+Number(t.slice(3,5));
+                const tooShort=!invalid&&values.start_time&&values.end_time&&minutes(values.end_time)-minutes(values.start_time)<Number(values.duration);
+                const message=invalid?'La hora de finalización debe ser posterior al inicio.':tooShort?'La consulta debe caber dentro del turno.':conflicts.length?`Se cruza con ${conflicts.map(period).join(', ')}. Elija otra franja o cierre esta ventana y modifique ese turno.`:'';
+                $('#schedule-conflicts').innerHTML=message?notice(message,'warning'):values.start_time&&values.end_time?notice('Esta franja no se cruza con los turnos mostrados. Se verificará nuevamente al guardar.','success'):notice('Complete las horas del nuevo turno.');
+                form.querySelector('[name=end_time]').setCustomValidity(message);
+                if(conflicts.length)form.querySelector('[name=end_time]').setAttribute('aria-invalid','true');else form.querySelector('[name=end_time]').removeAttribute('aria-invalid');
+            };
+            on('#schedule-form [name=weekday]','change',()=>{
+                if(!shift){const proposed=suggestedShift(schedules,form.elements.weekday.value);form.elements.start_time.value=proposed.start_time;form.elements.end_time.value=proposed.end_time;}
+                check();
+            });
+            on('#schedule-form input','input',check);on('[data-dismiss]','click',closeModal);check();
+            bindForm('schedule-form',async values=>{
+                const result=await api(`schedules${shift?'/'+shift.id:''}`,shift?'PUT':'POST',{...values,doctor_id:doctorId});
+                closeModal();await navigate('CU07');toast(`Turno guardado para ${days[Number(values.weekday)]}.`);
+                if(result.affected_appointments?.length)modal('Citas que necesitan revisión',notice('El horario se guardó y estas citas conservan su estado. Recepción debe revisar su programación.')+table(['Cita','Paciente','Fecha'],result.affected_appointments.map(a=>[esc(code('CIT',a.id)),esc(full(a.patient)),esc(a.date)])));
+            });
+        }
+        /** Permite revisar citas afectadas antes de confirmar una indisponibilidad. */
+        function openAbsence() {
+            modal('Registrar ausencia',`<p class="dialog-context">${esc(full(doctor))}</p><form id="unavailable-form">${formErrors}<div class="grid two">${select('Motivo','reason',['Ausencia','Permiso','Vacaciones'])}${field('Desde','starts_at','datetime-local',`${localDate()}T08:00`,'required')}${field('Hasta','ends_at','datetime-local',`${localDate()}T12:00`,'required')}</div><div id="affected-preview" aria-live="polite"></div><div class="actions">${button('Ver citas afectadas','id="preview-block"','')}<button type="submit" class="btn success">Registrar ausencia</button></div></form>`);
+            on('#preview-block','click',async()=>{
+                const form=$('#unavailable-form');if(!form.reportValidity())return;
+                const result=await api('unavailabilities/preview','POST',{...Object.fromEntries(new FormData(form)),doctor_id:doctorId});
+                $('#affected-preview').innerHTML=notice(`${result.affected.length} citas afectadas. Las citas no se cancelan automáticamente.`,result.affected.length?'warning':'success')+(result.affected.length?table(['Cita','Paciente','Fecha'],result.affected.map(a=>[esc(code('CIT',a.id)),esc(full(a.patient)),esc(a.date)])):'');
+            });
+            on('#starts_at,#ends_at','change',()=>{$('#affected-preview').innerHTML='';});
+            bindForm('unavailable-form',async values=>{const result=await api('unavailabilities','POST',{...values,doctor_id:doctorId});closeModal();await navigate('CU07');toast(`Ausencia registrada. ${result.affected.length} citas requieren revisión.`);});
+        }
+        return {html:`<section class="panel doctor-workspace"><div>${select('Ver horario del médico','schedule-doctor',doctors.map(d=>[d.id,`${full(d)}${d.status==='Activo'?'':' · Inactivo'}`]),doctorId)}<p>${esc(doctor.specialties?.map(s=>s.name).join(' · ')||'Sin especialidades')}</p></div><div class="workspace-stat"><strong>${schedules.length}</strong><span>turnos semanales</span></div><div class="workspace-stat"><strong>${Math.round(weeklyMinutes/60*10)/10} h</strong><span>de atención semanal</span></div></section>`
+            +(!canEdit?notice('El médico está inactivo. Puede consultar su configuración; actívelo desde Médicos para modificarla.','warning'):'')
+            +`<div class="tabs" role="tablist" aria-label="Configuración del médico">${[['schedule','Semana de atención'],['block','Ausencias y vacaciones'],['quota','Cupos por modalidad']].map(([id,label])=>`<button type="button" role="tab" aria-selected="${id===tab}" class="tab ${id===tab?'selected':''}" data-tab="${id}">${label}</button>`).join('')}</div>`+body,
+            bind:()=>{
+                on('#schedule-doctor','change',e=>{state.scheduleDoctor=e.target.value;return navigate('CU07');});
+                on('[data-tab]','click',e=>{tab=e.currentTarget.dataset.tab;return navigate('CU07');});
+                on('#new-shift','click',()=>openShift());on('[data-new-shift]','click',e=>openShift(null,Number(e.currentTarget.dataset.newShift)));
+                on('[data-schedule]','click',e=>openShift(schedules.find(s=>String(s.id)===e.currentTarget.dataset.schedule)));
+                on('#new-unavailability','click',openAbsence);
+                on('#edit-quota','click',()=>{
+                    modal('Cambiar distribución de cupos',`<p>${esc(full(doctor))}</p><form id="quota-form">${formErrors}<div class="grid two">${field('Porcentaje presencial','presential_percent','number',data.quota?.presential_percent??50,'required min="0" max="100" step="1"')}${field('Porcentaje online','online_percent','number',data.quota?.online_percent??50,'required min="0" max="100" step="1"')}</div><p>Ambos porcentajes deben sumar 100. Se conservan las citas ya registradas.</p>${submit('Guardar distribución')}</form>`);
+                    bindForm('quota-form',async values=>{await api('doctor-quotas','PUT',{...values,doctor_id:doctorId});closeModal();await navigate('CU07');toast('Distribución actualizada.');});
+                });
+                if(tab==='quota')bindForm('capacity-form',async values=>{
+                    capacityDate=values.date;const result=await api('schedules/capacity?'+new URLSearchParams({doctor_id:doctorId,date:capacityDate}));
+                    $('#capacity-result').innerHTML=details([['Capacidad del día',esc(result.total_capacity)],['Presencial',esc(result.presential_capacity)],['Online',esc(result.online_capacity)],['Bloqueados',esc(result.blocked_blocks)]])
+                        +notice('Capacidad según horario e indisponibilidades. No descuenta las citas ya reservadas.')
+                        +table(['Inicio','Fin','Modalidad','Protección presencial'],result.blocks.map(b=>[esc(b.start_time),esc(b.end_time),b.modality==='presential'?'Presencial':'Online',b.protected?'Sí':'No']));
+                });
+            }};
     };
 }

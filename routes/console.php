@@ -1,7 +1,9 @@
 <?php
 
+/** Puntos de entrada de console: agrupan operaciones y sus controles de acceso antes de llegar al dominio. */
+
 use App\Models\BookingRequest;
-use App\Services\Payments\OnlineBookingService;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Servicios\OnlineBookingService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;

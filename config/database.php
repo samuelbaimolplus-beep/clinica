@@ -1,5 +1,7 @@
 <?php
 
+/** Configuración de database. Los valores de entorno se leen desde Laravel; no incluya credenciales reales en este archivo. */
+
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
@@ -85,6 +87,9 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'options' => [
+                PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT', 5),
+            ],
         ],
 
         'sqlsrv' => [

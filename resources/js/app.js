@@ -1,19 +1,24 @@
+/** Arranque de la interfaz: sesión, navegación por rol, formularios, diálogos y limpieza de información privada. */
 import { installCatalogViews } from './modules/catalogs';
 import { installScheduleViews } from './modules/schedules';
 import { installPatientViews } from './modules/patients';
 import { installAuditViews } from './modules/audit';
 import { installImpactViews } from './modules/impacts';
-import { installAvailabilityViews } from './modules/availability';
 import { installAgendaAdjustmentViews } from './modules/agenda-adjustments';
 import { createApiClient } from './lib/api';
-import { installClinicalViews } from './modules/clinical';
+import { installClinicalActions } from './modules/clinical';
 import { passwordToggleButton } from './lib/password-visibility';
-import { navigationGroups, rolePanels, visibleNavigation, homeView, routeFor, viewFromHash, viewDescriptions } from './lib/navigation';
+import { navigationGroups, rolePanels, visibleNavigation, routeFor, viewFromHash, viewDescriptions } from './lib/navigation';
 import { icon, viewIcon } from './lib/icons';
 import { installSupervisionViews } from './modules/supervision';
 import { installReceptionInbox } from './modules/reception-inbox';
 import { installAccountManagementViews } from './modules/accounts';
 import { installSessionViews } from './modules/session';
+import { installWorkspace } from './modules/workspace';
+import { installBookingWorkflow } from './modules/booking-workflow';
+import { installAppointmentWorkspace } from './modules/appointment-workspace';
+import { installFinanceWorkspace } from './modules/finance-workspace';
+import { installContextualTools } from './modules/contextual-tools';
 
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -29,10 +34,16 @@ const cycles = navigationGroups;
 const titles = Object.fromEntries(cycles.flatMap(c => c[1]));
 let access = {};
 let termsVersion = '';
-const home = () => homeView(state.user?.role, access[state.user?.role] || []);
+const home = () => 'inicio';
 let refreshInbox = () => {};
 const state = {user:null, csrf:$('meta[name="csrf-token"]').content, view:'CU01', refs:{doctors:[],specialties:[],patients:[]}, sequence:0};
 const main = $('#main');
+/** Elimina borradores y contenido de diálogos al cerrar o revocar la sesión. */
+function clearPrivateWorkspace() {
+    for(const key of ['bookingDraft','workflowContext','flowFeedback','returnToBooking','openAppointmentId','scheduleDoctor'])delete state[key];
+    closeModal();
+    window.dispatchEvent(new Event('clinic:identity-changed'));
+}
 const panel = (title, body) => `<section class="panel">${title ? `<h3>${esc(title)}</h3>` : ''}${body}</section>`;
 const badge = s => `<span class="badge ${esc(s)}">${esc(s)}</span>`;
 const notice = (s, type = '') => `<div class="notice ${type}">${esc(s)}</div>`;
@@ -52,22 +63,27 @@ const doctorOptions = (specialty = null) => personOptions(state.refs.doctors.fil
 const submit = label => `<div class="actions"><button class="btn success" type="submit">${esc(label)}</button></div>`;
 const formErrors = '<div class="form-errors" role="alert"></div>';
 const actionButtons = body => `<div class="actions end">${body}</div>`;
+/** Muestra una confirmación o error temporal sin insertar HTML recibido del usuario. */
 function toast(message, error = false) {
     const box = document.createElement('div'); box.className = `toast ${error?'error':''}`; box.textContent = message;
     $('#toasts').append(box); setTimeout(()=>box.remove(), 6000);
 }
+/** Convierte errores de una acción de interfaz en mensajes visibles al usuario. */
 function safe(fn) { return async event => { try { await fn(event); } catch (e) { toast(e.message, true); } }; }
+/** Enlaza eventos únicamente a los elementos del componente indicado. */
 function on(selector, event, fn, root = document) { $$(selector, root).forEach(el=>el.addEventListener(event,safe(fn))); }
 const api = createApiClient({
     getToken: () => state.csrf,
     setToken: token => { state.csrf = token; $('meta[name="csrf-token"]').content = token; },
     onUnauthorized: async message => {
+        clearPrivateWorkspace();
         state.user = null;
         state.refs = {doctors: [], specialties: [], patients: []};
         await navigate('CU01');
         toast(message, true);
     },
 });
+/** Evita doble envío, presenta errores por campo y espera confirmación del servidor. */
 function bindForm(id, callback) {
     const form = $(`#${id}`);
     form.addEventListener('submit', async event => {
@@ -88,13 +104,16 @@ function modal(title, body) {
     $('#modal-title').textContent = title; $('#modal-body').innerHTML = body;
     if(!$('#modal').open)$('#modal').showModal();
 }
-function closeModal() { $('#modal').close(); }
+/** Cierra y vacía el diálogo para no conservar datos de otra operación o identidad. */
+function closeModal() { $('#modal').close(); $('#modal-body').replaceChildren(); $('#modal-title').textContent=''; }
+/** Pide confirmación de una acción concreta y espera el resultado de su ejecución. */
 function confirmAction(title, message, callback, danger = false) {
     modal(title, `<p>${esc(message)}</p>${actionButtons(button('Cancelar','data-dismiss','')+button('Confirmar','id="confirm-action"',danger?'danger':'success'))}`);
     on('[data-dismiss]','click',closeModal);
     on('#confirm-action','click',async event=>{event.target.disabled=true;try { const afterClose = await callback(); closeModal(); if(typeof afterClose==='function')afterClose(); } finally {event.target.disabled=false;}});
 }
 async function references() { state.refs = await api('references'); }
+/** Presenta el marco de navegación según el rol y permisos actuales. */
 function shell() {
     const user = state.user;
     $('#sidebar').hidden = !user;
@@ -104,9 +123,10 @@ function shell() {
     refreshInbox();
     if(!user)return;
     const profile = rolePanels[user.role];
-    $('#sidebar').innerHTML = `<div class="role-panel"><span class="workspace-label">SU ESPACIO DE TRABAJO</span><strong>${esc(profile?.title || user.role)}</strong><p>${esc(profile?.description || '')}</p></div><label class="nav-search">${icon('search')}<input id="nav-search" type="search" placeholder="Buscar en el menú" aria-label="Buscar en el menú" autocomplete="off"></label><div class="nav-sections">`
+    $('#sidebar').innerHTML = `<div class="role-panel"><span class="workspace-label">SU ESPACIO DE TRABAJO</span><strong>${esc(profile?.title || user.role)}</strong><p>${esc(profile?.description || '')}</p></div><button type="button" class="nav-btn ${state.view==='inicio'?'selected':''}" data-home ${state.view==='inicio'?'aria-current="page"':''}>${icon('calendar')}<span>Inicio y acciones</span></button><label class="nav-search">${icon('search')}<input id="nav-search" type="search" placeholder="Buscar en el menú" aria-label="Buscar en el menú" autocomplete="off"></label><div class="nav-sections">`
         + visibleNavigation(user.role, access[user.role] || []).map(([title,links])=>`<nav aria-label="${esc(title)}"><h3>${esc(title)}</h3>${links.map(([id,label])=>`<button class="nav-btn ${state.view===id?'selected':''}" data-view="${id}" ${state.view===id?'aria-current="page"':''}>${icon(viewIcon(id))}<span>${esc(label)}</span>${state.view===id?'<span class="nav-active-dot" aria-hidden="true"></span>':''}</button>`).join('')}</nav>`).join('')+'</div><p id="nav-empty" class="nav-empty" hidden>No encontramos esa opción. Pruebe con otro nombre.</p><div class="sidebar-foot">Clínica Vida Salud<small>Atención y gestión en un solo lugar</small></div>';
     on('[data-view]','click',e=>navigate(e.currentTarget.dataset.view));
+    on('[data-home]','click',()=>navigate('inicio'));
     on('#nav-search','input',e=>{
         const normalize=value=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
         const query=normalize(e.target.value.trim());
@@ -116,12 +136,15 @@ function shell() {
     on('#profile-account','click',()=>navigate('CU02'));
     on('#logout-button','click',logout);
 }
-function logout() { confirmAction('Cerrar sesión',`¿Desea cerrar la sesión de ${state.user.name}?`,async()=>{await api('logout','POST',{});state.user=null;state.refs={doctors:[],specialties:[],patients:[]};await navigate('CU01');toast('Sesión cerrada correctamente.');},true); }
+function logout() { confirmAction('Cerrar sesión',`¿Desea cerrar la sesión de ${state.user.name}?`,async()=>{await api('logout','POST',{});clearPrivateWorkspace();state.user=null;state.refs={doctors:[],specialties:[],patients:[]};await navigate('CU01');toast('Sesión cerrada correctamente.');},true); }
 function heading() {
     const group=visibleNavigation(state.user.role, access[state.user.role] || []).find(([,links])=>links.some(([id])=>id===state.view));
-    const title=group?.[1].find(([id])=>id===state.view)?.[1] || titles[state.view];
+    const title=state.view==='inicio'?'Inicio y acciones':group?.[1].find(([id])=>id===state.view)?.[1] || titles[state.view];
+    const description=state.user.role==='Paciente'&&state.view==='CU15'
+        ?'Consulta tus citas y sus cambios. Solo se muestran registros vinculados a tu cuenta.'
+        :state.view==='inicio'?'Sus tareas y herramientas, organizadas según su rol.':viewDescriptions[state.view] || '';
     document.title=`${title} · Clínica Vida Salud`;
-    return `<div class="page-heading"><div><span class="eyebrow">${esc(group?.[0] || 'Clínica Vida Salud')}</span><h1>${esc(title)}</h1><p>${esc(viewDescriptions[state.view] || '')}</p></div><span class="page-date">${icon('calendar')}${new Intl.DateTimeFormat('es-BO',{day:'numeric',month:'short',year:'numeric',timeZone:'America/La_Paz'}).format(new Date())}</span></div>`;
+    return `<div class="page-heading"><div><span class="eyebrow">${esc(group?.[0] || 'Clínica Vida Salud')}</span><h1>${esc(title)}</h1><p>${esc(description)}</p></div><span class="page-date">${icon('calendar')}${new Intl.DateTimeFormat('es-BO',{day:'numeric',month:'short',year:'numeric',timeZone:'America/La_Paz'}).format(new Date())}</span></div>`;
 }
 function setMenu(open, restoreFocus=false) {
     $('#sidebar').classList.toggle('open',open);
@@ -133,9 +156,10 @@ function setMenu(open, restoreFocus=false) {
     if(open)$('#nav-search')?.focus();
     else if(restoreFocus)$('#menu-toggle').focus();
 }
+/** Controla permisos, secuencia de carga, navegación y foco antes de enlazar una vista. */
 async function navigate(view, {replace=false}={}) {
     if (!state.user) view = 'CU01';
-    else if (!access[state.user.role]?.includes(view)) { toast('Su rol no tiene acceso a esta función.',true); return; }
+    else if (view!=='inicio'&&!access[state.user.role]?.includes(view)) { toast('Su rol no tiene acceso a esta función.',true); return; }
     else if(view==='CU01')view=home();
     state.view = view; state.sequence++; closeModal(); shell();
     const destination=state.user?`#${routeFor(view)}`:location.pathname+location.search;
@@ -146,21 +170,32 @@ async function navigate(view, {replace=false}={}) {
     main.setAttribute('aria-busy','true');
     main.innerHTML = heading()+'<div class="loading-state" role="status"><span class="spinner"></span><p>Cargando información…</p></div>';
     const seq = state.sequence;
-    try { const content = await views[view](); if(seq !== state.sequence)return; main.innerHTML=heading()+content.html; content.bind?.(); }
+    try { const content = await views[view](); if(seq !== state.sequence)return; main.innerHTML=heading()+content.html; content.bind?.();
+        on('[data-open-view]','click',e=>navigate(e.currentTarget.dataset.openView),main);
+    }
     catch(e) { if(seq===state.sequence)main.innerHTML=heading()+notice(e.message,'error')+button('Reintentar','id="retry"'); on('#retry','click',()=>navigate(view)); }
     if(seq===state.sequence){main.removeAttribute('aria-busy');main.focus({preventScroll:true});}
     window.scrollTo(0,0);
 }
+/** Muestra acceso y requisitos pendientes sin abrir una sesión hasta su verificación. */
 function loginView() {
     document.title='Bienvenido · Clínica Vida Salud';
     main.removeAttribute('aria-busy');
-    main.innerHTML = `<div class="login-layout"><section class="login-story"><span class="story-kicker">CLÍNICA VIDA SALUD</span><h2>Más cerca de usted.<br>Más fácil de gestionar.</h2><p>Un espacio para cuidar su tiempo y acompañar su atención médica.</p><div class="story-features"><div>${icon('calendar')}<span><strong>Su próxima consulta, a un paso</strong><small>Consulte horarios y gestione sus citas.</small></span></div><div>${icon('file')}<span><strong>Todo a mano</strong><small>Revise sus citas y el estado de sus solicitudes.</small></span></div><div>${icon('shield')}<span><strong>Acceso personal y protegido</strong><small>Una cuenta para cada paciente y miembro del equipo.</small></span></div></div><div class="story-footer"><span class="brand-mark">✚</span><span>Su salud, nuestra prioridad<small>Portal de atención y gestión</small></span></div></section><div class="login-wrap">${panel('',`<div class="login-heading"><span class="eyebrow">BIENVENIDO A SU CLÍNICA</span><h1>Iniciar sesión</h1><p>Ingrese con su cuenta para continuar.</p></div><form id="login-form">${formErrors}${field('Usuario o correo electrónico','email','text','','required maxlength="255" autocomplete="username" placeholder="Su usuario o correo"')}${field('Contraseña','password','password','','required maxlength="128" autocomplete="current-password"')}${submit('Iniciar sesión')}</form><div class="account-invitation"><strong>¿Es su primera visita?</strong><p>Para obtener una cuenta, acuda a la clínica. Recepción registrará su acceso. Si ya recibió el código por correo, active su cuenta.</p>${button('Activar mi cuenta','id="activate-account"','link')}</div>`)}<p class="login-foot">Clínica Vida Salud · Atención para personal y pacientes</p></div></div>`;
+    main.innerHTML = `<div class="login-layout"><section class="login-story"><span class="story-kicker">CLÍNICA VIDA SALUD</span><h2>Más cerca de usted.<br>Más fácil de gestionar.</h2><p>Un espacio para cuidar su tiempo y acompañar su atención médica.</p><div class="story-features"><div>${icon('calendar')}<span><strong>Su próxima consulta, a un paso</strong><small>Consulte horarios y gestione sus citas.</small></span></div><div>${icon('file')}<span><strong>Todo a mano</strong><small>Revise sus citas y el estado de sus solicitudes.</small></span></div><div>${icon('shield')}<span><strong>Acceso personal y protegido</strong><small>Acceso del personal y portal opcional para pacientes adultos.</small></span></div></div><div class="story-footer"><span class="brand-mark">✚</span><span>Su salud, nuestra prioridad<small>Portal de atención y gestión</small></span></div></section><div class="login-wrap">${panel('',`<div class="login-heading"><span class="eyebrow">BIENVENIDO A SU CLÍNICA</span><h1>Iniciar sesión</h1><p>Ingrese con su cuenta para continuar.</p></div><form id="login-form">${formErrors}${field('Usuario o correo electrónico','email','text','','required maxlength="255" autocomplete="username" placeholder="Su usuario o correo"')}${field('Contraseña','password','password','','required maxlength="128" autocomplete="current-password"')}${submit('Iniciar sesión')}</form><div class="account-invitation"><strong>¿Es su primera visita?</strong><p>La atención no requiere cuenta. Si tiene 18 años cumplidos y desea usar el portal, acuda a la clínica para solicitarlo y aceptar sus términos. Si ya recibió el código por correo, active su cuenta.</p>${button('Activar mi cuenta','id="activate-account"','link')}</div>`)}<p class="login-foot">Clínica Vida Salud · Atención para personal y pacientes</p></div></div>`;
     on('#activate-account', 'click', () => views.activation());
     $('#login-form').insertAdjacentHTML('afterend', button('Recuperar acceso o verificar correo', 'id="recover-account"', 'link'));
     on('#recover-account', 'click', () => views.recovery());
     bindForm('login-form', async data=>{
         try { await api('login','POST',data); }
         catch(error) {
+            if(error.data?.eligibility_required) {
+                let box=$('#login-eligibility');
+                if(!box){box=document.createElement('div');box.id='login-eligibility';$('#login-form .actions').before(box);}
+                box.innerHTML=notice('Verifique estos datos antes de acceder. La atención en la clínica no requiere una cuenta de paciente.')
+                    +(error.data.birth_date_required?field('Fecha de nacimiento','birth_date','date','','required'):'')
+                    +(error.data.terms_required?`<label class="terms-accept"><input type="checkbox" name="terms_accepted" value="1" required>Acepto los <a href="/terms" target="_blank" rel="noopener">términos y condiciones</a> del portal, versión ${esc(error.data.terms_version)}.</label><input type="hidden" name="terms_version" value="${esc(error.data.terms_version)}">`:'');
+                box.querySelector('input')?.focus();return;
+            }
             if(error.data?.activation_required) {views.activation(error.data.email);toast(error.message);return;}
             if(error.status!==409)throw error;
         }
@@ -185,18 +220,22 @@ views.CU16=async()=>({html:panel('Generador de reportes administrativos',`<form 
 }});
 
 
-const ui = { $, state, views, api, esc, full, code, badge, field, select, textarea, personOptions, localDate, table, button, modal, formErrors, actionButtons, on, closeModal, bindForm, references, navigate, toast, confirmAction, panel, time, days, doctorOptions, notice, submit, main, details, loginView, heading, home, logout, getTermsVersion: () => termsVersion };
+const ui = { $, state, views, api, esc, full, code, badge, field, select, textarea, personOptions, localDate, table, button, modal, formErrors, actionButtons, on, closeModal, bindForm, references, navigate, toast, confirmAction, panel, time, days, doctorOptions, notice, submit, main, details, loginView, heading, home, logout, icon, allowedViews:()=>access[state.user?.role]||[], getTermsVersion: () => termsVersion };
+installWorkspace(ui);
 installSessionViews(ui);
 installCatalogViews(ui);
 installScheduleViews(ui);
 installPatientViews(ui);
 installAuditViews(ui);
 installImpactViews(ui);
-installAvailabilityViews(ui);
 installAgendaAdjustmentViews(ui);
-installClinicalViews(ui);
+installClinicalActions(ui);
+installBookingWorkflow(ui);
+installAppointmentWorkspace(ui);
+installFinanceWorkspace(ui);
 installSupervisionViews(ui);
 installAccountManagementViews(ui);
+installContextualTools(ui);
 refreshInbox = installReceptionInbox(ui);
 
 $('#close-modal').addEventListener('click',closeModal);
@@ -216,16 +255,18 @@ document.addEventListener('keydown',event=>{
 window.matchMedia('(min-width: 961px)').addEventListener('change',event=>{if(event.matches)setMenu(false);});
 new ResizeObserver(entries=>document.documentElement.style.setProperty('--header-height',`${entries[0].target.getBoundingClientRect().height}px`)).observe($('.topbar'));
 window.addEventListener('hashchange',()=>{const view=viewFromHash(location.hash);if(state.user&&view&&view!==state.view)navigate(view,{replace:true});});
+/** Recupera identidad, permisos y referencias antes de mostrar operaciones privadas. */
 async function boot({requireAuthentication=false}={}) {
     try {
         const result=await api('session');
+        if(state.sessionOwnerId!==result.user?.id){clearPrivateWorkspace();state.sessionOwnerId=result.user?.id;}
         state.user=result.user;access=result.access||{};termsVersion=result.terms_version;
         if(requireAuthentication&&!state.user)throw new Error(result.message||'No se pudo conservar la sesión. Permita las cookies de esta página e intente nuevamente.');
         if(state.user&&!access[state.user.role]?.includes('CU02'))throw new Error('No se pudieron cargar los permisos de su cuenta. Recargue la página o reintente la carga del panel.');
         if(state.user)await references();
         const activationRequested = !state.user && location.hash === '#activar-cuenta';
         const requested=viewFromHash(location.hash);
-        await navigate(state.user&&access[state.user.role]?.includes(requested)?requested:state.user?home():'CU01',{replace:true});
+        await navigate(state.user&&(requested==='inicio'||access[state.user.role]?.includes(requested))?requested:state.user?home():'CU01',{replace:true});
         if(activationRequested)views.activation();
         return Boolean(state.user);
     } catch(error) {

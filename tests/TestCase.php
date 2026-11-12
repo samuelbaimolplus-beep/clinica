@@ -17,7 +17,7 @@ abstract class TestCase extends BaseTestCase
     /** Fixture de una cuenta que ya completó la activación; no afecta al alta real. */
     protected function verifiedAccount(array $attributes): User
     {
-        $user = new User($attributes);
+        $user = new User($attributes + ['birth_date' => '1990-01-01', 'terms_accepted_at' => now(), 'terms_version' => config('clinic.terms_version')]);
         $user->forceFill(['email_verified_at' => now()])->save();
 
         return $user;

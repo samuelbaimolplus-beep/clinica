@@ -1,5 +1,7 @@
 <?php
 
+/** Adapta identificadores SQL de Laravel al esquema español sin traducir valores ni literales. */
+
 namespace App\Database;
 
 use Closure;
@@ -13,11 +15,13 @@ class SpanishPostgresConnection extends PostgresConnection
 {
     private ?bool $spanishSchema = null;
 
+    /** Fija explícitamente el modo de traducción del esquema para esta conexión. */
     public function useSpanishSchema(bool $enabled): void
     {
         $this->spanishSchema = $enabled;
     }
 
+    /** Detecta el esquema físico español una vez por conexión. */
     public function hasSpanishSchema(): bool
     {
         return $this->spanishSchema ??= (bool) $this->getPdo()
@@ -25,11 +29,13 @@ class SpanishPostgresConnection extends PostgresConnection
             ->fetchColumn();
     }
 
+    /** Combina la correspondencia de tablas y columnas con sus nombres físicos en español. */
     public static function identifiers(): array
     {
         return array_merge(config('database_names.tables'), config('database_names.columns'));
     }
 
+    /** Traduce identificadores SQL y conserva literales, parámetros, comentarios y cuerpos de procedimientos. */
     public static function translateSql(string $query): string
     {
         $names = self::identifiers();
@@ -54,6 +60,7 @@ REGEX;
         }, $query);
     }
 
+    /** Proporciona el constructor de esquema compatible con identificadores españoles. */
     public function getSchemaBuilder()
     {
         if (is_null($this->schemaGrammar)) {
@@ -63,6 +70,7 @@ REGEX;
         return new SpanishPostgresBuilder($this);
     }
 
+    /** Traduce la consulta y sus referencias de esquema antes de delegar su ejecución a PostgreSQL. */
     protected function run($query, $bindings, Closure $callback)
     {
         if ($this->hasSpanishSchema()) {
@@ -77,6 +85,7 @@ REGEX;
         return parent::run($query, $bindings, $callback);
     }
 
+    /** Adapta nombres de columnas del resultado a los atributos que esperan los modelos. */
     private function applicationRow(mixed $row): mixed
     {
         if (! is_object($row) && ! is_array($row)) {
@@ -91,6 +100,7 @@ REGEX;
         return is_object($row) ? (object) $mapped : $mapped;
     }
 
+    /** Ejecuta una lectura y adapta los nombres de columnas del resultado. */
     public function select($query, $bindings = [], $useReadPdo = true, array $fetchUsing = [])
     {
         $rows = parent::select($query, $bindings, $useReadPdo, $fetchUsing);
@@ -98,6 +108,7 @@ REGEX;
         return $this->hasSpanishSchema() ? array_map($this->applicationRow(...), $rows) : $rows;
     }
 
+    /** Adapta cada conjunto de resultados devuelto por PostgreSQL. */
     public function selectResultSets($query, $bindings = [], $useReadPdo = true, array $fetchUsing = [])
     {
         $sets = parent::selectResultSets($query, $bindings, $useReadPdo, $fetchUsing);
@@ -107,6 +118,7 @@ REGEX;
             : $sets;
     }
 
+    /** Recorre los resultados adaptando sus columnas sin cargar el conjunto completo en memoria. */
     public function cursor($query, $bindings = [], $useReadPdo = true, array $fetchUsing = [])
     {
         foreach (parent::cursor($query, $bindings, $useReadPdo, $fetchUsing) as $row) {

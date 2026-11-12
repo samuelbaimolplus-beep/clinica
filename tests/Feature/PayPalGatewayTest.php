@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Payment;
-use App\Services\Payments\PayPalGateway;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\Compartido\Integraciones\PayPalGateway;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;

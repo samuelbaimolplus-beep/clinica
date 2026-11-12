@@ -1,5 +1,7 @@
 <?php
 
+/** Datos ficticios para desarrollo o pruebas; no representan personas reales ni sustituyen el alta operativa. */
+
 namespace Database\Seeders;
 
 use App\Models\User;

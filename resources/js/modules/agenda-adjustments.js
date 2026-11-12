@@ -1,3 +1,4 @@
+/** CU24/CU25: consultar y proponer no modifica cupos; confirmar sí aplica el ajuste autorizado. */
 export function installAgendaAdjustmentViews(ui) {
     const { views, api, panel, notice, table, select, formErrors, submit, button, on, bindForm, localDate, state, full, esc, navigate, $, toast, confirmAction } = ui;
     let specialty = '';

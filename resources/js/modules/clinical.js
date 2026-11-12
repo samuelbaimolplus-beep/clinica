@@ -1,13 +1,62 @@
+/** Acciones compartidas: ficha, historial, cambio de horario, asistencia, consulta y conciliación de PayPal. */
 // CU09–CU21/CU26. La interfaz propone operaciones; el servidor verifica todos los permisos y estados.
-export function installClinicalViews(ui) {
-    const { $, state, views, api, esc, full, code, badge, field, select, textarea, localDate, table, button, modal,
+export function installClinicalActions(ui) {
+    const { $, state, api, esc, full, code, badge, field, select, textarea, localDate, table, button, modal,
         formErrors, on, closeModal, bindForm, navigate, toast, panel, time, notice, submit, details } = ui;
     const money = minor => minor == null ? 'Sin tarifa definida' : `Bs ${(minor / 100).toFixed(2)}`;
-    const active = a => ['Programada', 'Confirmada'].includes(a.status);
+    // Una comprobación se cancela al cerrar el diálogo o cambiar de identidad; no quedan pagos consultándose en segundo plano.
+    let onlineTimer=null,onlineVersion=0;
+    const stopOnlineWatch=()=>{clearTimeout(onlineTimer);onlineTimer=null;onlineVersion++;};
+    $('#modal').addEventListener('close',stopOnlineWatch);
+    window.addEventListener('clinic:identity-changed',stopOnlineWatch);
+    const displayDate = value => {
+        if (!value) return '—';
+        const date = new Date(`${value.slice(0,10)}T12:00:00Z`);
+        return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('es-BO',{dateStyle:'medium',timeZone:'America/La_Paz'});
+    };
+    const displayDateTime = value => {
+        if (!value) return '—';
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? value : date.toLocaleString('es-BO',{dateStyle:'medium',timeStyle:'short',timeZone:'America/La_Paz'});
+    };
     const status = value => ({pending:'Pendiente', approved:'Aprobada, devolución pendiente', completed:'Completada',
         rejected:'Rechazada', ineligible:'No admitida', held:'Retenido', processing:'Pago pendiente de conciliación',
         expired:'Expirada', confirmed:'Confirmado', failed:'Fallido', unknown:'Sin confirmación', initializing:'Preparando',
         accepted:'Aceptada', closed:'Cerrada', cancelled:'Descartada sin pago'}[value] || value);
+    const appointmentActions = {
+        Creación:'Cita programada',
+        Reprogramación:'Cita reprogramada',
+        cancel:'Cita cancelada',
+        attendance:'Asistencia registrada',
+        absent:'Inasistencia registrada',
+        attend:'Consulta finalizada',
+        'missed-call':'Turno de llamado registrado',
+    };
+    const scheduleText = schedule => schedule?.date
+        ? `${displayDate(schedule.date)} · ${time(schedule.start_time)}–${time(schedule.end_time)}`
+        : '';
+    const eventDetails = event => {
+        const detail = event.details || {};
+        const parts = [];
+
+        if (detail.before && typeof detail.before === 'object') {
+            const previous = scheduleText(detail.before);
+            if (previous) parts.push(`Programación anterior: ${previous}`);
+        } else if (detail.before && detail.after && detail.before !== detail.after) {
+            parts.push(`${detail.before} → ${detail.after}`);
+        }
+        if (detail.after && typeof detail.after === 'object') {
+            const next = scheduleText(detail.after);
+            if (next) parts.push(`Nueva programación: ${next}`);
+        }
+        if (detail.before?.doctor_id && detail.after?.doctor_id && detail.before.doctor_id !== detail.after.doctor_id) {
+            parts.push('También se actualizó el médico asignado.');
+        }
+        if (detail.reason) parts.push(`Motivo: ${detail.reason}`);
+        if (detail.cause) parts.push(`Origen: ${{patient:'Solicitud del paciente',clinic:'Causa de la clínica'}[detail.cause] || detail.cause}`);
+
+        return parts.length ? parts.join(' · ') : 'Sin detalles adicionales.';
+    };
     const paymentFields = amount => notice(`Tarifa: ${money(amount)}. Verifique la recepción del dinero antes de confirmar.`)
         + select('Medio de pago', 'payment_method', [['cash','Efectivo'],['qr','QR presencial'],['transfer','Transferencia']], 'cash')
         + field('Referencia bancaria (obligatoria para QR o transferencia)', 'bank_reference', 'text', '', 'maxlength="180"')
@@ -24,98 +73,37 @@ export function installClinicalViews(ui) {
                 : (a.payment?.bank_reference || a.payment?.reference || (a.payment?.id ? `Pago n.º ${a.payment.id}` : '—')))],
         ]) + notice('Conserve el código de la cita para sus consultas.') + button('Imprimir ficha','id="print-ficha"'));
         on('#print-ficha','click',()=>{document.body.classList.add('printing-ficha');try{window.print();}finally{document.body.classList.remove('printing-ficha');}});
+        if(ui.allowedViews().includes('CU13')){
+            $('#modal-body').insertAdjacentHTML('beforeend',`<div class="outcome-hint"><strong>La cita ya está programada</strong><p>El día de la atención, registre la llegada del paciente desde la agenda. No necesita crearle una cuenta.</p>${button('Abrir agenda de la clínica','id="after-booking-agenda"')}</div>`);
+            on('#after-booking-agenda','click',()=>{state.openAppointmentId=a.id;state.workflowContext={date:a.date};return navigate('CU12');});
+        }
     };
+    /** Presenta historial con nombres legibles y limita datos según el rol. */
     async function history(a) {
-        modal(`Detalle ${code('CIT',a.id)}`, details([
-            ['Paciente',esc(full(a.patient))],['Médico',esc(full(a.doctor))],['Especialidad',esc(a.specialty.name)],
-            ['Fecha y hora',esc(`${a.date} ${time(a.start_time)}–${time(a.end_time)}`)],['Estado',badge(a.status)],
-            ['Fecha de registro',esc(a.created_at || '—')],
-            ['Asistencia',esc(a.attendance_at || 'Sin registrar')],['Pago',esc(a.complimentary?'Seguimiento exento':money(a.payment?.amount_minor))],
+        const patient=state.user.role==='Paciente';
+        const physician=state.user.role==='Médico';
+        const entries=[
+            ...(!patient?[['Paciente',esc(full(a.patient))]]:[]),['Médico',esc(full(a.doctor))],['Especialidad',esc(a.specialty.name)],
+            ['Fecha y hora',esc(`${displayDate(a.date)} ${time(a.start_time)}–${time(a.end_time)}`)],['Estado',badge(a.status)],
+            ['Fecha de registro',esc(displayDateTime(a.created_at))],
+            ['Asistencia',esc(a.attendance_at ? displayDateTime(a.attendance_at) : 'Sin registrar')],
+            ...(!physician?[['Pago',esc(a.complimentary?'Seguimiento exento':money(a.payment?.amount_minor))]]:[]),
             ['Motivo',esc(a.reason || '—')],['Cancelación',esc(a.cancellation_reason || '—')],
-            ['Seguimiento recomendado',esc(a.followup_suggested_at || '—')],['Indicación',esc(a.followup_note || '—')],
-        ]) + table(['Fecha','Operación','Detalle'],(a.events || []).map(e=>[esc(e.created_at),esc(e.action),esc(JSON.stringify(e.details))])));
+            ['Seguimiento recomendado',esc(displayDate(a.followup_suggested_at))],['Indicación',esc(a.followup_note || '—')],
+        ];
+        const changes=(a.events || []).map(event=>[
+            esc(displayDateTime(event.created_at)),
+            esc(appointmentActions[event.action] || event.action),
+            esc(eventDetails(event)),
+        ]);
+
+        modal(`Detalle ${code('CIT',a.id)}`,details(entries)
+            + (changes.length?table(['Fecha','Cambio registrado','Información'],changes):notice('Esta cita no tiene cambios adicionales registrados.')));
     }
 
-    async function bookingView(followup = false, online = false) {
-        const supervisor = state.user.role === 'Superadmin';
-        const options = await api('medical-availability/options');
-        const parents = followup ? (await api('appointments?mode=history&status=Atendida')).filter(a=>a.followup_suggested_at) : [];
-        const requests = online ? await api('online-bookings') : [];
-        let selected = null;
-        let blocks = [];
-        let queryVersion = 0;
-        const operationKey = crypto.randomUUID();
-        return {html: (online ? notice('Elija un horario y continúe a PayPal para pagar. Su ficha estará disponible cuando se confirme el pago. PayPal Sandbox utiliza únicamente dinero de prueba.') : '')
-            + (online && !options.online_payment_available ? notice('El pago online está temporalmente indisponible. Puede consultar horarios; contacte a Recepción para obtener una cita presencial.', 'error') : '')
-            + (online && supervisor ? notice('Supervisión global: puede ver todas las operaciones y consultar los horarios online. La reserva personal se realiza desde una cuenta de Paciente.') : '')
-            + (online && (requests.length || supervisor) ? panel(supervisor?'Operaciones online de todos los pacientes':'Mis reservas recientes',table(['Operación',...(supervisor?['Paciente','Médico']:[]),'Fecha','Hora','Estado','Acción'],requests.map(r=>[esc(r.id),...(supervisor?[esc(full(r.patient)),esc(full(r.doctor))]:[]),esc(r.date),esc(time(r.start_time)),esc(status(r.status)),button('Consultar',`data-online="${r.id}"`)]))) : '')
-            + panel(followup?'Formalizar seguimiento':'Obtener cita',`<form id="clinical-booking">${formErrors}
-                ${followup?select('Consulta atendida con recomendación','parent_appointment_id',[['','Seleccione…'],...parents.map(a=>[a.id,`${code('CIT',a.id)} · ${full(a.patient)} · ${a.followup_suggested_at}`])],'','required'):''}
-                ${followup?select('Si cambia la fecha/hora sugerida, ¿quién origina el cambio?','followup_change_cause',[['patient','Paciente'],['clinic','Clínica']])+textarea('Motivo del cambio y acuerdo (obligatorio si lo origina la clínica)','followup_change_reason','','maxlength="3000"'):''}
-                ${online?'':select('Paciente','patient_id',[['','Seleccione…'],...state.refs.patients.filter(p=>p.status==='Activo').map(p=>[p.id,`${p.identity||'Sin CI'} · ${full(p)}`])],'','required')}
-                <div class="grid two">${select('Especialidad','specialty_id',[['','Seleccione…'],...options.specialties.map(s=>[s.id,s.name])],'','required')}
-                ${select('Preferencia de médico','preferred_doctor',[['','Equilibrar según disponibilidad y carga']])}
-                ${field('Fecha','date','date',localDate(),`required min="${localDate()}"`)}</div>
-                <div id="clinical-slots">${notice('Seleccione especialidad y fecha para consultar cupos.')}</div><div id="clinical-selection" aria-live="polite"></div>
-                ${online?'':textarea('Motivo (opcional)','reason','','maxlength="3000"')}
-                <div id="clinical-payment"></div>${online&&(supervisor||!options.online_payment_available)?notice(supervisor?'Vista de supervisión: no se reserva en nombre de otro usuario.':'No se puede iniciar el pago mientras el servicio esté indisponible.'):submit(online?'Reservar y pagar con PayPal Sandbox':'Verificar y emitir ficha')}</form>`), bind:()=>{
-            const updatePayment = () => {
-                const specialty = options.specialties.find(s=>String(s.id)===$('#specialty_id').value);
-                const parent = parents.find(a=>String(a.id)===$('#parent_appointment_id')?.value);
-                const free = parent && selected && (parent.followup_suggested_at.slice(0,16).replace('T',' ')===`${$('#date').value} ${selected.start_time}` || $('#followup_change_cause')?.value==='clinic');
-                $('#clinical-payment').innerHTML = online ? notice(specialty?`Tarifa: ${money(specialty.fee_minor)}. PayPal cobra USD de prueba; la orden mostrará la conversión fijada por el servidor (tasa de demostración: ${options.bob_per_usd || '—'} Bs por USD).`:'Seleccione una especialidad para consultar el importe.') : free ? notice('Seguimiento en la fecha/hora recomendadas o con cambio causado por la clínica: exención de pago.') : paymentFields(specialty?.fee_minor);
-            };
-            const load = async () => {
-                const version = ++queryVersion;
-                selected = null;
-                $('#clinical-selection').innerHTML='';
-                updatePayment();
-                $('#clinical-slots').innerHTML = notice('Consultando cupos…');
-                if (!$('#specialty_id').value || !$('#date').value) { $('#clinical-slots').innerHTML = notice('Seleccione especialidad y fecha.'); return; }
-                const result = await api('medical-availability?'+new URLSearchParams({specialty_id:$('#specialty_id').value,date:$('#date').value,doctor_id:$('#preferred_doctor').value,modality:online?'online':'presential',...(!online?{include_demand:'1'}:{})}));
-                if (version!==queryVersion || !$('#clinical-slots')) return;
-                blocks = result.blocks;
-                $('#clinical-slots').innerHTML = blocks.length ? table(['Médico','Inicio','Fin','Estado del cupo','Elegir'],blocks.map((b,i)=>[esc(b.doctor_name),esc(b.start_time),esc(b.end_time),esc(b.demand_blocked?'Bloqueo provisional de esta especialidad':'Libre'),button('Seleccionar',`data-choose="${i}"`)])) : notice(result.message || 'No hay cupos libres. Consulte otra fecha o profesional.');
-                on('[data-choose]','click',e=>{
-                    selected=blocks[Number(e.currentTarget.dataset.choose)];
-                    document.querySelectorAll('[data-choose]').forEach(b=>{const chosen=b===e.currentTarget;b.classList.toggle('selected',chosen);b.setAttribute('aria-pressed',String(chosen));b.textContent=chosen?'Seleccionado':'Seleccionar';});
-                    $('#clinical-selection').innerHTML=notice(`Horario elegido: ${selected.doctor_name} · ${$('#date').value} · ${selected.start_time} a ${selected.end_time}.`,'success');
-                    updatePayment();
-                });
-            };
-            on('#specialty_id','change',async()=>{
-                $('#preferred_doctor').innerHTML=[['','Equilibrar según disponibilidad y carga'],...options.doctors.filter(d=>d.specialties.some(s=>String(s.id)===$('#specialty_id').value)).map(d=>[d.id,full(d)])].map(([v,l])=>`<option value="${esc(v)}">${esc(l)}</option>`).join('');
-                await load();
-            });
-            on('#preferred_doctor,#date','change',load);
-            on('#followup_change_cause','change',updatePayment);
-            on('#parent_appointment_id','change',async()=>{
-                const parent=parents.find(a=>String(a.id)===$('#parent_appointment_id').value);
-                if(!parent)return;
-                $('#patient_id').value=parent.patient_id;$('#specialty_id').value=parent.specialty_id;
-                $('#date').value=parent.followup_suggested_at.slice(0,10);await load();
-            });
-            on('[data-online]','click',async e=>showOnline(supervisor?await api(`online-bookings/${e.currentTarget.dataset.online}`):await api(`online-bookings/${e.currentTarget.dataset.online}/status`,'POST',{})));
-            bindForm('clinical-booking',async data=>{
-                if(online&&(supervisor||!options.online_payment_available))throw new Error('La reserva online personal no está disponible desde esta vista.');
-                if(!selected)throw new Error('Seleccione un cupo disponible.');
-                delete data.preferred_doctor;
-                Object.assign(data,{doctor_id:selected.doctor_id,start_time:selected.start_time,idempotency_key:operationKey});
-                if(online) { delete data.reason;showOnline(await api('online-bookings','POST',data)); }
-                else { const a=await api('appointments','POST',data);await navigate(followup?'CU21':'CU09');ficha(a); }
-            });
-            updatePayment();
-            if(online&&!supervisor){
-                const params=new URLSearchParams(location.search),returned=params.get('paypal_booking');
-                if(returned&&/^[0-9]+$/.test(returned)){
-                    params.delete('paypal_booking');window.history.replaceState(null,'',`${location.pathname}${params.size?'?'+params:''}#reservar-cita`);
-                    api(`online-bookings/${returned}/status`,'POST',{}).then(showOnline).catch(error=>toast(error.message,true));
-                }
-            }
-        }};
-    }
-
+    /** Presenta estado del servidor y enlace Sandbox permitido; no confirma por parámetros de URL. */
     async function showOnline(result) {
+        stopOnlineWatch();
         if(result.appointment){await navigate('CU18');ficha(result.appointment);return;}
         const r=result.booking,p=result.payment;
         if(r.status==='cancelled') { await navigate('CU18');modal('Solicitud descartada',notice('Se liberó la retención después de comprobar que no existen pagos en proceso. No se creó una cita ni una ficha.'));return; }
@@ -131,11 +119,33 @@ export function installClinicalViews(ui) {
             +(state.user.role==='Paciente'&&r.status==='held'&&r.attempt<2?button('Segundo intento',`data-retry-payment="${r.id}"`):'')
             +(state.user.role==='Paciente'&&['held','processing'].includes(r.status)?button('Descartar solicitud sin pago',`data-cancel-booking="${r.id}"`,'danger'):'')
             +notice('Cerrar esta ventana no cancela una transacción pendiente. Para descartar una solicitud, el servidor debe comprobar antes que no exista un cobro en proceso.'));
-        on('[data-check-payment]','click',async()=>showOnline(state.user.role==='Superadmin'?await api(`online-bookings/${r.id}`):await api(`online-bookings/${r.id}/status`,'POST',{})));
+        const owner=state.user.id,version=onlineVersion;
+        const current=()=>$('#modal').open&&state.user?.id===owner&&state.view==='CU18'&&onlineVersion===version;
+        const check=async()=>{
+            clearTimeout(onlineTimer);
+            const control=$('[data-check-payment]');if(control?.disabled)return;
+            if(control){control.disabled=true;control.textContent='Comprobando con el servidor…';}
+            try{
+                const update=state.user.role==='Superadmin'?await api(`online-bookings/${r.id}`):await api(`online-bookings/${r.id}/status`,'POST',{});
+                if(current())await showOnline(update);
+            }catch(error){if(current()){toast(error.message,true);schedule();}}
+            finally{if(control?.isConnected){control.disabled=false;control.textContent='Consultar estado';}}
+        };
+        const schedule=()=>{
+            if(!current()||!['held','processing'].includes(r.status))return;
+            const target=p?.next_check_at?Date.parse(p.next_check_at)-Date.now()+1000:15000;
+            const delay=Math.min(60000,Math.max(15000,Number.isFinite(target)?target:15000));
+            $('#online-refresh-hint')?.remove();
+            $('#modal-body').insertAdjacentHTML('beforeend',`<p id="online-refresh-hint" class="help-text" role="status">Comprobación automática en aproximadamente ${Math.ceil(delay/1000)} segundos. La ficha aparecerá cuando el servidor confirme el pago. No vuelva a pagar esta operación.</p>`);
+            onlineTimer=setTimeout(check,delay);
+        };
+        on('[data-check-payment]','click',check);
         on('[data-retry-payment]','click',async()=>showOnline(await api(`online-bookings/${r.id}/retry`,'POST',{})));
         on('[data-cancel-booking]','click',async()=>showOnline(await api(`online-bookings/${r.id}/cancel`,'POST',{})));
+        schedule();
     }
 
+    /** Solicita un nuevo horario y un acuerdo antes de modificar la cita original. */
     async function reschedule(a) {
         modal(`Reprogramar ${code('CIT',a.id)}`,`<form id="clinical-reschedule">${formErrors}<div class="grid two">
             ${select('Médico de la misma especialidad','doctor_id',state.refs.doctors.filter(d=>d.status==='Activo'&&d.specialties.some(s=>s.id===a.specialty_id)).map(d=>[d.id,full(d)]),a.doctor_id,'required')}
@@ -144,87 +154,43 @@ export function installClinicalViews(ui) {
             ${textarea('Motivo y acuerdo recibido por WhatsApp','change_reason','','required maxlength="3000"')}
             <label class="checks"><input type="checkbox" name="patient_accepted" value="1" required>Registré la aceptación del paciente.</label>
             <div id="reschedule-payment"></div>${submit('Confirmar reprogramación')}</form>`);
-        const payment=()=>{$('#reschedule-payment').innerHTML=(a.complimentary&&$('#cause').value==='patient')||(!a.complimentary&&a.payment?.status!=='confirmed')?paymentFields(a.specialty.fee_minor):notice('Se conserva el pago original o la exención cuando corresponde.');};
+        const form=$('#clinical-reschedule');
+        const input=name=>form.querySelector(`[name="${name}"]`);
+        let requestVersion=0;
+        const payment=()=>{$('#reschedule-payment').innerHTML=(a.complimentary&&input('cause').value==='patient')||(!a.complimentary&&a.payment?.status!=='confirmed')?paymentFields(a.specialty.fee_minor):notice('Se conserva el pago original o la exención cuando corresponde.');};
         const load=async()=>{
-            const result=await api('availability?'+new URLSearchParams({doctor_id:$('#doctor_id').value,date:$('#date').value,exclude:a.id,modality:a.modality}));
-            if(!$('#clinical-reschedule'))return;
-            $('#start_time').innerHTML=[['','Seleccione…'],...result.filter(b=>b.status==='Disponible').map(b=>[b.start,`${b.start}–${b.end}`])].map(([v,l])=>`<option value="${esc(v)}">${esc(l)}</option>`).join('');
+            const version=++requestVersion;
+            input('start_time').disabled=true;
+            input('start_time').innerHTML='<option value="">Consultando horarios…</option>';
+            try {
+                const result=await api('availability?'+new URLSearchParams({doctor_id:input('doctor_id').value,date:input('date').value,exclude:a.id,modality:a.modality}));
+                if(!form.isConnected||version!==requestVersion)return;
+                const slots=result.filter(b=>b.status==='Disponible');
+                input('start_time').innerHTML=[['',slots.length?'Seleccione un horario':'No hay horarios libres; cambie la fecha'],...slots.map(b=>[b.start,`${b.start}–${b.end}`])].map(([v,l])=>`<option value="${esc(v)}">${esc(l)}</option>`).join('');
+            }finally{if(form.isConnected&&version===requestVersion)input('start_time').disabled=false;}
         };
-        on('#doctor_id,#date','change',load);on('#cause','change',payment);payment();await load();
+        on('[name=doctor_id],[name=date]','change',load,form);on('[name=cause]','change',payment,form);payment();await load();
         bindForm('clinical-reschedule',async data=>{await api(`appointments/${a.id}/reschedule`,'PUT',data);closeModal();await navigate(state.view);toast('Reprogramación registrada. Comunique la respuesta por WhatsApp.');});
     }
 
+    /** Comparte validación, envío y resultado de operaciones clínicas breves. */
     function requestForm(title, endpoint, fields, after=()=>navigate(state.view)) {
         modal(title,`<form id="clinical-operation">${formErrors}${fields}${submit('Guardar')}</form>`);
-        bindForm('clinical-operation',async data=>{await api(endpoint,'POST',data);closeModal();await after();toast('Operación registrada.');});
+        bindForm('clinical-operation',async data=>{const result=await api(endpoint,'POST',data);const action=endpoint.split('/').at(-1);state.flowFeedback={appointmentId:result.id,message:({attendance:'Llegada registrada. El paciente ya está en la lista de espera para el médico.',attend:'Consulta finalizada. La atención quedó en el historial; puede programar el seguimiento indicado.',cancel:'Cita cancelada. El horario se liberó; revise si corresponde solicitar un reembolso.',absent:'Inasistencia registrada y conservada en el historial.'})[action]||'Operación registrada correctamente.'};closeModal();await after();toast(state.flowFeedback.message);});
     }
     function cancel(a) {
         requestForm(`Cancelar ${code('CIT',a.id)}`,`appointments/${a.id}/cancel`,select('Causa','cause',[['patient','Paciente'],['clinic','Clínica']])+textarea('Motivo','reason','','required maxlength="3000"')+notice('Se libera el horario y se conserva el historial. Puede solicitarse reembolso por separado.'));
     }
+    /** Abre la confirmación correspondiente al cambio de estado solicitado. */
     function transition(a, action) {
         let fields='';
         if(action==='attend') fields='<input type="hidden" name="consultation_finished" value="1">'+notice('Confirme únicamente cuando la consulta haya finalizado.')+field('Fecha y hora sugeridas para seguimiento (opcional)','followup_suggested_at','datetime-local')+textarea('Indicación de seguimiento (opcional)','followup_note');
         if(action==='absent') fields='<label class="checks"><input type="checkbox" name="definitive" value="1" required>Se determinó que no se atenderá ni reprogramará esta cita.</label>'+textarea('Motivo','reason','','required maxlength="3000"');
         if(action==='attendance') fields=a.requires_arrival_payment?notice(a.complimentary?'El seguimiento perdió la gratuidad. Verifique el pago antes de continuar.':'No consta un pago confirmado. Verifique el cobro antes de continuar.')+paymentFields(a.specialty.fee_minor):notice('Registra la llegada del paciente y cambia la cita a Confirmada.');
         if(action==='missed-call') fields=notice('Registra pérdida del turno de llamado; no declara inasistencia definitiva.');
-        requestForm('Registrar operación de atención',`appointments/${a.id}/${action}`,fields);
+        requestForm(`${({attendance:'Registrar asistencia',attend:'Finalizar consulta',absent:'Registrar inasistencia','missed-call':'Registrar ausencia al llamado'})[action]} · ${full(a.patient)}`,`appointments/${a.id}/${action}`,`<p class="dialog-context">${esc(a.date)} · ${esc(time(a.start_time))} · ${esc(a.specialty.name)}</p>`+fields);
     }
 
-    const filters={};
-    async function appointmentView(view, mode) {
-        const patient=state.user.role==='Paciente',reception=['Superadmin','Recepcionista'].includes(state.user.role),physician=state.user.role==='Médico';
-        const f=filters[view]||{};
-        const rows=await api('appointments?'+new URLSearchParams({mode,...f}));
-        const requests=view==='CU10'?await api('reschedule-requests'):[];
-        return {html:(view==='CU14'&&state.user.role==='Superadmin'?notice('Supervisión de las consultas de hoy. Únicamente el médico responsable puede registrar la consulta como atendida.'):'')
-            +(view==='CU10'?panel('Solicitudes de reprogramación',notice(reception?'Las solicitudes nuevas aparecen aquí. Coordine por WhatsApp antes de cambiar la cita.':'Solicitar un cambio conserva la cita original hasta la resolución de Recepción.')+table(['Cita','Motivo','Estado','Respuesta','Acción'],requests.map(r=>[esc(code('CIT',r.appointment_id)),esc(r.reason),esc(status(r.status)),esc(r.response||'—'),reception&&r.status==='pending'?button('Procesar',`data-process="${r.id}"`)+button('Rechazar',`data-reject="${r.id}"`):'—']))):'')
-            +panel('Buscar citas',`<form id="clinical-filters">${formErrors}<div class="grid two">${field('Código, paciente o médico','q','search',f.q||'')}${field('Fecha','date','date',f.date||'')}${select('Estado','status',[['','Todos los estados'],...['Programada','Confirmada','Atendida','Cancelada','Inasistencia']],f.status||'')}${patient||physician?'':select('Médico','doctor_id',[['','Todos los médicos'],...state.refs.doctors.map(d=>[d.id,full(d)])],f.doctor_id||'')}</div>${submit('Buscar')}</form>`)
-            +(mode==='today'?notice('La presencia confirma la cita. La ausencia al llamado se distingue de la inasistencia definitiva; no existe una tolerancia fija.'):'')
-            +panel('Citas',table(['Cita','Paciente','Médico','Especialidad','Fecha','Hora','Estado','Acciones'],rows.map(a=>{
-                let actions=button('Detalle',`data-detail="${a.id}"`);
-                if(active(a)){
-                    if(view==='CU10')actions+=button(patient?'Solicitar cambio':'Reprogramar',`data-reschedule="${a.id}"`);
-                    if(reception&&view==='CU11')actions+=button('Cancelar',`data-cancel="${a.id}"`,'danger');
-                    if(reception&&mode==='today'&&(!a.attendance_at||a.requires_arrival_payment))actions+=button(a.attendance_at?'Verificar cobro pendiente':'Registrar presencia',`data-op="attendance" data-id="${a.id}"`);
-                    if(reception&&mode==='today'&&!a.attendance_at)actions+=button('Inasistencia definitiva',`data-op="absent" data-id="${a.id}"`);
-                    if(physician&&mode==='attend'&&!a.attendance_at)actions+=button('Ausente al llamado',`data-op="missed-call" data-id="${a.id}"`);
-                }
-                if(physician&&mode==='attend'&&a.status==='Confirmada'&&a.attendance_at)actions+=button('Consulta finalizada',`data-op="attend" data-id="${a.id}"`,'success');
-                return [esc(code('CIT',a.id)),esc(full(a.patient))+(a.attendance_at?`<br><small>${esc(a.arrival_late?'Llegada tardía: ':'Presente: ')}${esc(a.attendance_at)}</small>`:''),esc(full(a.doctor)),esc(a.specialty.name),esc(a.date),esc(`${time(a.start_time)}–${time(a.end_time)}`),badge(a.status),actions];
-            }))),bind:()=>{
-            bindForm('clinical-filters',async data=>{filters[view]=Object.fromEntries(Object.entries(data).filter(([,v])=>v));await navigate(view);});
-            on('[data-detail]','click',e=>history(rows.find(a=>a.id===Number(e.currentTarget.dataset.detail))));
-            on('[data-cancel]','click',e=>cancel(rows.find(a=>a.id===Number(e.currentTarget.dataset.cancel))));
-            on('[data-reschedule]','click',e=>{
-                const a=rows.find(a=>a.id===Number(e.currentTarget.dataset.reschedule));
-                if(patient)requestForm('Solicitar cambio',`appointments/${a.id}/reschedule-request`,textarea('Motivo y disponibilidad propuesta','reason','','required maxlength="3000"'));
-                else return reschedule(a);
-            });
-            on('[data-process]','click',e=>reschedule(requests.find(r=>r.id===Number(e.currentTarget.dataset.process)).appointment));
-            on('[data-reject]','click',e=>requestForm('Rechazar solicitud',`reschedule-requests/${e.currentTarget.dataset.reject}/reject`,textarea('Respuesta que comunicará por WhatsApp','response','','required maxlength="3000"')));
-            on('[data-op]','click',e=>transition(rows.find(a=>a.id===Number(e.currentTarget.dataset.id)),e.currentTarget.dataset.op));
-        }};
-    }
-
-    async function refunds(admin=false) {
-        const rows=await api('refunds');
-        const cancelled=admin?[]:await api('appointments?mode=history&status=Cancelada');
-        return {html:(!admin?panel('Solicitar reembolso',notice('La cita debe haber sido cancelada por Recepción. El sistema aplica la política de anticipación, gracia y causas de la clínica.')+`<form id="refund-request">${formErrors}${select('Cita cancelada con pago','appointment_id',[['','Seleccione…'],...cancelled.filter(a=>a.payment_id).map(a=>[a.id,`${code('CIT',a.id)} · ${a.date} · ${money(a.payment?.amount_minor)}`])],'','required')}${textarea('Motivo','reason','','required maxlength="3000"')}${submit('Presentar solicitud')}</form>`):'')
-            +panel('Solicitudes de reembolso',table(['Solicitud','Cita','Importe','Estado','Motivo / decisión','Ejecución','Acción'],rows.map(r=>[esc(r.id),esc(code('CIT',r.appointment_id)),esc(money(r.amount_minor)),esc(status(r.status)),esc(`${r.reason} ${r.decision_reason||''}`),esc(r.completed_at?`${r.executor} · ${r.method} · ${r.completed_at} · ${r.reference||''}`:'Pendiente'),admin?(r.status==='pending'?button('Resolver',`data-resolve-refund="${r.id}"`):r.status==='approved'?button('Registrar devolución externa',`data-complete-refund="${r.id}"`):'—'):'—']))),bind:()=>{
-            if(!admin)bindForm('refund-request',async data=>{const id=data.appointment_id;delete data.appointment_id;const r=await api(`appointments/${id}/refund`,'POST',data);await navigate('CU20');toast(`Solicitud ${status(r.status)}. ${r.decision_reason||''}`);});
-            on('[data-resolve-refund]','click',e=>requestForm('Decisión administrativa',`refunds/${e.currentTarget.dataset.resolveRefund}/decision`,select('Decisión','decision',[['approve','Aprobar'],['reject','Rechazar']])+textarea('Motivo (obligatorio al rechazar)','reason','','maxlength="3000"')+notice('La aprobación conserva la devolución pendiente; no declara que se entregó dinero.')));
-            on('[data-complete-refund]','click',e=>{
-                const r=rows.find(r=>r.id===Number(e.currentTarget.dataset.completeRefund));
-                requestForm('Registrar devolución realizada fuera del sistema',`refunds/${r.id}/complete`,notice(`Importe completo: ${money(r.amount_minor)}. Se registran los datos declarados; la aplicación no verifica la entrega física.`)
-                    +field('Nombre de quien devolvió el dinero','executor','text','','required maxlength="255"')+field('Fecha y hora de devolución','completed_at','datetime-local','','required')
-                    +field('Medio utilizado','method','text','','required maxlength="80"')+field('Referencia o comprobante (si existe)','reference','text','','maxlength="255"')+`<input type="hidden" name="amount_minor" value="${r.amount_minor}">`);
-            });
-        }};
-    }
-    views.CU09=()=>bookingView();views.CU18=()=>bookingView(false,true);views.CU21=()=>bookingView(true);
-    views.CU10=()=>appointmentView('CU10','active');views.CU11=()=>appointmentView('CU11','active');views.CU12=()=>appointmentView('CU12','agenda');
-    views.CU13=()=>appointmentView('CU13','today');views.CU14=()=>appointmentView('CU14','attend');views.CU15=()=>appointmentView('CU15','history');
-    views.CU20=()=>refunds();views.CU26=()=>refunds(true);
     // CU17 utiliza estas mismas operaciones, con los permisos de Recepción verificados en servidor.
-    ui.clinicalActions={reschedule,cancel};
+    ui.clinicalActions={reschedule,cancel,ficha,history,transition,showOnline};
 }

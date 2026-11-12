@@ -1,5 +1,7 @@
 <?php
 
+/** Datos ficticios para desarrollo o pruebas; no representan personas reales ni sustituyen el alta operativa. */
+
 namespace Database\Factories;
 
 use App\Models\User;
@@ -26,6 +28,9 @@ class UserFactory extends Factory
     {
         return [
             'name' => fake()->name(),
+            'birth_date' => '1990-01-01',
+            'terms_accepted_at' => now(),
+            'terms_version' => config('clinic.terms_version'),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),

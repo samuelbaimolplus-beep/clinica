@@ -1,0 +1,27 @@
+﻿CU;Paquete;Nombre;Archivo principal;Métodos o flujo;Interfaz HTTP conservada
+CU01;P01;Iniciar sesión;app/Paquetes/P01_UsuariosYAcceso/CU01_IniciarSesion/Http/AuthController.php;login / session;"POST /api/login; GET /api/session"
+CU02;P01;Cerrar sesión;app/Paquetes/P01_UsuariosYAcceso/CU02_CerrarSesion/Http/LogoutController.php;logout;POST /api/logout
+CU03;P01;Gestionar usuarios y roles;app/Paquetes/P01_UsuariosYAcceso/CU03_GestionarUsuariosYRoles/Http/UserController.php;index / show / save;/api/entities/users
+CU04;P02;Gestionar médicos;app/Paquetes/P02_PersonalMedicoYEspecialidades/CU04_GestionarMedicos/Http/DoctorController.php;index / show / save;/api/entities/doctors
+CU05;P02;Gestionar especialidades;app/Paquetes/P02_PersonalMedicoYEspecialidades/CU05_GestionarEspecialidades/Http/SpecialtyController.php;index / show / save;/api/entities/specialties
+CU06;P03;Gestionar pacientes;app/Paquetes/P03_Pacientes/CU06_GestionarPacientes/Http/PatientController.php;index / show / save;/api/entities/patients
+CU07;P04;Gestionar horarios médicos;app/Paquetes/P04_HorariosYDisponibilidad/CU07_GestionarHorariosMedicos/Http/ScheduleController.php;index / save / unavailable / quota / capacity;"/api/schedules; /api/unavailabilities; /api/doctor-quotas"
+CU08;P04;Consultar disponibilidad médica;app/Paquetes/P04_HorariosYDisponibilidad/CU08_ConsultarDisponibilidadMedica/Http/MedicalAvailabilityController.php;options / index;GET /api/medical-availability
+CU09;P05;Programar cita médica;app/Paquetes/P05_CitasMedicas/CU09_ProgramarCitaMedica/Http/AppointmentController.php;store;POST /api/appointments
+CU10;P05;Reprogramar cita médica;app/Paquetes/P05_CitasMedicas/CU10_ReprogramarCitaMedica/Http/ReprogrammingController.php;reschedule / requestReschedule / rejectReschedule;"/api/appointments/{id}/reschedule; /api/reschedule-requests"
+CU11;P05;Cancelar cita médica;app/Paquetes/P05_CitasMedicas/Compartido/Http/AppointmentActionController.php;action → transition(cancel);POST /api/appointments/{id}/cancel
+CU12;P05;Consultar agenda médica;app/Paquetes/P05_CitasMedicas/Compartido/Http/AppointmentQueryController.php;index, mode=agenda;GET /api/appointments?mode=agenda
+CU13;P05;Registrar asistencia e inasistencia;app/Paquetes/P05_CitasMedicas/Compartido/Http/AppointmentActionController.php;action → transition(attendance / absent);POST /api/appointments/{id}/attendance o absent
+CU14;P05;Registrar cita como atendida;app/Paquetes/P05_CitasMedicas/Compartido/Http/AppointmentActionController.php;action → transition(attend / missed-call);POST /api/appointments/{id}/attend o missed-call
+CU15;P06;Consultar historial de citas;app/Paquetes/P05_CitasMedicas/Compartido/Http/AppointmentQueryController.php;index, mode=history;GET /api/appointments?mode=history
+CU16;P06;Generar reportes administrativos;app/Paquetes/P06_HistorialYReportes/CU16_GenerarReportesAdministrativos/Http/ReportController.php;index;GET /api/reports
+CU17;P05;Consultar citas afectadas;app/Paquetes/P05_CitasMedicas/CU17_ConsultarCitasAfectadas/Http/ScheduleImpactController.php;__invoke;GET /api/schedule-impacts
+CU18;P07;Reservar cita online;app/Paquetes/P07_ReservasPagosYSeguimientos/CU18_ReservarCitaOnline/Http/OnlineBookingController.php;onlineStart / onlineStatus / onlineRetry / onlineCancel;/api/online-bookings
+CU19;P07;Verificar pago o exención de cita;app/Paquetes/P07_ReservasPagosYSeguimientos/CU19_VerificarPagoOExencion/Servicios/PaymentVerifier.php;tariff / reception;"Incluido en la programación y reserva; /api/supervision/payments para consulta"
+CU20;P07;Solicitar reembolso;app/Paquetes/P07_ReservasPagosYSeguimientos/CU20_SolicitarReembolso/Http/RefundRequestController.php;requestRefund / refunds;"POST /api/appointments/{id}/refund; GET /api/refunds"
+CU21;P07;Registrar cita de seguimiento;app/Paquetes/P07_ReservasPagosYSeguimientos/CU21_RegistrarCitaDeSeguimiento/Servicios/FollowupPolicy.php;evaluate;POST /api/appointments con parent_appointment_id
+CU22;P08;Consultar bitácora de auditoría;app/Paquetes/P08_Auditoria/CU22_ConsultarBitacoraDeAuditoria/Http/AuditController.php;filters / index / show;GET /api/audit
+CU23;P01;Registrar cuenta de paciente;app/Paquetes/P01_UsuariosYAcceso/CU23_RegistrarCuentaDePaciente/Http/ManagedPatientAccountController.php;register / store;"/api/patients/with-account; /api/patients/{id}/account"
+CU24;P04;Gestionar bloqueos provisionales por demanda presencial;app/Paquetes/P04_HorariosYDisponibilidad/CU24_GestionarBloqueosProvisionales/Http/AgendaAdjustmentController.php;propose / store / release / releaseSelected;/api/agenda-adjustments
+CU25;P04;Habilitar anticipadamente cupos online;app/Paquetes/P04_HorariosYDisponibilidad/CU25_HabilitarCuposOnline/Http/ProtectedOnlineSlotsController.php;protectedBlocks;"GET /api/agenda-adjustments/protected; POST /api/agenda-adjustments"
+CU26;P07;Resolver solicitud de reembolso;app/Paquetes/P07_ReservasPagosYSeguimientos/CU26_ResolverSolicitudDeReembolso/Http/RefundResolutionController.php;decideRefund / completeRefund;"/api/refunds/{id}/decision; /api/refunds/{id}/complete"

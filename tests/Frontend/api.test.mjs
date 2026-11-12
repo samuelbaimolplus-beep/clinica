@@ -2,6 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createApiClient} from '../../resources/js/lib/api.js';
 
+for (const method of ['GET', 'POST']) {
+    test(`limita la espera de ${method} sin reenviar la solicitud`, async () => {
+        let calls = 0;
+        const api = createApiClient({
+            getToken: () => 'token', setToken: () => {}, onUnauthorized: () => {}, timeoutMs: 10,
+            fetchImpl: (_url, {signal}) => new Promise((_resolve, reject) => {
+                calls++;
+                signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+            }),
+        });
+        await assert.rejects(api('account/profile', method), method === 'GET' ? /PostgreSQL/ : /Compruebe si el cambio se guardó/);
+        assert.equal(calls, 1);
+    });
+}
+
 function client(responses) {
     const calls = [];
     let token = 'original';

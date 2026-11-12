@@ -96,7 +96,7 @@ class ClinicTest extends TestCase
 
     public function test_user_creation_requires_professional_link_and_hashes_password(): void
     {
-        $data = ['name' => 'Nueva cuenta', 'email' => 'NEW@test.local', 'password' => 'UnaClaveSegura2026', 'role' => 'Médico', 'status' => 'Activo'];
+        $data = ['birth_date' => '1990-01-01', 'name' => 'Nueva cuenta', 'email' => 'NEW@test.local', 'password' => 'UnaClaveSegura2026', 'role' => 'Médico', 'status' => 'Activo'];
         $this->actingAs($this->admin)->postJson('/api/entities/users', $data)->assertUnprocessable()->assertJsonValidationErrors('doctor_id');
         $response = $this->postJson('/api/entities/users', $data + ['doctor_id' => $this->otherDoctor->id])->assertCreated()->assertJsonMissingPath('password');
         $user = User::find($response->json('id'));

@@ -1,5 +1,7 @@
 # Arquitectura y trazabilidad de la base del sistema
 
+> Estructura física vigente: [Guía de defensa del código](GUIA_DEFENSA_CODIGO.md), basada en `ofical.docx`. Las rutas de archivos de este informe histórico pueden haber cambiado.
+
 > Referencia vigente: [Implementación integrada de V6](IMPLEMENTACION_INTEGRADA_V6_2026-11-07.md). Esta guía conserva etapas anteriores; sus preguntas, funciones retiradas y estados provisionales no prevalecen sobre la V6 definitiva ni describen el estado actual de citas y pagos.
 
 > Actualización del 7 de noviembre: la referencia vigente es el [informe de avance V3](INFORME_AVANCE_V3_2026-11-07.md), contrastado con el nuevo Word. Incorpora varios turnos, protección presencial, reparto inicial 50/50 con enteros y alternancia, bloqueos y aperturas de Recepción, disponibilidad provisional, citas afectadas y consulta de auditoría. Los apartados siguientes conservan el estado anterior y deben leerse como antecedentes cuando difieran del informe V3.

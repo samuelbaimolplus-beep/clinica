@@ -1,9 +1,11 @@
 <?php
 
+/** Componente CreateClinicSuperadmin: colabora con los módulos del sistema sin reemplazar sus controles del servidor. */
+
 namespace App\Console\Commands;
 
 use App\Models\User;
-use App\Services\Auth\EmailActivation;
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\EmailActivation;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -11,12 +13,18 @@ use Illuminate\Support\Str;
 
 class CreateClinicSuperadmin extends Command
 {
-    protected $signature = 'clinica:crear-superadmin {email} {--nombre=Superadministración}';
+    protected $signature = 'clinica:crear-superadmin {email} {--nombre=Superadministración} {--nacimiento=}';
 
     protected $description = 'Crea el primer Superadmin; guarda la contraseña aleatoria solo en un archivo local privado.';
 
+    /** Ejecuta la responsabilidad de este middleware, comando o trabajo; sus controles se explican en el encabezado de la clase. */
     public function handle(): int
     {
+        $validation = validator(['birth_date' => $this->option('nacimiento')], ['birth_date' => 'required|date_format:Y-m-d|before_or_equal:'.today()->subYearsNoOverflow(18)->toDateString()]);
+        if ($validation->fails()) {
+            $this->error('Indique --nacimiento=AAAA-MM-DD, con al menos 18 años cumplidos.');
+            return self::FAILURE;
+        }
         $email = mb_strtolower(trim($this->argument('email')));
         if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $this->error('Ingrese un correo válido.');
@@ -32,7 +40,7 @@ class CreateClinicSuperadmin extends Command
                 return self::FAILURE;
             }
             $password = Str::password(24, symbols: false);
-            $user = User::create(['name' => $this->option('nombre'), 'email' => $email, 'password' => $password, 'role' => 'Superadmin', 'status' => 'Activo']);
+            $user = User::create(['birth_date' => $this->option('nacimiento'), 'name' => $this->option('nombre'), 'email' => $email, 'password' => $password, 'role' => 'Superadmin', 'status' => 'Activo']);
             if (! Storage::disk('local')->put('acceso-superadmin.txt', "Clínica Vida Salud — acceso Superadmin\nUsuario: {$user->username}\nCorreo: {$email}\nContraseña: {$password}\nConserve este archivo en privado. Puede cambiar la contraseña en Usuarios y roles.\n")) {
                 throw new \RuntimeException('No se pudo guardar el acceso privado; no se creó la cuenta.');
             }
