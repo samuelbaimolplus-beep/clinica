@@ -31,5 +31,6 @@ RUN mkdir -p storage/app/private storage/app/public storage/framework/cache/data
     && chmod +x deploy/start.sh \
     && chown -R www-data:www-data storage bootstrap/cache
 ENV PORT=10000
+ENV HOME=/var/www
 EXPOSE 10000
 CMD ["sh", "/var/www/html/deploy/start.sh"]

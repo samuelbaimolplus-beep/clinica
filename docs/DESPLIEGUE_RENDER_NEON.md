@@ -50,7 +50,9 @@ El resto de las variables se declara en `render.yaml`: entorno de producción si
 
 ## 3. Arranque y primer acceso
 
-La imagen instala PHP 8.4, Apache, extensiones de PostgreSQL, dependencias Composer y assets compilados con Node 22. Al arrancar, valida la configuración, aplica `migrate --force` y cachea configuración, rutas y vistas. Supervisor mantiene Apache en `0.0.0.0:$PORT`, el worker de la cola y el programador de conciliación de pagos. Si falla una validación o migración, el arranque falla y el log muestra el motivo; no se vacían tablas ni se generan claves nuevas.
+La imagen instala PHP 8.4, Apache, extensiones de PostgreSQL, dependencias Composer y assets compilados con Node 22. Al arrancar, valida la configuración, aplica `migrate --force` y cachea configuración, rutas y vistas. Después comprueba la conexión PostgreSQL como `www-data`, el usuario real de los procesos de cola y programación. Supervisor mantiene Apache en `0.0.0.0:$PORT`, el worker de la cola y el programador de conciliación de pagos. Si falla una validación, migración o conexión del usuario de la aplicación, el arranque falla y el log muestra el motivo; no se vacían tablas ni se generan claves nuevas.
+
+La imagen y el arranque fijan `HOME=/var/www`; Supervisor también declara HOME, USER y LOGNAME para los procesos `www-data`. Esto evita heredar `/root` y que libpq falle al buscar el certificado opcional `/root/.postgresql/postgresql.crt` por falta de permisos. Se mantiene TLS y channel binding. El fallo se reprodujo con HOME=/root y la conexión a Neon se comprobó con HOME=/var/www, ejecutando PHP como www-data.
 
 Una instalación vacía no contiene usuarios. Desde la consola del servicio ejecutar:
 
@@ -80,3 +82,5 @@ Validación realizada: imagen Docker construida con dependencias de producción 
 - [Laravel con Neon](https://neon.com/docs/guides/laravel)
 - [Conexiones directas y pooling en Neon](https://neon.com/docs/connect/connection-pooling)
 - [Importar con pg_dump y pg_restore](https://neon.com/docs/import/import-from-postgres)
+- [Entorno de los procesos de Supervisor](https://supervisord.org/subprocess.html#subprocess-environment)
+- [Certificados cliente de PostgreSQL](https://www.postgresql.org/docs/17/libpq-ssl.html#LIBPQ-SSL-CLIENTCERT)
