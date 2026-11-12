@@ -22,6 +22,7 @@ use App\Observers\ClinicAuditObserver;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -40,6 +41,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if ($this->app->environment('production') && parse_url(config('app.url'), PHP_URL_SCHEME) === 'https') {
+            URL::forceScheme('https');
+        }
         ResetPassword::createUrlUsing(fn ($user, $token) => url('/password/reset/'.$token).'?'.http_build_query(['email' => $user->email]));
         Gate::define('view-audit', fn (User $user) => $user->hasStaffRole('Administrador'));
         Gate::define('manage-agenda-adjustments', fn (User $user) => $user->hasStaffRole('Recepcionista'));

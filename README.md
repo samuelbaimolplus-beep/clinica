@@ -1,5 +1,7 @@
 # Clínica Vida Salud
 
+Para desplegar este repositorio en Render con una base independiente en Neon, seguir la [guía de despliegue](docs/DESPLIEGUE_RENDER_NEON.md). La configuración está en `render.yaml`; no modifica el servicio ni la base de vetproy.
+
 El funcionamiento vigente se describe en [Recorridos de atención y cuentas opcionales](docs/REVISION_RECORRIDOS_Y_ACCESO_2026-11-08.md). La clínica trabaja con fichas de pacientes de cualquier edad, sin exigir correo ni cuenta. El portal es opcional para pacientes con 18 años cumplidos que lo solicitan y aceptan los términos; todas las cuentas de personal también requieren mayoría de edad.
 
 La estructura física de PostgreSQL está en español: tablas, columnas, restricciones, índices y secuencias. El [script de creación](../Clinica_BD.sql) y el [diagrama UML](../Clinica_UML.svg) corresponden al esquema actualizado. La migración de nombres conserva los datos; la conexión de Laravel adapta sus convenciones internas al esquema en español.
