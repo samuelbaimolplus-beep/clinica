@@ -77,6 +77,11 @@ class DemoDataSeeder extends Seeder
                     $credentials[] = "Rol: {$role}\nCorreo: {$email}\nContraseña: {$password}\n";
                 }
 
+                // Son identidades ficticias de demostración: no requieren buzones reales ni envío de códigos.
+                if (! $user->email_verified_at) {
+                    $user->forceFill(['email_verified_at' => now()])->save();
+                }
+
                 return $user;
             };
             $reception = $account('recepcion@demo.example', 'Rosa Quispe (demo)', 'Recepcionista');

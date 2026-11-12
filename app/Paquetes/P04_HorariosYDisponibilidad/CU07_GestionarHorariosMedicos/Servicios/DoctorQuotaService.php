@@ -4,12 +4,12 @@
 
 namespace App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios;
 
-use App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios\ShiftModalities;
 use App\Models\AgendaAdjustment;
 use App\Models\BookingRequest;
 use App\Models\Doctor;
 use App\Models\DoctorQuota;
 use App\Models\Unavailability;
+use App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios\ShiftModalities;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -41,7 +41,7 @@ class DoctorQuotaService
     {
         $ranges = app(ShiftModalities::class)->forDate($doctorId, $date);
         $day = CarbonImmutable::parse($date);
-        $blocks = Unavailability::where('doctor_id', $doctorId)->where('starts_at', '<', $day->addDay())->where('ends_at', '>', $day)->get();
+        $blocks = Unavailability::active()->where('doctor_id', $doctorId)->where('starts_at', '<', $day->addDay())->where('ends_at', '>', $day)->get();
         $usable = array_filter($ranges, fn ($range) => ! $blocks->contains(fn ($block) => CarbonImmutable::parse($block->starts_at) < $range['end'] && CarbonImmutable::parse($block->ends_at) > $range['start']));
         $adjustments = AgendaAdjustment::where('doctor_id', $doctorId)->where('date', $date)->where('status', 'active')
             ->when($date !== today()->toDateString(), fn ($query) => $query->where('kind', 'online_opening'))->get();

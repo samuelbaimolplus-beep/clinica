@@ -5,14 +5,15 @@
 namespace App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Http;
 
 use App\Http\Controllers\Controller;
-use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Validacion\SaveDoctorQuotaRequest;
-use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Validacion\SaveScheduleRequest;
-use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Validacion\SaveUnavailabilityRequest;
 use App\Models\DoctorQuota;
 use App\Models\Schedule;
 use App\Models\Unavailability;
+use App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios\ScheduleImpact;
 use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios\DoctorQuotaService;
 use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios\ScheduleService;
+use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Validacion\SaveDoctorQuotaRequest;
+use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Validacion\SaveScheduleRequest;
+use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Validacion\SaveUnavailabilityRequest;
 use Illuminate\Http\Request;
 
 class ScheduleController extends Controller
@@ -46,6 +47,23 @@ class ScheduleController extends Controller
     public function preview(SaveUnavailabilityRequest $request, ScheduleService $service)
     {
         return response()->json($service->unavailable($request->validated(), true));
+    }
+
+    public function absenceImpacts(Request $request, ScheduleImpact $service, int $id)
+    {
+        abort_unless($request->user()->can('manage-schedules'), 403);
+        $absence = Unavailability::findOrFail($id);
+
+        return ['unavailability' => $absence, 'affected' => $absence->cancelled_at ? []
+            : $service->overlapping($absence->doctor_id, $absence->starts_at, $absence->ends_at)];
+    }
+
+    public function cancelAbsence(Request $request, ScheduleService $service, int $id)
+    {
+        abort_unless($request->user()->can('manage-schedules'), 403);
+        $data = $request->validate(['reason' => 'required|string|max:300']);
+
+        return $service->cancelUnavailability($id, $data['reason'], $request->user());
     }
 
     /** Recibe porcentajes validados y delega su persistencia en el servicio de cupos. */

@@ -7,9 +7,9 @@ namespace App\Paquetes\P01_UsuariosYAcceso\CU01_IniciarSesion\Http;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\AccountEligibility;
-use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\EmailActivation;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\SessionSecurity;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
 use App\Support\ClinicAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -27,7 +27,9 @@ class AuthController extends Controller
         $column = str_contains($identifier, '@') ? 'email' : 'username';
         $user = User::whereRaw('lower('.$column.') = ?', [$identifier])->first();
         if (! $user || ! Hash::check($data['password'], $user->password)) {
-            app(AuditLogger::class)->record('auth', 'login', result: 'failure', details: ['reason' => 'invalid_credentials']);
+            app(AuditLogger::class)->record('auth', 'login', result: 'failure', details: [
+                'reason' => 'invalid_credentials', 'record' => [$column => $identifier],
+            ]);
             throw ValidationException::withMessages(['email' => 'FA02: Credenciales incorrectas. Verifique sus datos.']);
         }
         if (! ClinicAccess::isActive($user)) {

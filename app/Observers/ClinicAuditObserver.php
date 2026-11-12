@@ -1,9 +1,10 @@
 <?php
 
-/** Observa cambios del dominio y registra campos afectados sin copiar valores sensibles. */
+/** Conserva los valores de negocio anteriores y nuevos sin copiar secretos de acceso. */
 
 namespace App\Observers;
 
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditDetails;
 use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
 use Illuminate\Database\Eloquent\Model;
 
@@ -12,20 +13,27 @@ class ClinicAuditObserver
     /** Registra el alta de la entidad mediante el observador de auditoría. */
     public function created(Model $model): void
     {
-        $this->write($model, 'created', array_keys($model->getAttributes()));
+        // Incluye valores predeterminados y normalizaciones aplicadas por PostgreSQL.
+        $snapshot = $model->fresh() ?? $model;
+        $this->write($snapshot, 'created', $snapshot->getAttributes());
     }
 
-    /** Registra los campos modificados de la entidad sin copiar sus valores sensibles. */
+    /** Conserva los valores originales antes de que Eloquent sincronice el modelo. */
     public function updated(Model $model): void
     {
-        $fields = array_diff(array_keys($model->getChanges()), ['updated_at', 'remember_token']);
-        if ($fields) {
-            $this->write($model, 'updated', $fields);
+        $changes = array_diff_key($model->getChanges(), array_flip(['updated_at', 'remember_token']));
+        if ($changes) {
+            $this->write($model, 'updated', $changes);
         }
     }
 
+    public function deleted(Model $model): void
+    {
+        $this->write($model, 'deleted', $model->getAttributes());
+    }
+
     /** Guarda el resultado de la operación siguiendo el contrato de este componente. */
-    private function write(Model $model, string $action, array $fields): void
+    private function write(Model $model, string $action, array $attributes): void
     {
         $module = match (class_basename($model)) {
             'User' => 'users', 'Patient' => 'patients', 'Doctor' => 'doctors',
@@ -33,8 +41,16 @@ class ClinicAuditObserver
             'Payment' => 'payments', 'RefundRequest' => 'refunds',
             default => 'appointments',
         };
+        $changes = [];
+        foreach (AuditDetails::attributes($attributes) as $field => $value) {
+            $changes[$field] = [
+                'before' => $action === 'created' ? null : $model->getRawOriginal($field),
+                'after' => $action === 'deleted' ? null : $value,
+            ];
+        }
         app(AuditLogger::class)->record($module, $action, $model, details: [
-            'fields' => array_values(array_diff($fields, ['password', 'remember_token'])),
+            'fields' => array_keys($changes), 'changes' => $changes,
+            'security_changed' => $action === 'updated' && array_key_exists('password', $attributes),
         ]);
     }
 }

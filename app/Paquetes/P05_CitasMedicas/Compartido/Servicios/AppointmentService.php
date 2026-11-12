@@ -13,9 +13,11 @@ use App\Models\Patient;
 use App\Models\RescheduleRequest;
 use App\Models\Specialty;
 use App\Models\User;
+use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios\DoctorQuotaService;
 use App\Paquetes\P07_ReservasPagosYSeguimientos\CU19_VerificarPagoOExencion\Servicios\PaymentVerifier;
 use App\Paquetes\P07_ReservasPagosYSeguimientos\CU21_RegistrarCitaDeSeguimiento\Servicios\FollowupPolicy;
-use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios\DoctorQuotaService;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditDetails;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -224,6 +226,20 @@ class AppointmentService
         DB::statement('CALL public.registrar_evento_cita(?, ?, ?, ?::jsonb)', [
             $a->id, $actor->id, $action, json_encode((object) $details, JSON_THROW_ON_ERROR),
         ]);
+        $before = is_array($details['before'] ?? null) ? $details['before'] : ['status' => $details['before'] ?? null];
+        $after = is_array($details['after'] ?? null) ? $details['after'] : ['status' => $details['after'] ?? $a->status];
+        foreach (['cause' => 'change_cause', 'patient_accepted' => 'patient_accepted'] as $key => $field) {
+            if (isset($details[$key])) {
+                $after[$field] = $details[$key];
+            }
+        }
+        $changes = [];
+        foreach (AuditDetails::attributes($after) as $field => $value) {
+            $changes[$field] = ['before' => $before[$field] ?? null, 'after' => $value];
+        }
+        app(AuditLogger::class)->record('appointments', match ($action) {
+            'Creación' => 'booked', 'Reprogramación' => 'rescheduled', default => $action,
+        }, $a, details: ['reason' => $details['reason'] ?? null, 'fields' => array_keys($changes), 'changes' => $changes], actorId: $actor->id);
     }
 
     /** Comprueba si el pago confirmado o la exención vigente permiten continuar la atención. */

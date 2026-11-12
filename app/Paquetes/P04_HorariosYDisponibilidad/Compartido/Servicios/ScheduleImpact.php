@@ -16,9 +16,8 @@ class ScheduleImpact
     public function affected(?int $doctorId = null): Collection
     {
         $appointments = Appointment::whereIn('status', Appointment::ACTIVE)
-            ->whereRaw('(date + start_time) >= ?::timestamp', [now()->format('Y-m-d H:i:s')])
             ->when($doctorId, fn ($q) => $q->where('doctor_id', $doctorId))->orderBy('date')->orderBy('start_time')->get();
-        $absences = Unavailability::whereIn('doctor_id', $appointments->pluck('doctor_id')->unique())->get()->groupBy('doctor_id');
+        $absences = Unavailability::active()->whereIn('doctor_id', $appointments->pluck('doctor_id')->unique())->get()->groupBy('doctor_id');
         $ranges = [];
 
         return $appointments->map(function ($appointment) use (&$ranges, $absences) {
@@ -28,7 +27,7 @@ class ScheduleImpact
             $end = CarbonImmutable::parse($appointment->date.' '.$appointment->end_time);
             $reasons = [];
             $origins = [];
-            if (! collect($ranges[$key])->contains(fn ($range) => $range['start']->equalTo($start) && $range['end']->equalTo($end))) {
+            if ($appointment->date >= today()->toDateString() && ! collect($ranges[$key])->contains(fn ($range) => $range['start']->equalTo($start) && $range['end']->equalTo($end))) {
                 $reasons[] = 'Horario o duración fuera de la configuración vigente';
                 $origins[] = ['entity' => 'DoctorSchedule', 'doctor_id' => $appointment->doctor_id,
                     'schedule_ids' => collect($ranges[$key])->pluck('schedule_id')->unique()->values()->all()];
@@ -44,5 +43,14 @@ class ScheduleImpact
 
             return $appointment->only(['id', 'doctor_id', 'specialty_id', 'date', 'start_time', 'end_time', 'status']) + ['reasons' => $reasons, 'origins' => $origins];
         })->filter(fn ($item) => count($item['reasons']) > 0)->values();
+    }
+
+    /** Una cita pendiente no deja de estar afectada porque ya pasó su hora de inicio. */
+    public function overlapping(int $doctorId, string $startsAt, string $endsAt): Collection
+    {
+        return Appointment::with(['patient:id,first_name,last_name,phone', 'doctor:id,first_name,last_name', 'specialty:id,name'])
+            ->where('doctor_id', $doctorId)->whereIn('status', Appointment::ACTIVE)
+            ->whereRaw('(date + start_time) < ?::timestamp AND (date + end_time) > ?::timestamp', [$endsAt, $startsAt])
+            ->orderBy('date')->orderBy('start_time')->orderBy('id')->get();
     }
 }

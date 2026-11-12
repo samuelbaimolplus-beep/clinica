@@ -54,7 +54,7 @@ class AppointmentQueryController extends Controller
             $q->where('status', $d['status']);
         }
         if ($d['mode'] === 'affected') {
-            $q->whereExists(fn ($b) => $b->selectRaw('1')->from('unavailabilities')->whereColumn('unavailabilities.doctor_id', 'appointments.doctor_id')->whereRaw('(appointments.date + appointments.start_time) < unavailabilities.ends_at AND (appointments.date + appointments.end_time) > unavailabilities.starts_at'));
+            $q->whereExists(fn ($b) => $b->selectRaw('1')->from('unavailabilities')->whereNull('unavailabilities.cancelled_at')->whereColumn('unavailabilities.doctor_id', 'appointments.doctor_id')->whereRaw('(appointments.date + appointments.start_time) < unavailabilities.ends_at AND (appointments.date + appointments.end_time) > unavailabilities.starts_at'));
         }
         if (! empty($d['q'])) {
             $text = '%'.$d['q'].'%';
@@ -74,7 +74,7 @@ class AppointmentQueryController extends Controller
                 $a->arrival_late ? $a->attendance_at : $a->start_time, $a->id])->values();
         }
         if ($d['mode'] === 'affected') {
-            $blocks = Unavailability::all();
+            $blocks = Unavailability::active()->get();
             foreach ($rows as $a) {
                 $a->setAttribute('blocks', $blocks->filter(fn ($b) => $b->doctor_id === $a->doctor_id && $a->date.' '.$a->start_time < $b->ends_at && $a->date.' '.$a->end_time > $b->starts_at)->values());
             }

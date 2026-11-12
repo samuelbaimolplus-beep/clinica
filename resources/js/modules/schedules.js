@@ -8,7 +8,16 @@ export function installScheduleViews(ui) {
     let capacityDate = localDate();
     const weekdays = [1, 2, 3, 4, 5, 6, 0];
     const period = shift => `${time(shift.start_time)}–${time(shift.end_time)}`;
-    const dateTime = value => new Date(value).toLocaleString('es-BO', {dateStyle:'medium', timeStyle:'short', timeZone:'America/La_Paz'});
+    const dateTime = value => {
+        const stamp = String(value).replace(' ', 'T');
+        return new Date(stamp + (/Z$|[+-]\d{2}:?\d{2}$/.test(stamp) ? '' : '-04:00')).toLocaleString('es-BO', {dateStyle:'medium', timeStyle:'short', timeZone:'America/La_Paz'});
+    };
+    const affectedTable = rows => table(['Cita','Paciente','Especialidad','Fecha','Horario','Estado'], rows.map(a => [
+        esc(code('CIT',a.id)), esc(full(a.patient)), esc(a.specialty?.name || '—'), esc(a.date),
+        esc(`${time(a.start_time)}–${time(a.end_time)}`), esc(a.status),
+    ]));
+    const affectedSummary = rows => notice(`${rows.length} citas pendientes afectadas. Las citas conservan su estado y programación.`, rows.length ? 'warning' : 'success')
+        + (rows.length ? affectedTable(rows) : '<p>No hay citas activas que se crucen con este período.</p>');
 
     views.CU07 = async () => {
         const doctors = state.refs.doctors;
@@ -32,7 +41,12 @@ export function installScheduleViews(ui) {
         let body='';
         if(tab==='schedule') body=panel('Semana de atención',`<div class="section-toolbar"><p>Estos son los turnos que ya existen. Pulse uno para modificarlo o añada un turno en otro horario.</p>${canEdit?button('+ Añadir turno','id="new-shift"'):''}</div>${week}<p class="help-text">Los turnos se repiten cada semana. Dos turnos pueden ser consecutivos, pero no ocupar la misma franja. Las citas existentes se conservan cuando cambia un horario.</p>`);
         else if(tab==='block') body=panel('Ausencias, permisos y vacaciones',`<div class="section-toolbar"><p>Revise los períodos en los que este médico no atenderá. Puede comprobar las citas afectadas antes de guardar.</p>${canEdit?button('+ Registrar ausencia','id="new-unavailability"'):''}</div>`
-            +(data.unavailabilities.length?table(['Desde','Hasta','Motivo'],data.unavailabilities.map(b=>[esc(dateTime(b.starts_at)),esc(dateTime(b.ends_at)),esc(b.reason)])):'<div class="friendly-empty"><strong>No hay ausencias registradas</strong><p>La disponibilidad sigue el horario semanal del médico.</p></div>'));
+            +(data.unavailabilities.length?table(['Desde','Hasta','Motivo','Estado','Acciones'],data.unavailabilities.map(b=>[
+                esc(dateTime(b.starts_at)),esc(dateTime(b.ends_at)),esc(b.reason)
+                    +(b.cancelled_at?`<p><small>Retirada: ${esc(dateTime(b.cancelled_at))} · ${esc(b.cancellation_reason)}</small></p>`:''),
+                b.cancelled_at?'Retirada':'Activa',b.cancelled_at?'Se conserva el historial':button('Ver citas afectadas',`data-absence-impacts="${b.id}"`,'link')
+                    +button('Retirar ausencia',`data-cancel-absence="${b.id}"`,''),
+            ])):'<div class="friendly-empty"><strong>No hay ausencias registradas</strong><p>La disponibilidad sigue el horario semanal del médico.</p></div>'));
         else {
             const quota=data.quota||{presential_percent:50,online_percent:50};
             body=panel('Cómo se reparten las consultas',`<div class="quota-summary"><div><strong>${quota.presential_percent}%</strong><span>Presencial</span></div><div><strong>${quota.online_percent}%</strong><span>Reserva online</span></div></div><p>Las primeras dos horas de cada turno se protegen para atención presencial. El resto se distribuye según estos porcentajes; las citas existentes se conservan.</p>${canEdit?button('Cambiar distribución','id="edit-quota"',''):''}`)
@@ -80,10 +94,26 @@ export function installScheduleViews(ui) {
             on('#preview-block','click',async()=>{
                 const form=$('#unavailable-form');if(!form.reportValidity())return;
                 const result=await api('unavailabilities/preview','POST',{...Object.fromEntries(new FormData(form)),doctor_id:doctorId});
-                $('#affected-preview').innerHTML=notice(`${result.affected.length} citas afectadas. Las citas no se cancelan automáticamente.`,result.affected.length?'warning':'success')+(result.affected.length?table(['Cita','Paciente','Fecha'],result.affected.map(a=>[esc(code('CIT',a.id)),esc(full(a.patient)),esc(a.date)])):'');
+                $('#affected-preview').innerHTML=affectedSummary(result.affected);
             });
             on('#starts_at,#ends_at','change',()=>{$('#affected-preview').innerHTML='';});
-            bindForm('unavailable-form',async values=>{const result=await api('unavailabilities','POST',{...values,doctor_id:doctorId});closeModal();await navigate('CU07');toast(`Ausencia registrada. ${result.affected.length} citas requieren revisión.`);});
+            bindForm('unavailable-form',async values=>{
+                const result=await api('unavailabilities','POST',{...values,doctor_id:doctorId});
+                closeModal();await navigate('CU07');toast(`Ausencia registrada. ${result.affected.length} citas requieren revisión.`);
+                modal('Resultado de la ausencia', affectedSummary(result.affected)
+                    +'<p>Las citas anteriores a la hora actual también se evalúan si siguen pendientes. Recepción debe gestionar las citas afectadas.</p>');
+            });
+        }
+        function cancelAbsence(absence) {
+            modal('Retirar ausencia', `<p class="dialog-context">${esc(full(doctor))} · ${esc(dateTime(absence.starts_at))} – ${esc(dateTime(absence.ends_at))}</p>`
+                + notice('El médico vuelve a atender según sus turnos. Las citas existentes se conservan; otras ausencias y bloqueos siguen vigentes.')
+                + `<form id="cancel-absence-form">${formErrors}${field('Motivo del retiro','reason','text','','required maxlength="300" placeholder="El médico confirmó que sí atenderá"')}`
+                + `<div class="actions end">${button('Volver','data-dismiss','')}${submit('Confirmar retiro')}</div></form>`);
+            on('[data-dismiss]','click',closeModal);
+            bindForm('cancel-absence-form',async values=>{
+                await api(`unavailabilities/${absence.id}/cancel`,'POST',values);
+                closeModal();await navigate('CU07');toast('Ausencia retirada. Se actualizó la disponibilidad y se conservaron las citas.');
+            });
         }
         return {html:`<section class="panel doctor-workspace"><div>${select('Ver horario del médico','schedule-doctor',doctors.map(d=>[d.id,`${full(d)}${d.status==='Activo'?'':' · Inactivo'}`]),doctorId)}<p>${esc(doctor.specialties?.map(s=>s.name).join(' · ')||'Sin especialidades')}</p></div><div class="workspace-stat"><strong>${schedules.length}</strong><span>turnos semanales</span></div><div class="workspace-stat"><strong>${Math.round(weeklyMinutes/60*10)/10} h</strong><span>de atención semanal</span></div></section>`
             +(!canEdit?notice('El médico está inactivo. Puede consultar su configuración; actívelo desde Médicos para modificarla.','warning'):'')
@@ -94,6 +124,11 @@ export function installScheduleViews(ui) {
                 on('#new-shift','click',()=>openShift());on('[data-new-shift]','click',e=>openShift(null,Number(e.currentTarget.dataset.newShift)));
                 on('[data-schedule]','click',e=>openShift(schedules.find(s=>String(s.id)===e.currentTarget.dataset.schedule)));
                 on('#new-unavailability','click',openAbsence);
+                on('[data-absence-impacts]','click',async e=>{
+                    const result=await api(`unavailabilities/${e.currentTarget.dataset.absenceImpacts}/impacts`);
+                    modal('Citas afectadas por esta ausencia',affectedSummary(result.affected));
+                });
+                on('[data-cancel-absence]','click',e=>cancelAbsence(data.unavailabilities.find(b=>String(b.id)===e.currentTarget.dataset.cancelAbsence)));
                 on('#edit-quota','click',()=>{
                     modal('Cambiar distribución de cupos',`<p>${esc(full(doctor))}</p><form id="quota-form">${formErrors}<div class="grid two">${field('Porcentaje presencial','presential_percent','number',data.quota?.presential_percent??50,'required min="0" max="100" step="1"')}${field('Porcentaje online','online_percent','number',data.quota?.online_percent??50,'required min="0" max="100" step="1"')}</div><p>Ambos porcentajes deben sumar 100. Se conservan las citas ya registradas.</p>${submit('Guardar distribución')}</form>`);
                     bindForm('quota-form',async values=>{await api('doctor-quotas','PUT',{...values,doctor_id:doctorId});closeModal();await navigate('CU07');toast('Distribución actualizada.');});

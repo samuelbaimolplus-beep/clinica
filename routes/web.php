@@ -131,6 +131,8 @@ Route::prefix('api')->group(function () {
             Route::put('schedules/{id}', [ScheduleController::class, 'save'])->whereNumber('id');
             Route::post('unavailabilities', [ScheduleController::class, 'unavailable']);
             Route::post('unavailabilities/preview', [ScheduleController::class, 'preview']);
+            Route::get('unavailabilities/{id}/impacts', [ScheduleController::class, 'absenceImpacts'])->whereNumber('id');
+            Route::post('unavailabilities/{id}/cancel', [ScheduleController::class, 'cancelAbsence'])->whereNumber('id');
         });
 
         // Los coordinadores clínicos verifican permisos, cupos y pago antes de emitir ficha.

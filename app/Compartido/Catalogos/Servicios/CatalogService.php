@@ -72,9 +72,16 @@ class CatalogService
             }
             $record->save();
             if ($record instanceof Doctor && $specialties !== null) {
+                $before = $record->specialties()->orderBy('specialties.id')->get(['specialties.id', 'specialties.name'])
+                    ->map(fn ($specialty) => ['id' => $specialty->id, 'name' => $specialty->name])->all();
                 $changes = $record->specialties()->sync($specialties);
                 if ($changes['attached'] || $changes['detached']) {
-                    app(AuditLogger::class)->record('doctors', 'specialties_assigned', $record, details: ['specialty_ids' => array_map('intval', $specialties)]);
+                    $after = $record->specialties()->orderBy('specialties.id')->get(['specialties.id', 'specialties.name'])
+                        ->map(fn ($specialty) => ['id' => $specialty->id, 'name' => $specialty->name])->all();
+                    app(AuditLogger::class)->record('doctors', 'specialties_assigned', $record, details: [
+                        'specialty_ids' => array_map('intval', $specialties), 'fields' => ['specialties'],
+                        'changes' => ['specialties' => ['before' => $before, 'after' => $after]],
+                    ]);
                 }
             }
 

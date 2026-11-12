@@ -7,8 +7,9 @@ export function installAccountManagementViews(ui) {
     async function changePassword(account) {
         modal(`Cambiar contraseña: ${account.username}`, `<form id="account-password-form">${formErrors}
             ${notice('La contraseña actual no se puede consultar. Guarde una contraseña nueva y comuníquela únicamente a la persona titular de esta cuenta.')}
-            ${field('Nueva contraseña', 'password', 'password', '', 'required minlength="10" maxlength="128" autocomplete="new-password"')}
-            ${field('Repetir contraseña nueva', 'password_confirmation', 'password', '', 'required minlength="10" maxlength="128" autocomplete="new-password"')}
+            <p class="help-text">Puede asignar una contraseña sencilla de al menos 6 caracteres. No se exigen mayúsculas, números ni símbolos.</p>
+            ${field('Nueva contraseña', 'password', 'password', '', 'required minlength="6" maxlength="128" autocomplete="new-password"')}
+            ${field('Repetir contraseña nueva', 'password_confirmation', 'password', '', 'required minlength="6" maxlength="128" autocomplete="new-password"')}
             ${submit('Guardar nueva contraseña')}</form>`);
         bindForm('account-password-form', async (data, form) => {
             const result = await api(`supervision/accounts/${account.id}/password`, 'POST', data);

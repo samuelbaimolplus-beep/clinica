@@ -4,6 +4,7 @@
 
 // Correspondencia reversible de índices, restricciones, secuencias, función y trigger.
 return [
+    'unavailabilities_cancelled_by_foreign' => 'indisponibilidades_cancelado_por_foranea',
     'payments_capture_id_unique' => 'pagos_captura_proveedor_id_unico',
     'payments_paypal_snapshot_check' => 'pagos_snapshot_paypal_validacion',
     'agenda_adjustment_values' => 'ajuste_agenda_valores',

@@ -234,7 +234,8 @@ class V3WorkflowTest extends TestCase
         $event = AuditEvent::create(['occurred_at' => '2026-11-09 23:59:59-04:00', 'user_id' => $this->admin->id,
             'module' => 'v3', 'action' => 'test_event', 'result' => 'success', 'details' => ['fields' => ['status'], 'secret' => 'DoNotExpose']]);
         $query = http_build_query(['from' => '2026-11-09', 'to' => '2026-11-09', 'module' => 'v3', 'action' => 'test_event', 'user_id' => $this->admin->id, 'result' => 'success']);
-        $this->actingAs($this->admin)->getJson('/api/audit?'.$query)->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $event->id)->assertJsonMissingPath('data.0.details');
+        $this->actingAs($this->admin)->getJson('/api/audit?'.$query)->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $event->id)
+            ->assertJsonPath('data.0.details.fields.0', 'status')->assertJsonMissingPath('data.0.details.secret')->assertJsonMissingPath('data.0.details.changes');
         $this->getJson('/api/audit/'.$event->id)->assertOk()->assertJsonMissingPath('details.secret')->assertJsonPath('details.fields.0', 'status');
         $this->getJson('/api/audit?to=2026-11-08&module=v3')->assertOk()->assertJsonPath('total', 0);
         $this->getJson('/api/audit?from=2026-11-10&to=2026-11-09')->assertUnprocessable();

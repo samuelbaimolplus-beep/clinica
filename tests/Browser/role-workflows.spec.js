@@ -18,7 +18,7 @@ const slot = {doctor_id:1,doctor_name:'Ana Prueba',start_time:'10:30',end_time:'
 async function mockClinic(page, role, options={}) {
     const user = role ? {id:1,name:`Cuenta ${role}`,username:'cuenta_prueba',email:'cuenta@example.test',role,status:'Activo'} : null;
     const state = {calls:[],pending:0,confirmed:false,authenticated:!options.initiallyGuest,activated:!options.requireActivation,patients:[{...patient}],schedules:options.schedules||[]};
-    state.appointments=options.appointments||[];state.refunds=options.refunds||[];state.requests=[];
+    state.appointments=options.appointments||[];state.refunds=options.refunds||[];state.requests=[];state.unavailabilities=options.unavailabilities||[];
     const booking = {id:1,date:'2030-11-11',start_time:'10:30',end_time:'11:00',status:'processing',attempt:1,amount_minor:10000,expires_at:new Date(Date.now()+300000).toISOString()};
     const payment = {id:1,method:'paypal',status:'pending',amount_minor:10000,provider_amount_minor:1000,provider_currency:'USD',exchange_rate:'10',approval_url:'https://www.sandbox.paypal.com/checkoutnow?token=PP-PRUEBA-001'};
     const appointment = {id:1,patient,doctor,specialty,date:booking.date,start_time:booking.start_time,end_time:booking.end_time,status:'Programada',payment:{...payment,method:'paypal',reference:'PP-PRUEBA-001',status:'confirmed'},...options.appointmentOverrides};
@@ -53,7 +53,7 @@ async function mockClinic(page, role, options={}) {
         else if(path==='online-bookings/1/status')data={booking,payment,appointment:state.confirmed?appointment:null};
         else if(path==='online-bookings/1/cancel')data={booking:{...booking,status:'cancelled'},payment:{...payment,status:'failed'}};
         else if(path==='online-bookings')data=[];
-        else if(path==='schedules'&&route.request().method()==='GET')data={schedules:state.schedules,unavailabilities:[],quota:{presential_percent:50,online_percent:50}};
+        else if(path==='schedules'&&route.request().method()==='GET')data={schedules:state.schedules,unavailabilities:state.unavailabilities,quota:{presential_percent:50,online_percent:50}};
         else if(path==='schedules'||/^schedules\/\d+$/.test(path)){const input=route.request().postDataJSON();const id=path.includes('/')?Number(path.split('/')[1]):state.schedules.length+1;state.schedules=state.schedules.filter(s=>s.id!==id);state.schedules.push({...input,id});data={...input,id,affected_appointments:[]};}
         else if(path==='availability')data=[{start:'12:00',end:'12:30',status:'Disponible'}];
         else if(path==='reception-inbox')data={pending:state.pending,latest_id:state.pending?1:null};
@@ -91,6 +91,162 @@ async function mockClinic(page, role, options={}) {
         await route.fulfill({json:data});
     });
     return state;
+}
+
+test('bitácora: Administrador ve valores anteriores y nuevos, responsable histórico y datos relacionados', async ({page}) => {
+    await mockClinic(page, 'Administrador');
+    const event = {id: 901, occurred_at: '2026-11-12T16:30:00-04:00', user_id: 1, module: 'specialties', action: 'updated',
+        result: 'success', record_type: 'Specialty', record_id: 3, ip_address: '203.0.113.25', details: {
+            actor: {id: 1, name: 'Administradora original', username: 'demo.admin', role: 'Administrador'},
+            record: {id: 3, name: 'Pediatría', fee_minor: 15000, status: 'Inactivo'},
+            fields: ['fee_minor', 'status'], changes: {fee_minor: {before: 10000, after: 15000}, status: {before: 'Activo', after: 'Inactivo'}},
+            request: {method: 'PUT', route: 'api/entities/{module}/{id}'},
+        }};
+    await page.route('**/api/audit**', async route => {
+        const path = new URL(route.request().url()).pathname;
+        if (path.endsWith('/filters')) await route.fulfill({json: {users: [{id: 1, name: 'Nombre actual', role: 'Administrador'}], modules: ['specialties'], actions: ['updated'], results: ['success']}});
+        else if (path.endsWith('/901')) await route.fulfill({json: event});
+        else await route.fulfill({json: {data: [event], total: 1, current_page: 1, last_page: 1}});
+    });
+    await page.goto('/#auditoria');
+    await expect(page.locator('#main')).toContainText('Administradora original');
+    await expect(page.locator('#main')).toContainText('Pediatría');
+    await page.locator('[data-audit="901"]').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('Cambios realizados');
+    const fee = dialog.getByRole('row').filter({hasText: 'Tarifa'});
+    await expect(fee).toContainText(/100[,.]00 BOB/);
+    await expect(fee).toContainText(/150[,.]00 BOB/);
+    await expect(dialog).toContainText('203.0.113.25');
+    await expect(dialog).toContainText('Administradora original');
+    await expect(dialog).toContainText('Registro en el momento de la acción');
+    await page.screenshot({path: 'storage/app/private/bitacora-detalle-local.png', fullPage: true});
+});
+
+test('bitácora: explica el límite de los eventos antiguos y escapa los valores registrados', async ({page}) => {
+    await mockClinic(page, 'Administrador');
+    const event = {id: 902, occurred_at: '2026-11-01', module: 'users', action: 'updated', result: 'success',
+        record_type: 'User', record_id: 2, details: {fields: ['status'], reason: '<img src=x onerror="window.auditInjected=true">'}};
+    await page.route('**/api/audit**', async route => {
+        const path = new URL(route.request().url()).pathname;
+        if (path.endsWith('/filters')) await route.fulfill({json: {users: [], modules: ['users'], actions: ['updated'], results: ['success']}});
+        else if (path.endsWith('/902')) await route.fulfill({json: event});
+        else await route.fulfill({json: {data: [event], total: 1, current_page: 1, last_page: 1}});
+    });
+    await page.goto('/#auditoria');
+    await page.locator('[data-audit="902"]').click();
+    await expect(page.getByRole('dialog')).toContainText('Este evento no conserva valores anteriores y nuevos');
+    await expect(page.getByRole('dialog')).toContainText('<img src=x');
+    expect(await page.evaluate(() => Boolean(window.auditInjected))).toBe(false);
+});
+
+for (const role of ['Recepcionista', 'Superadmin']) {
+    test(`bloqueos provisionales: ${role} propone, selecciona, visualiza y libera`, async ({page}) => {
+        await mockClinic(page, role);
+        const records = [], calls = [];
+        let date = '';
+        await page.route('**/api/agenda-adjustments**', async route => {
+            const url = new URL(route.request().url());
+            const path = url.pathname.slice(5), method = route.request().method();
+            const input = route.request().postDataJSON();
+            calls.push({path, method, input});
+            if (method === 'GET') {
+                date = url.searchParams.get('date');
+                await route.fulfill({json: records});
+            } else if (path === 'agenda-adjustments/proposal') {
+                await route.fulfill({json: {requested: 2, unfulfilled: 0, blocks: [
+                    {doctor_id: 1, date, start_time: '22:00', end_time: '22:30'},
+                    {doctor_id: 1, date, start_time: '22:30', end_time: '23:00'},
+                ]}});
+            } else if (path === 'agenda-adjustments/release') {
+                records.forEach(record => { if (input.ids.map(Number).includes(record.id)) record.status = 'released'; });
+                await route.fulfill({json: records});
+            } else if (path === 'agenda-adjustments') {
+                input.blocks.forEach((block, index) => records.push({...block, id: index + 1,
+                    specialty_id: Number(input.specialty_id), kind: input.kind, status: 'active', created_by: 1}));
+                await route.fulfill({status: 201, json: records});
+            } else await route.fulfill({status: 500, json: {message: 'Ruta inesperada de bloqueos.'}});
+        });
+        await page.goto('/#bloqueos');
+        await expect(page.getByRole('heading', {name: 'Bloqueos provisionales', exact: true})).toBeVisible();
+        await page.locator('[data-demand-specialty="1"]').click();
+        await expect(page.locator('#main')).not.toHaveAttribute('aria-busy', 'true');
+        await page.getByRole('button', {name: 'Añadir una persona', exact: true}).click();
+        await expect(page.locator('#demand-count')).toHaveText('2');
+        await page.locator('#demand-proposal-form button[type=submit]').click();
+        await expect(page.locator('#confirm-demand-form [name=blocks]')).toHaveCount(2);
+        expect(calls.filter(call => call.path === 'agenda-adjustments' && call.method === 'POST')).toHaveLength(0);
+        await page.locator('#confirm-demand-form [name=blocks]').nth(1).uncheck();
+        await page.locator('#confirm-demand-form button[type=submit]').click();
+        await expect(page.locator('#release-blocks-form')).toContainText('Activo');
+        await expect(page.locator('#release-blocks-form')).toContainText('Medicina general');
+        await expect(page.locator('#release-blocks-form')).toContainText('Ana Prueba');
+        await expect(page.locator('#release-blocks-form')).toContainText('22:00–22:30');
+        const created = calls.find(call => call.path === 'agenda-adjustments' && call.method === 'POST');
+        expect(created.input.blocks).toHaveLength(1);
+        expect(created.input.quantity).toBe(2);
+        await page.reload();
+        await expect(page.locator('#release-blocks-form')).toContainText('Activo');
+        await page.screenshot({path: `storage/app/private/bloqueos-${role}.png`, fullPage: true});
+        await page.locator('#release-blocks-form [name=ids]').check();
+        await page.locator('#release-blocks-form button[type=submit]').click();
+        await expect(page.getByRole('dialog')).toBeVisible();
+        expect(calls.filter(call => call.path === 'agenda-adjustments/release')).toHaveLength(0);
+        await page.locator('#confirm-action').click();
+        await expect(page.getByRole('dialog')).not.toBeVisible();
+        await expect(page.locator('#release-blocks-form')).toContainText('Liberado');
+        await expect(page.locator('#release-blocks-form [name=ids]')).toHaveCount(0);
+    });
+}
+
+for (const role of ['Administrador', 'Superadmin']) {
+    test(`ausencias: ${role} revisa las citas, registra y retira conservando el historial`, async ({page}) => {
+        const state = await mockClinic(page, role, {schedules: [{id:1,doctor_id:1,weekday:2,start_time:'08:00',end_time:'12:00',duration:30}]});
+        const affected = [{id:8,patient,doctor,specialty,date:'2030-11-12',start_time:'08:00',end_time:'08:30',status:'Programada'}];
+        const calls = [];
+        await page.route('**/api/unavailabilities**', async route => {
+            const path = new URL(route.request().url()).pathname.slice(5);
+            const input = route.request().postDataJSON();
+            calls.push({path, input});
+            if (path.endsWith('/preview')) await route.fulfill({json: {unavailability:null, affected}});
+            else if (path.endsWith('/impacts')) await route.fulfill({json: {unavailability:state.unavailabilities[0], affected}});
+            else if (path.endsWith('/cancel')) {
+                Object.assign(state.unavailabilities[0], {cancelled_at:'2030-11-12T07:30:00-04:00',cancelled_by:1,cancellation_reason:input.reason});
+                await route.fulfill({json: {unavailability:state.unavailabilities[0], affected:[]}});
+            } else {
+                state.unavailabilities.push({...input,id:5,cancelled_at:null});
+                await route.fulfill({status:201,json:{unavailability:state.unavailabilities[0],affected}});
+            }
+        });
+        await page.goto('/#horarios');
+        await page.locator('[data-tab=block]').click();
+        await page.locator('#new-unavailability').click();
+        await page.getByLabel('Desde', {exact:true}).fill('2030-11-12T08:00');
+        await page.getByLabel('Hasta', {exact:true}).fill('2030-11-12T10:00');
+        await page.locator('#preview-block').click();
+        await expect(page.locator('#affected-preview')).toContainText('1 citas pendientes afectadas');
+        await expect(page.locator('#affected-preview')).toContainText('Paciente Prueba');
+        await expect(page.locator('#affected-preview')).toContainText('08:00–08:30');
+        await page.locator('#unavailable-form button[type=submit]').click();
+        await expect(page.getByRole('dialog')).toContainText('Resultado de la ausencia');
+        await expect(page.getByRole('dialog')).toContainText('Paciente Prueba');
+        await page.getByRole('dialog').press('Escape');
+        await page.locator('[data-absence-impacts="5"]').click();
+        await expect(page.getByRole('dialog')).toContainText('Paciente Prueba');
+        await page.getByRole('dialog').press('Escape');
+        await page.locator('[data-cancel-absence="5"]').click();
+        await page.getByLabel('Motivo del retiro').fill('El médico confirmó que sí atenderá');
+        expect(calls.filter(call => call.path.endsWith('/cancel'))).toHaveLength(0);
+        await page.getByRole('button', {name:'Confirmar retiro'}).click();
+        await expect(page.getByRole('dialog')).not.toBeVisible();
+        await expect(page.locator('#main')).toContainText('Retirada');
+        await expect(page.locator('#main')).toContainText('El médico confirmó que sí atenderá');
+        await expect(page.locator('[data-cancel-absence="5"]')).toHaveCount(0);
+        await page.screenshot({path:`storage/app/private/ausencia-retirada-${role}.png`,fullPage:true});
+        await page.reload();
+        await page.locator('[data-tab=block]').click();
+        await expect(page.locator('#main')).toContainText('Retirada');
+    });
 }
 
 test('horarios: primero muestra la semana, evita cruces y modifica el turno seleccionado',async({page})=>{
@@ -292,11 +448,11 @@ test('Superadmin puede cambiar la contraseña de un paciente sin consultar la co
     await page.getByRole('button',{name:'Consultar todas las cuentas'}).click();
     await page.getByRole('row').filter({hasText:'ana.paciente'}).getByRole('button',{name:'Cambiar contraseña'}).click();
     await expect(page.getByRole('dialog')).toContainText('La contraseña actual no se puede consultar');
-    await page.getByLabel('Nueva contraseña',{exact:true}).fill('NuevaSegura2026');
-    await page.getByLabel('Repetir contraseña nueva',{exact:true}).fill('NuevaSegura2026');
+    await page.getByLabel('Nueva contraseña',{exact:true}).fill('123456');
+    await page.getByLabel('Repetir contraseña nueva',{exact:true}).fill('123456');
     await page.getByRole('button',{name:'Guardar nueva contraseña'}).click();
     await expect(page.getByRole('dialog')).not.toBeVisible();
-    expect(state.calls.find(c=>c.path==='supervision/accounts/2/password').data.password_confirmation).toBe('NuevaSegura2026');
+    expect(state.calls.find(c=>c.path==='supervision/accounts/2/password').data.password_confirmation).toBe('123456');
 });
 
 test('Administrador no tiene acceso a la consulta global de cuentas', async ({page}) => {

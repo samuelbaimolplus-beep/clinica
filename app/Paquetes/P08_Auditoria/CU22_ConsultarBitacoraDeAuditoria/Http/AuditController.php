@@ -7,6 +7,7 @@ namespace App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Http;
 use App\Http\Controllers\Controller;
 use App\Models\AuditEvent;
 use App\Models\User;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditDetails;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 
@@ -30,8 +31,22 @@ class AuditController extends Controller
             $query->when($data[$field] ?? null, fn ($q, $value) => $q->where($field, $value));
         }
 
-        return $query->select(['id', 'occurred_at', 'user_id', 'module', 'action', 'record_type', 'record_id', 'result', 'ip_address'])
-            ->orderByDesc('occurred_at')->orderByDesc('id')->paginate(50);
+        return $query->select(['id', 'occurred_at', 'user_id', 'module', 'action', 'record_type', 'record_id', 'result', 'ip_address', 'details'])
+            ->orderByDesc('occurred_at')->orderByDesc('id')->paginate(50)
+            ->through(function ($event) {
+                $details = AuditDetails::sanitize($event->details ?? []);
+                // El listado solo necesita contexto breve; los valores completos se consultan por evento.
+                $event->details = array_intersect_key($details, array_flip(['actor', 'record', 'related', 'fields', 'security_changed']));
+                if (isset($event->details['record'])) {
+                    $summary = $event->details;
+                    $summary['record'] = array_intersect_key($summary['record'], array_flip([
+                        'id', 'name', 'username', 'first_name', 'last_name', 'date', 'start_time', 'end_time', 'status',
+                    ]));
+                    $event->details = $summary;
+                }
+
+                return $event;
+            });
     }
 
     /** Recupera el detalle autorizado del registro sin modificar su persistencia. */
@@ -39,7 +54,7 @@ class AuditController extends Controller
     {
         $event = AuditEvent::findOrFail($id);
         // Lista permitida para que una integración futura no publique detalles secretos por accidente.
-        $event->details = array_intersect_key($event->details ?? [], array_flip(['fields', 'specialty_ids', 'reason', 'terms_version']));
+        $event->details = AuditDetails::sanitize($event->details ?? []);
 
         return $event;
     }

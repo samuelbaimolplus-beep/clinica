@@ -4,14 +4,14 @@
 
 namespace App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios;
 
-use App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios\ScheduleBlocks;
-use App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios\ScheduleImpact;
 use App\Models\AgendaAdjustment;
-use App\Models\Appointment;
 use App\Models\BookingRequest;
 use App\Models\Doctor;
 use App\Models\Schedule;
 use App\Models\Unavailability;
+use App\Models\User;
+use App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios\ScheduleBlocks;
+use App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios\ScheduleImpact;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -67,11 +67,23 @@ class ScheduleService
                 ->whereRaw('(date + start_time) < ?::timestamp AND (date + end_time) > ?::timestamp', [$data['ends_at'], $data['starts_at']])->exists()) {
                 throw ValidationException::withMessages(['schedule' => 'El período contiene un pago online pendiente de conciliación.']);
             }
-            $affected = Appointment::with('patient', 'doctor', 'specialty')->where('doctor_id', $data['doctor_id'])
-                ->whereIn('status', Appointment::ACTIVE)->whereRaw('(date + start_time) >= ?::timestamp', [now()->format('Y-m-d H:i:s')])
-                ->whereRaw('(date + start_time) < ?::timestamp AND (date + end_time) > ?::timestamp', [$data['ends_at'], $data['starts_at']])->get();
+            $affected = app(ScheduleImpact::class)->overlapping($data['doctor_id'], $data['starts_at'], $data['ends_at']);
 
             return ['unavailability' => $preview ? null : Unavailability::create($data), 'affected' => $affected];
+        });
+    }
+
+    /** Retira el bloqueo, conservando fechas, motivo original, actor e historial. */
+    public function cancelUnavailability(int $id, string $reason, User $actor): array
+    {
+        return DB::transaction(function () use ($id, $reason, $actor) {
+            $absence = Unavailability::findOrFail($id);
+            Doctor::whereKey($absence->doctor_id)->lockForUpdate()->firstOrFail();
+            $absence = Unavailability::whereKey($id)->lockForUpdate()->firstOrFail();
+            abort_if($absence->cancelled_at, 409, 'Esta ausencia ya fue retirada. Actualice la consulta.');
+            $absence->fill(['cancelled_at' => now(), 'cancelled_by' => $actor->id, 'cancellation_reason' => $reason])->save();
+
+            return ['unavailability' => $absence->fresh(), 'affected' => app(ScheduleImpact::class)->affected($absence->doctor_id)];
         });
     }
 

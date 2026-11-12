@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AgendaAdjustment;
 use App\Models\Appointment;
+use App\Models\AuditEvent;
 use App\Models\BookingRequest;
 use App\Models\Doctor;
 use App\Models\Patient;
@@ -11,8 +12,8 @@ use App\Models\Payment;
 use App\Models\Schedule;
 use App\Models\Specialty;
 use App\Models\User;
-use App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Servicios\OnlineBookingService;
 use App\Paquetes\P07_ReservasPagosYSeguimientos\Compartido\Integraciones\PayPalGateway;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Servicios\OnlineBookingService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\Client\ConnectionException;
@@ -207,6 +208,36 @@ class ClinicalPaymentsTest extends TestCase
         $this->assertDatabaseCount('payments', 1);
     }
 
+    public function test_demand_block_is_listed_and_visible_only_for_compatible_presential_booking(): void
+    {
+        $data = ['kind' => 'presential_block', 'specialty_id' => $this->specialty->id, 'quantity' => 1,
+            'blocks' => [['doctor_id' => $this->doctor->id, 'date' => '2026-11-09', 'start_time' => '08:00', 'end_time' => '08:30']]];
+        $id = $this->postJson('/api/agenda-adjustments', $data)->assertCreated()->json('0.id');
+        $created = AuditEvent::where('record_type', 'AgendaAdjustment')->where('record_id', $id)->where('action', 'created')->firstOrFail();
+        $this->assertSame('active', $created->details['record']['status']);
+        $this->assertSame('08:00:00', $created->details['record']['start_time']);
+        $this->getJson('/api/agenda-adjustments?date=2026-11-09&specialty_id='.$this->specialty->id)
+            ->assertOk()->assertJsonPath('0.id', $id)->assertJsonPath('0.status', 'active');
+        $query = '/api/medical-availability?date=2026-11-09&specialty_id='.$this->specialty->id;
+        $this->getJson($query)->assertOk()->assertJsonMissing(['start_time' => '08:00']);
+        $this->getJson($query.'&include_demand=1')->assertOk()
+            ->assertJsonPath('blocks.0.start_time', '08:00')->assertJsonPath('blocks.0.demand_blocked', true);
+
+        $other = Specialty::create(['name' => 'Otra especialidad de bloqueo', 'status' => 'Activo', 'fee_minor' => 10000]);
+        $this->doctor->specialties()->attach($other);
+        $this->getJson('/api/medical-availability?date=2026-11-09&specialty_id='.$other->id.'&include_demand=1')
+            ->assertOk()->assertJsonMissing(['start_time' => '08:00']);
+        $this->actingAs($this->patientUser)->getJson($query.'&include_demand=1')
+            ->assertOk()->assertJsonMissing(['start_time' => '08:00']);
+
+        $this->actingAs($this->reception)->postJson('/api/agenda-adjustments/release', ['ids' => [$id]])->assertOk();
+        $this->getJson($query.'&include_demand=1')->assertOk()
+            ->assertJsonPath('blocks.0.start_time', '08:00')->assertJsonPath('blocks.0.demand_blocked', false);
+        $this->assertDatabaseHas('agenda_adjustments', ['id' => $id, 'status' => 'released']);
+        $this->assertDatabaseCount('appointments', 0);
+        $this->assertDatabaseCount('payments', 0);
+    }
+
     public function test_compatible_demand_block_is_consumed_only_after_payment(): void
     {
         $block = AgendaAdjustment::create(['doctor_id' => $this->doctor->id, 'specialty_id' => $this->specialty->id, 'date' => '2026-11-09', 'start_time' => '08:00', 'end_time' => '08:30', 'kind' => 'presential_block', 'status' => 'active', 'created_by' => $this->reception->id]);
@@ -281,6 +312,14 @@ class ClinicalPaymentsTest extends TestCase
         $this->actingAs($this->reception)->putJson('/api/appointments/'.$a->id.'/reschedule', ['doctor_id' => $this->doctor->id, 'date' => '2026-11-09', 'start_time' => '09:00', 'cause' => 'patient', 'patient_accepted' => true, 'change_reason' => 'Acepta por WhatsApp'])->assertOk()->assertJsonPath('payment_id', $a->payment_id);
         $this->assertDatabaseHas('reschedule_requests', ['appointment_id' => $a->id, 'status' => 'accepted']);
         $this->assertDatabaseCount('payments', 1);
+        $event = AuditEvent::where('action', 'rescheduled')->where('record_id', $a->id)->latest('id')->firstOrFail();
+        $this->assertSame('Acepta por WhatsApp', $event->details['reason']);
+        $this->assertSame('08:00:00', $event->details['changes']['start_time']['before']);
+        $this->assertSame('09:00', $event->details['changes']['start_time']['after']);
+        $this->assertTrue($event->details['changes']['patient_accepted']['after']);
+        $this->assertSame('patient', $event->details['changes']['change_cause']['after']);
+        $this->assertSame('María Paciente', $event->details['related']['patient_id']['label']);
+        $this->assertSame($this->reception->id, $event->user_id);
     }
 
     public function test_refund_request_does_not_cancel_and_approval_does_not_complete(): void

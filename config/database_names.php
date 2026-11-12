@@ -34,7 +34,7 @@ return [
         'booking_request_id' => 'solicitud_reserva_id', 'payment_id' => 'pago_id',
         'parent_appointment_id' => 'cita_origen_id', 'modality' => 'modalidad',
         'complimentary' => 'sin_costo', 'cancellation_cause' => 'causa_cancelacion',
-        'cancelled_at' => 'cancelado_el', 'missed_call_at' => 'ausente_al_llamado_el',
+        'cancelled_at' => 'cancelado_el', 'cancelled_by' => 'cancelado_por', 'missed_call_at' => 'ausente_al_llamado_el',
         'attended_at' => 'atendido_el', 'followup_suggested_at' => 'seguimiento_sugerido_el',
         'followup_note' => 'nota_seguimiento', 'clinical_slot_id' => 'franja_clinica_id',
         'occurred_at' => 'ocurrido_el', 'module' => 'modulo', 'record_type' => 'tipo_registro',

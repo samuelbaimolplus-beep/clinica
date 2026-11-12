@@ -2,11 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Paquetes\P01_UsuariosYAcceso\CU03_GestionarUsuariosYRoles\Http\AccountManagementController;
 use App\Models\AuditEvent;
 use App\Models\Doctor;
 use App\Models\Patient;
 use App\Models\User;
+use App\Paquetes\P01_UsuariosYAcceso\CU03_GestionarUsuariosYRoles\Http\AccountManagementController;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -79,6 +79,15 @@ class AccountManagementTest extends TestCase
         }
         $this->postJson('/api/supervision/accounts/999999999/password', ['password' => 'NuevaSegura2026', 'password_confirmation' => 'NuevaSegura2026'])->assertNotFound();
         $this->assertTrue(Hash::check('AnteriorSegura2026', $this->patientUser->fresh()->password));
+    }
+
+    public function test_superadmin_can_assign_a_simple_six_character_password_that_authenticates_normally(): void
+    {
+        $this->actingAs($this->superadmin)->postJson('/api/supervision/accounts/'.$this->patientUser->id.'/password', ['password' => '123456', 'password_confirmation' => '123456'])->assertOk();
+        $this->assertTrue(Hash::check('123456', $this->patientUser->fresh()->password));
+        $this->assertStringNotContainsString('123456', AuditEvent::all()->toJson());
+        $this->postJson('/api/logout')->assertOk();
+        $this->postJson('/api/login', ['email' => $this->patientUser->username, 'password' => '123456'])->assertOk();
     }
 
     public function test_password_reset_revokes_the_targets_previous_session(): void

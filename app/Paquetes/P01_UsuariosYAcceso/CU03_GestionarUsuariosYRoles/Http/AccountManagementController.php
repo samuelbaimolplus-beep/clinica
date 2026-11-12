@@ -27,7 +27,7 @@ class AccountManagementController extends Controller
     public function password(Request $request, int $id)
     {
         abort_unless($request->user()->role === 'Superadmin', 403);
-        $data = $request->validate(['password' => 'required|string|min:10|max:128|confirmed']);
+        $data = $request->validate(['password' => 'required|string|min:6|max:128|confirmed']);
         DB::transaction(function () use ($request, $id, $data) {
             $account = User::whereKey($id)->lockForUpdate()->firstOrFail();
             $account->forceFill(['password' => $data['password'], 'remember_token' => Str::random(60)])->save();
