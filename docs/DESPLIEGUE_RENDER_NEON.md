@@ -66,7 +66,7 @@ Abrir `/up`, la portada y `/api/session`. Verificar acceso, activación de corre
 
 ## 4. Pagos, proxies y límites
 
-PayPal empieza deshabilitado. Para habilitar el sandbox, añadir a Render `PAYPAL_ENABLED=true`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_BOB_PER_USD` y `PAYPAL_WEBHOOK_ID`, y registrar el webhook del servicio nuevo en `https://NUEVO_HOST/pagos/paypal/webhook`. Los retornos son `/pagos/paypal/retorno` y `/pagos/paypal/cancelado`. No cambiar el webhook de vetproy. Las rutas internas de la clínica permanecen iguales.
+El Blueprint habilita PayPal Sandbox y declara las variables requeridas. En un servicio creado manualmente o un Blueprint existente, agregar o actualizar en Environment `PAYPAL_ENABLED=true`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_BOB_PER_USD=10` (tasa de demostración que ya usa la instalación local) y `PAYPAL_WEBHOOK_ID`. Copiar el Client ID y Secret de Sandbox del `.env` local directamente a los secretos de Render. El Webhook ID debe corresponder a `https://clinica-y8yy.onrender.com/pagos/paypal/webhook`; es distinto del webhook de localhost o ngrok. Los retornos son `/pagos/paypal/retorno` y `/pagos/paypal/cancelado`. Con credenciales incompletas la aplicación mantiene el pago online deshabilitado. Esta integración usa exclusivamente dinero de prueba. No cambiar el webhook de vetproy. Las rutas internas de la clínica permanecen iguales.
 
 Para registrar la IP del visitante detrás del balanceador, configurar `TRUSTED_PROXIES` con las IP o redes verificadas de ese despliegue. Se conserva la restricción existente contra `*`: no se confía en cabeceras de cualquier cliente. HTTPS se fuerza para las URLs generadas en producción sin depender de confiar indiscriminadamente en proxies.
 

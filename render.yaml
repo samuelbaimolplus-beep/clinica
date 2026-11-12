@@ -65,4 +65,12 @@ services:
       - key: MAIL_FROM_NAME
         value: Clínica Vida Salud
       - key: PAYPAL_ENABLED
-        value: "false"
+        value: "true"
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_BOB_PER_USD
+        value: "10"
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
