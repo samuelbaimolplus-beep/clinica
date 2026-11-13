@@ -22,6 +22,22 @@ class AuditDetailsTest extends TestCase
         $this->assertSame('clinica_vida_salud_test', config('database.connections.pgsql.database'));
     }
 
+    public function test_audit_day_filters_use_bolivia_boundaries_and_preserve_the_recorded_instant(): void
+    {
+        $admin = $this->verifiedAccount(['name' => 'Admin horario', 'email' => 'audit-timezone@example.test', 'password' => 'ClavePrivada2026!', 'role' => 'Administrador', 'status' => 'Activo']);
+        foreach (['previous' => '2026-11-13T03:59:59Z', 'first' => '2026-11-13T04:00:00Z',
+            'last' => '2026-11-14T03:59:59Z', 'next' => '2026-11-14T04:00:00Z'] as $accion => $instante) {
+            DB::statement('INSERT INTO audit_events (module, action, result, occurred_at, details) VALUES (?, ?, ?, ?::timestamptz, ?::jsonb)',
+                ['audit_timezone_test', $accion, 'success', $instante, '{}']);
+        }
+        $respuesta = $this->actingAs($admin)->getJson('/api/audit?module=audit_timezone_test&from=2026-11-13&to=2026-11-13')
+            ->assertOk()->assertJsonPath('total', 2);
+        $this->assertSame(['last', 'first'], array_column($respuesta->json('data'), 'action'));
+        $this->assertSame('2026-11-14T03:59:59.000000Z', $respuesta->json('data.0.occurred_at'));
+        $this->getJson('/api/audit/'.$respuesta->json('data.0.id'))->assertOk()
+            ->assertJsonPath('occurred_at', '2026-11-14T03:59:59.000000Z');
+    }
+
     public function test_catalog_changes_include_actual_values_actor_and_safe_request_context(): void
     {
         $admin = $this->verifiedAccount(['name' => 'Ana Administradora', 'username' => 'audit.admin', 'email' => 'audit-admin@example.test', 'password' => 'ClavePrivada2026!', 'role' => 'Administrador', 'status' => 'Activo']);

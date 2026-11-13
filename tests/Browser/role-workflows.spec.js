@@ -93,9 +93,11 @@ async function mockClinic(page, role, options={}) {
     return state;
 }
 
+test.describe('Auditoría con navegador en otra zona horaria', () => {
+test.use({timezoneId:'Asia/Tokyo'});
 test('bitácora: Administrador ve valores anteriores y nuevos, responsable histórico y datos relacionados', async ({page}) => {
     await mockClinic(page, 'Administrador');
-    const event = {id: 901, occurred_at: '2026-11-12T16:30:00-04:00', user_id: 1, module: 'specialties', action: 'updated',
+    const event = {id: 901, occurred_at: '2026-11-13T02:30:00.000000Z', user_id: 1, module: 'specialties', action: 'updated',
         result: 'success', record_type: 'Specialty', record_id: 3, ip_address: '203.0.113.25', details: {
             actor: {id: 1, name: 'Administradora original', username: 'demo.admin', role: 'Administrador'},
             record: {id: 3, name: 'Pediatría', fee_minor: 15000, status: 'Inactivo'},
@@ -111,8 +113,11 @@ test('bitácora: Administrador ve valores anteriores y nuevos, responsable hist�
     await page.goto('/#auditoria');
     await expect(page.locator('#main')).toContainText('Administradora original');
     await expect(page.locator('#main')).toContainText('Pediatría');
+    await expect(page.locator('#main')).toContainText('12/11/2026 22:30:00');
+    await expect(page.locator('#main')).toContainText('Santa Cruz, Bolivia');
     await page.locator('[data-audit="901"]').click();
     const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText('12/11/2026 22:30:00');
     await expect(dialog).toContainText('Cambios realizados');
     const fee = dialog.getByRole('row').filter({hasText: 'Tarifa'});
     await expect(fee).toContainText(/100[,.]00 BOB/);
@@ -121,6 +126,7 @@ test('bitácora: Administrador ve valores anteriores y nuevos, responsable hist�
     await expect(dialog).toContainText('Administradora original');
     await expect(dialog).toContainText('Registro en el momento de la acción');
     await page.screenshot({path: 'storage/app/private/bitacora-detalle-local.png', fullPage: true});
+});
 });
 
 test('bitácora: explica el límite de los eventos antiguos y escapa los valores registrados', async ({page}) => {

@@ -46,9 +46,30 @@ export const auditType = value => ({User:'Usuario', Doctor:'Médico', Patient:'P
     Schedule:'Horario', Unavailability:'Ausencia médica', DoctorQuota:'Distribución de cupos', AgendaAdjustment:'Bloqueo de agenda',
     Appointment:'Cita', BookingRequest:'Reserva', Payment:'Pago', RefundRequest:'Solicitud de reembolso', RescheduleRequest:'Solicitud de reprogramación'}[value] || value || 'Sin registro');
 
+const formatoFechaHora = new Intl.DateTimeFormat('es-BO', {
+    timeZone:'America/La_Paz', year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit', hourCycle:'h23',
+});
+
+/** La API conserva el instante; la bitácora siempre lo presenta en la hora de Santa Cruz. */
+export function fechaHoraAuditoria(valor) {
+    if (valor === null || valor === undefined || valor === '') return 'Sin fecha';
+    const texto = String(valor);
+    const sello = texto.trim().match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)(Z|[+-]\d{2}(?::?\d{2})?)?$/i);
+    if (!sello) return texto;
+    // Las fechas SQL sin zona corresponden al horario local de la aplicación.
+    let zona = sello[3] || '-04:00';
+    if (/^[+-]\d{2}$/.test(zona)) zona += ':00';
+    const fecha = new Date(`${sello[1]}T${sello[2]}${zona}`);
+    if (Number.isNaN(fecha.getTime())) return texto;
+    const partes = Object.fromEntries(formatoFechaHora.formatToParts(fecha).map(parte => [parte.type, parte.value]));
+    return `${partes.day}/${partes.month}/${partes.year} ${partes.hour}:${partes.minute}:${partes.second}`;
+}
+
 export function auditValue(field, value, record = {}) {
     if (value === null || value === undefined || value === '') return 'Sin valor';
     if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+    if (field.endsWith('_at')) return fechaHoraAuditoria(value);
     if (field === 'weekday') return ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][Number(value)] ?? String(value);
     if (['fee_minor','amount_minor','provider_amount_minor'].includes(field) && Number.isFinite(Number(value))) {
         const currency = field === 'provider_amount_minor' ? (record.provider_currency || 'USD') : 'BOB';

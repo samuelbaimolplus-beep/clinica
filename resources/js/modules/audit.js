@@ -1,5 +1,5 @@
 /** CU22: consulta paginada e inmutable de eventos, actor, dirección IP y metadatos permitidos. */
-import {auditLabel, auditValue, auditRecord, auditModule, auditType} from '../lib/audit-format.js';
+import {auditLabel, auditValue, auditRecord, auditModule, auditType, fechaHoraAuditoria} from '../lib/audit-format.js';
 
 export function installAuditViews(ui) {
     const { views, api, panel, field, select, formErrors, submit, table, esc, button, on, bindForm, navigate, modal, details } = ui;
@@ -24,8 +24,8 @@ export function installAuditViews(ui) {
                 ${select('Acción', 'action', choices(options.actions), filters.action)}
                 ${select('Resultado', 'result', choices(options.results), filters.result)}
                 </div>${submit('Buscar eventos')}</form>`)
-                + panel('Eventos registrados', table(['Fecha', 'Responsable', 'Dirección IP', 'Módulo', 'Acción', 'Resultado', 'Registro y cambios', ''], result.data.map(event => [
-                    esc(event.occurred_at), esc(actor(event)), esc(event.ip_address || 'Sin IP registrada'), esc(auditModule(event.module)), esc(auditLabel(event.action)),
+                + panel('Eventos registrados', '<p>Fechas y horas de Santa Cruz, Bolivia (UTC−4).</p>' + table(['Fecha', 'Responsable', 'Dirección IP', 'Módulo', 'Acción', 'Resultado', 'Registro y cambios', ''], result.data.map(event => [
+                    esc(fechaHoraAuditoria(event.occurred_at)), esc(actor(event)), esc(event.ip_address || 'Sin IP registrada'), esc(auditModule(event.module)), esc(auditLabel(event.action)),
                     esc(auditLabel(event.result)), esc(`${auditType(event.record_type)} ${event.record_id ? '#'+event.record_id : ''}`)
                         + `<p>${esc(auditRecord(event))}</p><small>${esc((event.details?.fields || []).map(auditLabel).join(', '))}${event.details?.security_changed ? ' · Credencial actualizada (valor protegido)' : ''}</small>`,
                     button('Consultar', `data-audit="${event.id}"`, 'link'),
@@ -55,7 +55,7 @@ export function installAuditViews(ui) {
                     if (info.fields?.length && !changes.length) extra += `<p>Campos registrados: ${esc(info.fields.map(auditLabel).join(', '))}</p>`;
                     if (info.specialty_ids?.length && !changes.length) extra += `<p>Especialidades: ${esc(info.specialty_ids.join(', '))}</p>`;
                     modal('Detalle del evento', details([
-                        ['Fecha', esc(record.occurred_at)], ['Responsable', esc(actor(record))],
+                        ['Fecha (Santa Cruz, UTC−4)', esc(fechaHoraAuditoria(record.occurred_at))], ['Responsable', esc(actor(record))],
                         ['Dirección IP', esc(record.ip_address || 'No disponible: proceso interno o evento anterior a este registro')],
                         ['Módulo y acción', esc(`${auditModule(record.module)} · ${auditLabel(record.action)}`)], ['Resultado', esc(auditLabel(record.result))],
                         ['Registro afectado', esc(`${auditType(record.record_type)} ${record.record_id || ''}`)],
