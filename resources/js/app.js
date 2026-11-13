@@ -153,8 +153,8 @@ function setMenu(open, restoreFocus=false) {
     $('#menu-backdrop').hidden=!open;
     document.body.classList.toggle('menu-open',open);
     main.inert=open;
-    if(open)$('#nav-search')?.focus();
-    else if(restoreFocus)$('#menu-toggle').focus();
+    // Abrir la navegación no debe activar el teclado virtual del buscador.
+    if(open || restoreFocus)$('#menu-toggle').focus({preventScroll:true});
 }
 /** Controla permisos, secuencia de carga, navegación y foco antes de enlazar una vista. */
 async function navigate(view, {replace=false}={}) {

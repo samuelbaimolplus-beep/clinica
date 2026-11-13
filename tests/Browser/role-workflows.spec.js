@@ -327,6 +327,13 @@ for(const width of [360,768]) {
         if(width===360)expect(await page.locator('tbody tr').first().evaluate(el=>getComputedStyle(el).display)).toBe('block');
         await page.locator('#menu-toggle').click();
         await expect(page.locator('#menu-toggle')).toHaveAttribute('aria-expanded','true');
+        await expect(page.locator('#menu-toggle')).toBeFocused();
+        await expect(page.locator('#nav-search')).not.toBeFocused();
+        await page.getByRole('button',{name:'Inicio y acciones',exact:true}).click();
+        await expect(page.getByRole('heading',{name:'Inicio y acciones',exact:true})).toBeVisible();
+        await page.locator('#menu-toggle').click();
+        await expect(page.locator('#nav-search')).not.toBeFocused();
+        await page.getByRole('searchbox',{name:'Buscar en el menú'}).click();
         await expect(page.locator('#nav-search')).toBeFocused();
         await page.getByRole('searchbox',{name:'Buscar en el menú'}).fill('medicos');
         await expect(page.locator('.nav-btn:visible')).toHaveCount(3);
