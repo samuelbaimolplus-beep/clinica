@@ -1,5 +1,6 @@
 /** Acciones compartidas: ficha, historial, cambio de horario, asistencia, consulta y conciliación de PayPal. */
 // CU09–CU21/CU26. La interfaz propone operaciones; el servidor verifica todos los permisos y estados.
+import {enlaceReprogramacion, mensajeReprogramacion} from '../lib/whatsapp.js';
 export function installClinicalActions(ui) {
     const { $, state, api, esc, full, code, badge, field, select, textarea, localDate, table, button, modal,
         formErrors, on, closeModal, bindForm, navigate, toast, panel, time, notice, submit, details } = ui;
@@ -145,6 +146,18 @@ export function installClinicalActions(ui) {
         schedule();
     }
 
+    /** Abre un borrador manual con el horario que ya confirmó el servidor. */
+    function avisarReprogramacion(cita) {
+        const enlace = enlaceReprogramacion(cita);
+        modal('Avisar reprogramación aceptada', details([
+            ['Paciente', esc(full(cita.patient))], ['Teléfono', esc(cita.patient?.phone || 'Sin teléfono')],
+        ]) + textarea('Mensaje preparado', 'mensaje_whatsapp', mensajeReprogramacion(cita), 'readonly')
+            + (enlace
+                ? '<p>Abra WhatsApp, revise el mensaje y pulse Enviar para avisar al paciente.</p>'
+                    + `<a class="btn primary" data-whatsapp-reprogramacion href="${esc(enlace)}" target="_blank" rel="noopener noreferrer">Abrir WhatsApp</a>`
+                : notice('Actualice el teléfono móvil del paciente para abrir WhatsApp. Use 8 dígitos para Bolivia o el formato internacional con + y código de país.')));
+    }
+
     /** Solicita un nuevo horario y un acuerdo antes de modificar la cita original. */
     async function reschedule(a) {
         modal(`Reprogramar ${code('CIT',a.id)}`,`<form id="clinical-reschedule">${formErrors}<div class="grid two">
@@ -170,7 +183,7 @@ export function installClinicalActions(ui) {
             }finally{if(form.isConnected&&version===requestVersion)input('start_time').disabled=false;}
         };
         on('[name=doctor_id],[name=date]','change',load,form);on('[name=cause]','change',payment,form);payment();await load();
-        bindForm('clinical-reschedule',async data=>{await api(`appointments/${a.id}/reschedule`,'PUT',data);closeModal();await navigate(state.view);toast('Reprogramación registrada. Comunique la respuesta por WhatsApp.');});
+        bindForm('clinical-reschedule',async data=>{const cita=await api(`appointments/${a.id}/reschedule`,'PUT',data);closeModal();await navigate(state.view);avisarReprogramacion(cita);});
     }
 
     /** Comparte validación, envío y resultado de operaciones clínicas breves. */
@@ -192,5 +205,5 @@ export function installClinicalActions(ui) {
     }
 
     // CU17 utiliza estas mismas operaciones, con los permisos de Recepción verificados en servidor.
-    ui.clinicalActions={reschedule,cancel,ficha,history,transition,showOnline};
+    ui.clinicalActions={reschedule,cancel,ficha,history,transition,showOnline,avisarReprogramacion};
 }

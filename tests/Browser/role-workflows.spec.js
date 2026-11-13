@@ -285,6 +285,65 @@ test('el inicio ofrece tareas con permisos y abre horarios sin mostrar un formul
     await expect(page.locator('#schedule-form')).toHaveCount(0);
 });
 
+for(const rol of ['Recepcionista', 'Superadmin']) {
+test(`WhatsApp: ${rol} prepara el aviso solo después de confirmar la reprogramación`, async ({page}) => {
+    const cita={id:3,patient,doctor,specialty,patient_id:1,doctor_id:1,specialty_id:1,date:'2030-11-11',start_time:'10:30',end_time:'11:00',status:'Programada',modality:'presential',payment:{status:'confirmed'}};
+    await mockClinic(page,rol,{appointments:[cita]});
+    let guardado;
+    await page.route('**/api/appointments/3/reschedule', async route => {
+        guardado=route.request().postDataJSON();
+        Object.assign(cita,{...guardado,start_time:'12:00:00',end_time:'12:30:00',doctor:{...doctor,last_name:'Confirmada'},events:[{action:'Reprogramación'}]});
+        await route.fulfill({json:cita});
+    });
+    await page.goto('/#reprogramaciones');
+    await expect(page.locator('[data-whatsapp-reprogramacion]')).toHaveCount(0);
+    await page.locator('[data-change="3"]').click();
+    const formulario=page.locator('#clinical-reschedule');
+    await formulario.locator('[name=date]').fill('2030-11-12');
+    await formulario.locator('[name=start_time]').selectOption('12:00');
+    await formulario.locator('[name=change_reason]').fill('El paciente aceptó el nuevo horario.');
+    await formulario.locator('[name=patient_accepted]').check();
+    await formulario.getByRole('button',{name:'Confirmar reprogramación'}).click();
+    const enlace=page.getByRole('link',{name:'Abrir WhatsApp'});
+    await expect(enlace).toBeVisible();
+    const url=new URL(await enlace.getAttribute('href'));
+    expect(url.origin).toBe('https://wa.me');
+    expect(url.pathname).toBe('/59170000000');
+    expect(url.searchParams.get('text')).toContain('12/11/2030');
+    expect(url.searchParams.get('text')).toContain('12:00–12:30');
+    expect(url.searchParams.get('text')).toContain('Ana Confirmada');
+    expect(guardado.patient_accepted).toBe('1');
+    await expect(enlace).toHaveAttribute('rel','noopener noreferrer');
+    expect(page.context().pages()).toHaveLength(1);
+});
+}
+
+test('WhatsApp: una solicitud aceptada permite recuperar el aviso y un teléfono inválido impide abrirlo', async ({page}) => {
+    const cita={id:3,patient:{...patient,phone:''},doctor,specialty,date:'2030-11-12',start_time:'12:00',end_time:'12:30',status:'Programada'};
+    const estado=await mockClinic(page,'Recepcionista');
+    estado.requests.push({id:5,appointment_id:3,status:'accepted',appointment:cita,reason:'Cambio acordado'});
+    await page.goto('/#reprogramaciones');
+    await page.locator('[data-notify-request="5"]').click();
+    await expect(page.getByRole('dialog')).toContainText('Actualice el teléfono móvil');
+    await expect(page.getByRole('link',{name:'Abrir WhatsApp'})).toHaveCount(0);
+    await expect(page.locator('[name=mensaje_whatsapp]')).toHaveValue(/12:00–12:30/);
+});
+
+test('WhatsApp: una reprogramación rechazada por el servidor no prepara un aviso de confirmación', async ({page}) => {
+    const cita={id:3,patient,doctor,specialty,patient_id:1,doctor_id:1,specialty_id:1,date:'2030-11-11',start_time:'10:30',end_time:'11:00',status:'Programada',modality:'presential',payment:{status:'confirmed'}};
+    await mockClinic(page,'Recepcionista',{appointments:[cita]});
+    await page.route('**/api/appointments/3/reschedule', route => route.fulfill({status:422,json:{message:'El horario ya está ocupado.'}}));
+    await page.goto('/#reprogramaciones');
+    await page.locator('[data-change="3"]').click();
+    const formulario=page.locator('#clinical-reschedule');
+    await formulario.locator('[name=start_time]').selectOption('12:00');
+    await formulario.locator('[name=change_reason]').fill('Acuerdo de prueba');
+    await formulario.locator('[name=patient_accepted]').check();
+    await formulario.getByRole('button',{name:'Confirmar reprogramación'}).click();
+    await expect(formulario).toContainText('El horario ya está ocupado.');
+    await expect(page.locator('[data-whatsapp-reprogramacion]')).toHaveCount(0);
+});
+
 test('la reprogramación usa el médico y fecha del diálogo aunque los filtros estén vacíos',async({page})=>{
     const a={id:3,patient,doctor,specialty,patient_id:1,doctor_id:1,specialty_id:1,date:'2030-11-11',start_time:'10:30',end_time:'11:00',status:'Programada',modality:'presential',payment:{status:'confirmed'}};
     await mockClinic(page,'Recepcionista',{appointments:[a]});await page.goto('/#reprogramaciones');

@@ -31,6 +31,7 @@ export function installAppointmentWorkspace(ui) {
             if(clinicalOperator&&active&&!a.attendance_at&&a.date===today)html+=button('No acudió al llamado',`data-care="missed-call" data-id="${a.id}"`,'');
             if(reception()&&a.status==='Atendida'&&a.followup_suggested_at)html+=button('Programar seguimiento',`data-followup="${a.id}"`,'success');
             if(active&&reception())html+=button('Cambiar horario',`data-change="${a.id}"`,'');
+            if(view==='CU10'&&active&&reception()&&a.events?.some(event=>event.action==='Reprogramación'))html+=button('Avisar reprogramación',`data-notify-appointment="${a.id}"`,'');
             if(active&&patient)html+=button('Solicitar cambio',`data-patient-change="${a.id}"`,'');
             if(a.status==='Cancelada'&&a.payment_id&&ui.allowedViews().includes('CU20'))html+=button('Revisar reembolso',`data-refund-for="${a.id}"`,'');
             html+=button('Ver detalle',`data-record-detail="${a.id}"`,'link');
@@ -62,6 +63,7 @@ export function installAppointmentWorkspace(ui) {
             on('[data-record-detail]','click',e=>ui.clinicalActions.history(rows.find(a=>String(a.id)===e.currentTarget.dataset.recordDetail)),$('#appointment-list'));
             on('[data-care]','click',e=>ui.clinicalActions.transition(rows.find(a=>String(a.id)===e.currentTarget.dataset.id),e.currentTarget.dataset.care),$('#appointment-list'));
             on('[data-change]','click',e=>ui.clinicalActions.reschedule(rows.find(a=>String(a.id)===e.currentTarget.dataset.change)),$('#appointment-list'));
+            on('[data-notify-appointment]','click',e=>ui.clinicalActions.avisarReprogramacion(rows.find(a=>String(a.id)===e.currentTarget.dataset.notifyAppointment)),$('#appointment-list'));
             on('[data-cancel-record]','click',e=>ui.clinicalActions.cancel(rows.find(a=>String(a.id)===e.currentTarget.dataset.cancelRecord)),$('#appointment-list'));
             on('[data-followup]','click',e=>{state.workflowContext={parent_appointment_id:Number(e.currentTarget.dataset.followup)};state.bookingDraft=null;return navigate('CU21');},$('#appointment-list'));
             on('[data-refund-for]','click',e=>{state.workflowContext={appointment_id:Number(e.currentTarget.dataset.refundFor)};return navigate('CU20');},$('#appointment-list'));
@@ -73,9 +75,15 @@ export function installAppointmentWorkspace(ui) {
             on('[data-board-book]','click',()=>{state.bookingDraft=null;return navigate(patient?'CU18':'CU09');},$('#appointment-list'));
         }
         const pending=requests.filter(r=>r.status==='pending');
+        const requestActions=r=>{
+            if(!reception())return '';
+            if(r.status==='pending')return `<div class="record-actions">${button('Acordar nuevo horario',`data-process-request="${r.id}"`)}${button('Rechazar con respuesta',`data-reject-request="${r.id}"`,'')}</div>`;
+            if(r.status==='accepted'&&['Programada','Confirmada'].includes(r.appointment?.status))return `<div class="record-actions">${button('Avisar reprogramación',`data-notify-request="${r.id}"`,'')}</div>`;
+            return '';
+        };
         return {html:(state.flowFeedback?`<div class="operation-success" role="status"><span>✓</span><div><strong>Operación completada</strong><p>${esc(state.flowFeedback.message)}</p></div></div>`:'')
             +`<div class="workspace-heading"><div><h2>${physician?'Su lista de atención':patient?'Sus citas y su atención':'Agenda de la clínica'}</h2><p>${rows.length} citas ${esc(scope)}. ${reception()?'Trabaje desde la ficha de cada cita: llegada, cambio, cancelación o seguimiento.':physician?'Las acciones se habilitan según el ingreso del paciente.':'La atención presencial también puede gestionarla Recepción sin usar el portal.'}</p></div>${ui.allowedViews().includes('CU09')?button('+ Programar cita','id="board-new-booking"'):patient?button('Buscar una cita','id="board-new-booking"'):''}</div>`
-            +(view==='CU10'&&requests.length?panel('Solicitudes de cambio y respuestas',requests.map(r=>`<article class="request-card"><div><strong>${esc(r.appointment?full(r.appointment.patient):code('CIT',r.appointment_id))}</strong><p>${esc(r.reason)}</p><span class="stage-badge">${esc(({pending:'Pendiente de Recepción',accepted:'Cambio acordado',rejected:'Solicitud rechazada',closed:'Solicitud cerrada'})[r.status]||r.status)}</span>${r.response?`<p>Respuesta: ${esc(r.response)}</p>`:'<small>La cita actual se conserva hasta coordinar el cambio.</small>'}</div>${reception()&&r.status==='pending'?`<div class="record-actions">${button('Acordar nuevo horario',`data-process-request="${r.id}"`)}${button('Rechazar con respuesta',`data-reject-request="${r.id}"`,'')}</div>`:''}</article>`).join('')):'')
+            +(view==='CU10'&&requests.length?panel('Solicitudes de cambio y respuestas',requests.map(r=>`<article class="request-card"><div><strong>${esc(r.appointment?full(r.appointment.patient):code('CIT',r.appointment_id))}</strong><p>${esc(r.reason)}</p><span class="stage-badge">${esc(({pending:'Pendiente de Recepción',accepted:'Cambio acordado',rejected:'Solicitud rechazada',closed:'Solicitud cerrada'})[r.status]||r.status)}</span>${r.response?`<p>Respuesta: ${esc(r.response)}</p>`:'<small>La cita actual se conserva hasta coordinar el cambio.</small>'}</div>${requestActions(r)}</article>`).join('')):'')
             +`<section class="agenda-controls"><div class="agenda-date">${!['today','attend'].includes(mode)?`${button('‹ Día anterior','data-board-date="-1"','')}<label class="field"><span>Día de atención</span><input id="board-date" type="date" value="${f.date||today}"></label>${button('Día siguiente ›','data-board-date="1"','')}${button('Hoy','id="board-today"','')}${button('Ver todas','id="board-all"','')}`:`<strong>${esc(day(today))}</strong><span>Operaciones de la jornada</span>`}</div><label class="field"><span>Buscar en estas citas</span><input id="board-search" type="search" value="${esc(f.q)}" placeholder="Nombre, médico o código"></label></section>`
             +`<div class="status-filters" aria-label="Filtrar citas">${[['all','Todas'],['expected','Por llegar'],['waiting','En espera'],['finished','Atendidas'],['cancelled','Canceladas']].map(([key,label])=>`<button type="button" class="filter-chip ${f.stage===key?'selected':''}" data-stage="${key}" aria-pressed="${f.stage===key}">${label} <span>${counts[key]}</span></button>`).join('')}</div><div id="appointment-list" class="appointment-list"></div>`,bind:()=>{
                 draw();
@@ -87,6 +95,7 @@ export function installAppointmentWorkspace(ui) {
                 on('#board-today','click',()=>reload(today));on('#board-all','click',()=>{delete f.patient_id;return reload('');});
                 on('#board-new-booking','click',()=>{state.bookingDraft=null;return navigate(patient?'CU18':'CU09');});
                 on('[data-process-request]','click',e=>ui.clinicalActions.reschedule(pending.find(r=>String(r.id)===e.currentTarget.dataset.processRequest).appointment));
+                on('[data-notify-request]','click',e=>ui.clinicalActions.avisarReprogramacion(requests.find(r=>String(r.id)===e.currentTarget.dataset.notifyRequest).appointment));
                 on('[data-reject-request]','click',e=>{
                     const id=e.currentTarget.dataset.rejectRequest;
                     modal('Responder la solicitud',`<p>La cita actual se conserva. Registre el motivo y comunique la respuesta al paciente.</p><form id="reject-change">${formErrors}${textarea('Respuesta al paciente','response','','required maxlength="3000"')}${submit('Registrar rechazo y respuesta')}</form>`);
