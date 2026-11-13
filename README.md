@@ -87,7 +87,7 @@ La cola local usa `QUEUE_CONNECTION=sync`: el job se ejecuta en el proceso que l
 
 ## Organización del código
 
-La estructura del backend sigue P01–P08 de `../ofical.docx`. Comience por [la guía de defensa del código](docs/GUIA_DEFENSA_CODIGO.md) y el [índice de paquetes](app/Paquetes/README.md). El [mapa de los 26 CU](docs/MAPA_CU_PAQUETES.csv) indica archivos, métodos y rutas.
+La estructura del backend sigue P01–P08 de `../ofical.docx`. Comience por el [índice de paquetes](app/Paquetes/README.md). El [mapa de los 26 CU](docs/MAPA_CU_PAQUETES.csv) indica archivos, métodos y rutas.
 
 - `app/Paquetes`: entradas HTTP, validaciones y servicios organizados por paquete y responsabilidad de CU.
 - `app/Compartido`: operaciones de catálogo y referencias usadas por varios paquetes.
