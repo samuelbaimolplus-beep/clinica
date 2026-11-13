@@ -40,11 +40,10 @@ Introducir los secretos solicitados:
 | --- | --- |
 | `APP_KEY` | Generar una clave nueva con `php artisan key:generate --show`. Copiar el resultado a Render, sin usar `key:generate` sin `--show` en local. Mantener la misma clave en futuros despliegues. |
 | `DATABASE_URL` | Conexión directa de Neon a la base nueva `neondb`, con TLS. |
-| `MAIL_HOST` | Host del proveedor de correo que admita SMTP en el puerto configurado. |
-| `MAIL_USERNAME` y `MAIL_PASSWORD` | Credenciales del proveedor de correo. |
+| `RESEND_API_KEY` | Clave de Resend guardada únicamente en Render. |
 | `MAIL_FROM_ADDRESS` | Remitente autorizado por el proveedor. |
 
-El Blueprint usa SMTP con STARTTLS en el puerto 2525. **Render Free bloquea los puertos 25, 465 y 587**, por lo que el SMTP de Gmail en 587 usado en local no funciona allí. Se necesita un proveedor que admita 2525, o un servicio de Render de pago con SMTP permitido en 465/587, ajustando `MAIL_PORT` y `MAIL_SCHEME`. Configurar el correo antes de activar cuentas; `MAIL_MAILER=log` no entrega los códigos a las personas. No se copian automáticamente las credenciales locales ni las de vetproy.
+El Blueprint usa Resend por HTTPS: `MAIL_MAILER=resend`, `RESEND_API_KEY` y un `MAIL_FROM_ADDRESS` autorizado. La configuración inicial `onboarding@resend.dev` solo permite enviar al correo asociado a la cuenta de Resend; para enviar a pacientes se necesita un dominio propio verificado. Ver [CONFIGURAR_RESEND_RENDER.md](CONFIGURAR_RESEND_RENDER.md). **Render Free bloquea los puertos 25, 465 y 587**, por lo que el SMTP de Gmail en 587 usado en local no funciona allí. `MAIL_MAILER=log` no entrega los códigos. No se copian automáticamente las credenciales locales ni las de vetproy.
 
 El resto de las variables se declara en `render.yaml`: entorno de producción sin depuración, logs a stderr, sesiones cifradas y cookies HTTPS, caché y cola en PostgreSQL. Estos registros persisten en Neon aunque Render reinicie el contenedor.
 
