@@ -32,6 +32,8 @@ Los accesos iniciales y de demostración permanecen en archivos privados locales
 
 ## Funciones disponibles
 
+El botón de sol o luna en la cabecera cambia entre modo claro y oscuro. Sin una elección guardada, la interfaz sigue el tema del equipo. La elección se conserva por navegador y se comparte entre pestañas, incluidas las páginas de recuperación y verificación de correo. Los documentos se imprimen con fondo claro.
+
 La interfaz utiliza nombres de tareas y direcciones legibles, sin mostrar los códigos de casos de uso. El menú filtra las opciones por rol, incluye búsqueda sin distinción de acentos y permite volver con los botones del navegador. Los enlaces antiguos siguen funcionando. El acceso a «Mi cuenta y seguridad» está disponible desde el perfil.
 
 En móviles y tabletas el menú se abre sobre el contenido; se cierra al elegir una opción, tocar el fondo o pulsar Escape. Los formularios pasan a una columna y los listados se presentan como tarjetas en pantallas pequeñas. Se conserva la navegación por teclado, el enfoque visible, los estados de carga y la señalización de errores. La selección de un horario muestra un resumen antes de continuar al pago.

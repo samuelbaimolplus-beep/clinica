@@ -752,17 +752,122 @@ test('cerrar sesión limpia el diálogo y el borrador del paciente',async({page}
     await expect(page.locator('[data-pick="patient"][aria-pressed="true"]')).toHaveCount(0);
 });
 
-for(const width of [360,1440])test(`recorrido completo de cita a ${width}px sin desbordamiento`,async({page})=>{
+async function expectReadableTheme(page) {
+    const failures = await page.evaluate(() => {
+        const rgb = color => color.match(/[\d.]+/g)?.map(Number);
+        const luminance = color => rgb(color).slice(0,3).map(v => {
+            const s = v / 255; return s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4;
+        }).reduce((sum,v,i) => sum + v * [.2126,.7152,.0722][i],0);
+        return [...document.querySelectorAll('button,p,small,strong,span,label,td,th,dt,dd,a,h1,h2,h3,h4')]
+            .filter(el => !el.children.length && el.textContent.trim() && el.getClientRects().length)
+            .flatMap(el => {
+                const style = getComputedStyle(el);
+                let ancestor = el, background;
+                do { background = getComputedStyle(ancestor).backgroundColor; ancestor = ancestor.parentElement; }
+                while (ancestor && (rgb(background)?.[3] ?? 1) < 1);
+                const a = luminance(style.color), b = luminance(background);
+                const ratio = (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+                const large = parseFloat(style.fontSize) >= 24 || (parseFloat(style.fontSize) >= 18.66 && Number(style.fontWeight) >= 700);
+                return ratio + .01 < (large ? 3 : 4.5) ? [{text:el.textContent.slice(0,70),ratio,color:style.color,background}] : [];
+            });
+    });
+    expect(failures).toEqual([]);
+}
+
+test('tema: sigue al equipo hasta guardar una preferencia y la conserva entre páginas', async ({page, context}) => {
+    await page.emulateMedia({colorScheme:'dark'});
+    await mockClinic(page, null);
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+    await expect(page.getByRole('button',{name:'Activar modo claro'})).toHaveAttribute('aria-pressed','true');
+    await page.emulateMedia({colorScheme:'light'});
+    await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+    await page.getByRole('button',{name:'Activar modo oscuro'}).click();
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+    await page.goto('/terms');
+    await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+    const other = await context.newPage();
+    await other.goto('/password/reset/theme-test?email=theme@example.test');
+    await expect(other.locator('html')).toHaveAttribute('data-theme','dark');
+    await other.getByRole('button',{name:'Activar modo claro'}).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+    await page.emulateMedia({colorScheme:'dark'});
+    await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+    await other.close();
+});
+
+test('tema: funciona sin almacenamiento y se puede activar con teclado', async ({page}) => {
+    await page.emulateMedia({colorScheme:'light'});
+    await page.addInitScript(() => {
+        Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Blocked','SecurityError');}});
+    });
+    await mockClinic(page,null);
+    await page.goto('/');
+    const toggle = page.getByRole('button',{name:'Activar modo oscuro'});
+    await toggle.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+    await page.emulateMedia({colorScheme:'dark'});
+    await page.emulateMedia({colorScheme:'light'});
+    await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+    await expect(page.locator('#login-form')).toBeVisible();
+});
+
+test('tema: acceso y páginas de correo mantienen el contraste y el tema guardado', async ({page}) => {
+    await page.emulateMedia({colorScheme:'dark'});
+    await mockClinic(page,null);
+    for (const path of ['/', '/terms', '/password/reset/theme-test?email=theme@example.test']) {
+        await page.goto(path);
+        await expect(page.locator('[data-theme-toggle]')).toHaveAttribute('aria-pressed','true');
+        await expectReadableTheme(page);
+    }
+    await page.goto('/');
+    await page.screenshot({path:'storage/app/private/tema-oscuro-acceso.png',fullPage:true});
+});
+
+for (const width of [360,1440]) test(`tema: pantallas, diálogo e impresión a ${width}px`, async ({page}) => {
+    await page.setViewportSize({width,height:1000});
+    await page.emulateMedia({colorScheme:'dark'});
+    await mockClinic(page,'Superadmin');
+    await page.goto('/');
+    await expect(page.locator('.welcome-panel')).toBeVisible();
+    await expect(page.locator('[data-theme-toggle]')).toBeVisible();
+    await expect(page.locator('html')).toHaveCSS('background-color','rgb(16, 28, 37)');
+    await expectReadableTheme(page);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await page.screenshot({path:`storage/app/private/tema-oscuro-inicio-${width}.png`,fullPage:true});
+    await page.goto('/#CU03');
+    await expect(page.locator('table')).toBeVisible();
+    await expect(page.locator('td').first()).toHaveCSS('color','rgb(215, 228, 236)');
+    await expectReadableTheme(page);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await page.screenshot({path:`storage/app/private/tema-oscuro-usuarios-${width}.png`,fullPage:true});
+    await page.locator('[data-edit="1"]').click();
+    await expect(page.getByRole('dialog')).toHaveCSS('background-color','rgb(25, 42, 54)');
+    await expect(page.getByRole('dialog').locator('input').first()).toHaveCSS('color','rgb(215, 228, 236)');
+    await page.screenshot({path:`storage/app/private/tema-oscuro-dialogo-${width}.png`,fullPage:true});
+    await page.locator('#close-modal').click();
+    await page.emulateMedia({media:'print'});
+    await expect(page.locator('[data-theme-toggle]')).toBeHidden();
+    await expect(page.locator('html')).toHaveCSS('background-color','rgb(245, 247, 250)');
+});
+
+for(const width of [360,1440])test(`tema: recorrido completo de cita a ${width}px sin desbordamiento`,async({page})=>{
+    await page.emulateMedia({colorScheme:'dark'});
     await page.setViewportSize({width,height:900});await mockClinic(page,'Recepcionista');await page.goto('/#CU09');
     for(const step of ['patient','specialty']){
+        await expectReadableTheme(page);
         await page.locator(`[data-pick="${step}"]`).first().click();
         expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
         await page.locator('#flow-next').click();
     }
     await expect(page.locator('[data-flow-slot]').first()).toBeVisible();
+    await expectReadableTheme(page);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await page.locator('[data-flow-slot]').first().click();
     await expect(page.locator('.confirmation-ticket')).toBeVisible();
+    await expectReadableTheme(page);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-    await page.screenshot({path:`storage/app/private/recorrido-cita-${width}.png`,fullPage:true});
+    await page.screenshot({path:`storage/app/private/tema-oscuro-cita-${width}.png`,fullPage:true});
 });

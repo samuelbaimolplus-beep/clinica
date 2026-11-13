@@ -1,0 +1,170 @@
+/* Paleta compartida del modo oscuro. El modo claro conserva los estilos de la clínica. */
+:root { color-scheme: light; }
+.header-actions { display:flex; align-items:center; gap:18px; margin-left:auto; }
+.theme-toggle.icon-btn { display:inline-flex; align-items:center; gap:8px; padding:8px 10px; flex:none; font-size:12px; cursor:pointer; }
+.theme-toggle .theme-sun { display:none; }
+[data-theme=dark] .theme-toggle .theme-moon { display:none; }
+[data-theme=dark] .theme-toggle .theme-sun { display:block; }
+.theme-toggle:focus-visible { outline:3px solid #087e8b; outline-offset:3px; }
+.page-tools { display:flex; justify-content:flex-end; padding:18px 24px 0; }
+@media(max-width:960px) {
+    .header-actions { gap:6px; }
+    .topbar .theme-toggle [data-theme-label] { display:none; }
+}
+@media(max-width:360px) {
+    .header-actions { gap:0; }
+    .topbar .theme-toggle.icon-btn { padding:5px; min-width:32px; }
+}
+@media print { .theme-toggle, .page-tools { display:none!important; } }
+
+/* Las impresiones mantienen sus fondos claros aunque el usuario navegue en oscuro. */
+@media screen {
+    :root[data-theme=dark] {
+        color-scheme:dark;
+        --blue:#75d5df;
+        --green:#7addb9;
+        --ink:#e4eef5;
+        --line:#334b5a;
+        --dark-page:#101c25;
+        --dark-surface:#192a36;
+        --dark-raised:#223846;
+        --dark-hover:#2a4554;
+        --dark-text:#d7e4ec;
+        --dark-muted:#a6bac7;
+        --dark-success-bg:#193d36;
+        --dark-success-line:#39665a;
+        --dark-success-text:#90e0bc;
+        --dark-info-bg:#1b3549;
+        --dark-info-line:#3d617b;
+        --dark-info-text:#a8d5ff;
+        --dark-warning-bg:#403521;
+        --dark-warning-line:#75613b;
+        --dark-warning-text:#f5d28b;
+        --dark-danger-bg:#432a35;
+        --dark-danger-line:#804653;
+        --dark-danger-text:#ffb3bf;
+        color:var(--dark-text);
+        background:var(--dark-page);
+    }
+    :root[data-theme=dark] :is(.topbar, aside, .panel, .flow-main, dialog, .dialog-top,
+        .agenda-controls, .appointment-card, .refund-card, .module-directory, .advanced-options,
+        .option-card, .date-tile, .daily-metric, .task-card, .report-choice, .account-invitation,
+        .loading-state, .schedule-chip, .setup-step, .filter-chip, .slot-choice) {
+        background:var(--dark-surface); color:var(--dark-text); border-color:var(--line);
+    }
+    :root[data-theme=dark] .topbar { box-shadow:0 1px 0 var(--line); }
+    :root[data-theme=dark] .panel { box-shadow:0 3px 14px #00000012; }
+    :root[data-theme=dark] :is(.appointment-card.waiting,.appointment-card.finished) { border-left-color:#72cbaa; }
+    :root[data-theme=dark] .appointment-card.payment { border-left-color:var(--dark-warning-text); }
+    :root[data-theme=dark] :is(.appointment-card.cancelled,.appointment-card.absent) { border-left-color:var(--dark-danger-text); }
+    :root[data-theme=dark] .login-layout .login-wrap .panel { background:transparent; box-shadow:none; }
+    :root[data-theme=dark] :is(h1,h2,h3,h4,.brand,.role-panel strong,.empty>strong,
+        .appointment-time strong,.daily-metric strong,.care-path-step>strong,.setup-step strong,
+        .today-patient strong,.eligible-refund strong,.report-choice strong,.quantity-picker strong,
+        .quantity-picker output,.refund-amount,.friendly-empty strong,.date-tile strong,.week-day h4) {
+        color:var(--ink);
+    }
+    :root[data-theme=dark] :is(small,.muted,.icon-btn,.role-panel p,.nav-btn,.nav-btn .ui-icon,
+        .workspace-label,aside h3,.nav-empty,.sidebar-foot,.page-heading p,.page-date,.flow-intro,
+        .field>label,label.field>span,.label,.result-count,.empty,.empty>span:last-child,
+        .details dt,.legend,.tab,.option-card small,.filter-chip,.date-tile,.advanced-options summary,
+        .workspace-heading p,.agenda-date>span,.appointment-time span,.appointment-time small,
+        .record-heading p,.record-code,.next-step-copy,.mini-journey li,.record-more,.daily-metric,
+        .daily-metric small,.care-path-step>p,.care-path-step>small,.setup-step small,.setup-step em,
+        .today-patient p,.time-pill small,.module-directory>summary,.eligible-refund p,.report-choice small,
+        .quantity-picker p,.task-card small,.section-toolbar p,.doctor-workspace p,.workspace-stat span,
+        .week-day h4 span,.day-empty,.help-text,.friendly-empty,.booking-progress li,.journey-steps li,
+        .slot-choice small,.loading-state,.login-heading p,.account-invitation p,.login-foot,
+        .password-toggle,td::before) { color:var(--dark-muted); }
+    :root[data-theme=dark] :is(td,.option-card,.task-card,.schedule-chip) { color:var(--dark-text); }
+    :root[data-theme=dark] :is(.eyebrow,.page-heading .eyebrow,.option-indicator,.task-icon,
+        .report-choice>span,.workspace-stat strong,.quota-summary strong,.shift-card small,
+        .booking-progress [aria-current=step],.journey-steps [aria-current=step],.step) { color:var(--blue); }
+    :root[data-theme=dark] :is(.nav-search,.page-date,.week-day,.schedule-existing,.dialog-context,
+        .quantity-picker,.empty-icon,.task-icon,.option-symbol,.time-pill,.filter-chip>span,
+        .journey-steps li>span,.booking-progress li>span,.mini-journey li>span) {
+        background:var(--dark-raised); border-color:var(--line);
+    }
+    :root[data-theme=dark] :is(.option-symbol,.empty-icon,.time-pill) { color:var(--blue); }
+    :root[data-theme=dark] :is(input,select,textarea) {
+        background:var(--dark-page); color:var(--dark-text); border-color:var(--line);
+    }
+    :root[data-theme=dark] :is(input[readonly],select:disabled) { background:var(--dark-raised); }
+    :root[data-theme=dark] .nav-search input { background:transparent; }
+    :root[data-theme=dark] :is(input::placeholder,textarea::placeholder) { color:#94aab9; }
+    :root[data-theme=dark] :is(input,select,textarea):focus {
+        border-color:var(--blue); box-shadow:0 0 0 3px #75d5df26;
+    }
+    :root[data-theme=dark] input[type=checkbox] { accent-color:#16846b; }
+    :root[data-theme=dark] :is(input,select,textarea)[aria-invalid=true] {
+        background:var(--dark-danger-bg); border-color:var(--dark-danger-line);
+    }
+    :root[data-theme=dark] .field-error { color:var(--dark-danger-text); }
+    :root[data-theme=dark] :is(.badge,.stage-badge,.slot.Pasado) {
+        background:var(--dark-raised); color:var(--dark-muted); border-color:var(--line);
+    }
+    :root[data-theme=dark] .btn { background:var(--dark-raised); color:var(--dark-text); border-color:var(--line); }
+    :root[data-theme=dark] :is(.btn:hover,.icon-btn:hover,.profile-account:hover,.password-toggle:hover,
+        .nav-btn:hover,.option-card:hover,.task-card:hover,.slot-choice:hover) {
+        background:var(--dark-hover); color:var(--ink); border-color:#5d8b98;
+    }
+    :root[data-theme=dark] :is(.btn.primary,.login-wrap .btn.success,.brand-mark,.slot.selected) {
+        background:#087e8b; border-color:#087e8b; color:#fff;
+    }
+    :root[data-theme=dark] :is(.btn.success,.btn.selected) { background:#167960; border-color:#167960; color:#fff; }
+    :root[data-theme=dark] :is(.btn.primary:hover,.login-wrap .btn.success:hover) { background:#066b76; border-color:#066b76; }
+    :root[data-theme=dark] :is(.btn.success:hover,.btn.selected:hover) { background:#116e59; border-color:#116e59; }
+    :root[data-theme=dark] .btn.link { background:transparent; border:0; color:var(--blue); }
+    :root[data-theme=dark] .btn.link:hover { background:var(--dark-hover); }
+    :root[data-theme=dark] :is(.btn.danger,.notice.error,.slot.Bloqueado,
+        .badge.Cancelada,.stage-badge.cancelled,.stage-badge.rejected,.stage-badge.ineligible) {
+        background:var(--dark-danger-bg); color:var(--dark-danger-text); border-color:var(--dark-danger-line);
+    }
+    :root[data-theme=dark] .btn.danger:hover { background:#56323e; }
+    :root[data-theme=dark] :is(.btn.warning,.notice.warning,.confirmation-check,.request-card,
+        .attention-strip>.btn,.badge.Pendiente,.badge.Preparando,.badge.Inasistencia,
+        .stage-badge.payment,.stage-badge.approved,.setup-step>span) {
+        background:var(--dark-warning-bg); color:var(--dark-warning-text); border-color:var(--dark-warning-line);
+    }
+    :root[data-theme=dark] :is(.request-card p,.request-card small) { color:var(--dark-warning-text); }
+    :root[data-theme=dark] :is(.notice,.slot.Ocupado,.badge.Programada,.badge.Confirmada) {
+        background:var(--dark-info-bg); color:var(--dark-info-text); border-color:var(--dark-info-line);
+    }
+    :root[data-theme=dark] :is(.notice.success,.slot:not(.Ocupado,.Bloqueado,.Pasado,.selected),
+        .badge.Activo,.badge.Atendida,.badge.Activada,.badge.Confirmado,.badge.Completado,
+        .stage-badge.waiting,.stage-badge.completed,.stage-badge.finished,.operation-success,
+        .shift-card,.setup-step.ready>span,.journey-steps .done>span,.care-path-step>span,
+        .mini-journey li.done>span,.filter-chip.selected,.avatar,#reception-inbox,.nav-btn.selected) {
+        background:var(--dark-success-bg); color:var(--dark-success-text); border-color:var(--dark-success-line);
+    }
+    :root[data-theme=dark] :is(.nav-btn.selected .ui-icon,.secure-access,.mini-journey li.done,
+        .setup-step b,.metric strong) { color:var(--dark-success-text); }
+    :root[data-theme=dark] :is(.welcome-panel,.flow-summary,.outcome-hint,.confirmation-ticket,
+        .quota-summary>div,.metric,.priority-tasks .task-card,.option-card.chosen,.report-choice.chosen) {
+        background:#1a3434; border-color:var(--dark-success-line); color:var(--dark-text);
+    }
+    :root[data-theme=dark] :is(.welcome-panel p,.flow-summary p,.flow-summary dt,.outcome-hint p,
+        .confirmation-ticket small) { color:#acc9c0; }
+    :root[data-theme=dark] :is(.flow-summary dd,.confirmation-ticket strong) { color:#c8edde; }
+    :root[data-theme=dark] .flow-summary .outcome-hint { background:var(--dark-success-bg); }
+    :root[data-theme=dark] :is(.operation-success>span,.filter-chip.selected>span) { background:#2a5848; }
+    :root[data-theme=dark] :is(.date-tile.selected,.date-tile.selected strong,.date-tile.selected small,
+        .slot.selected small,.slot-choice.selected,
+        .slot-choice.selected small,.journey-steps [aria-current=step]>span,
+        .booking-progress [aria-current=step]>span,.booking-progress .complete>span) { background:#087e8b; color:#fff; border-color:#087e8b; }
+    :root[data-theme=dark] :is(.table-wrap,td,th,.flow-navigation,.journey-steps,.operation-row,
+        .appointment-time,.record-more[open],.today-patient,.eligible-refund,.workspace-stat,.booking-progress,.step) { border-color:var(--line); }
+    :root[data-theme=dark] th { background:var(--dark-raised); color:var(--dark-muted); }
+    :root[data-theme=dark] tbody tr:hover { background:#203440; }
+    :root[data-theme=dark] .spinner { border-color:var(--line); border-top-color:var(--blue); }
+    :root[data-theme=dark] dialog::backdrop { background:#030b13b8; }
+    :root[data-theme=dark] .theme-toggle:focus-visible { outline-color:var(--blue); }
+    :root[data-theme=dark] .skip-link { background:#087e8b; color:white; }
+    @media(max-width:600px) {
+        :root[data-theme=dark] tbody tr { background:var(--dark-surface); }
+        :root[data-theme=dark] td[data-label="Acciones"] .btn,
+        :root[data-theme=dark] td[data-label="Acción"] .btn { background:var(--dark-raised); }
+        :root[data-theme=dark] td .btn:is(.primary,.success,.selected) { background:#087e8b; color:white; }
+        :root[data-theme=dark] td .btn.danger { background:var(--dark-danger-bg); color:var(--dark-danger-text); }
+    }
+}

@@ -5,9 +5,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Condiciones de la cuenta · Clínica Vida Salud</title>
+    @include('partials.theme-head')
     @vite(['resources/css/app.css'])
 </head>
 <body>
+<div class="page-tools">@include('partials.theme-toggle')</div>
 <main class="login-wrap">
     <section class="panel terms">
         <h1>Condiciones de la cuenta de paciente</h1>
