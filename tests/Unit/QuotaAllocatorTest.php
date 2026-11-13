@@ -31,7 +31,7 @@ class QuotaAllocatorTest extends TestCase
     public function test_largest_remainder_matches_the_agreed_examples(int $capacity, int $presential, int $online, int $expectedPresential, int $expectedOnline): void
     {
         $this->assertSame(['presential' => $expectedPresential, 'online' => $expectedOnline],
-            (new QuotaAllocator)->allocate($capacity, $presential, $online));
+            (new QuotaAllocator)->distribuir($capacity, $presential, $online));
     }
 
     public function test_distribution_never_exceeds_capacity_and_each_result_stays_within_one_quota(): void
@@ -39,7 +39,7 @@ class QuotaAllocatorTest extends TestCase
         $allocator = new QuotaAllocator;
         foreach ([0, 1, 2, 5, 17, 48] as $capacity) {
             foreach ([0, 1, 137, 2000, 3333, 3500, 5000, 6500, 7000, 9999, 10000] as $presential) {
-                $result = $allocator->allocate($capacity, $presential, 10000 - $presential);
+                $result = $allocator->distribuir($capacity, $presential, 10000 - $presential);
                 $this->assertSame($capacity, array_sum($result));
                 $this->assertGreaterThanOrEqual(0, $result['presential']);
                 $this->assertGreaterThanOrEqual(0, $result['online']);
@@ -52,6 +52,6 @@ class QuotaAllocatorTest extends TestCase
     public function test_invalid_percentages_are_rejected_instead_of_allocating_extra_capacity(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        (new QuotaAllocator)->allocate(5, 6000, 6000);
+        (new QuotaAllocator)->distribuir(5, 6000, 6000);
     }
 }

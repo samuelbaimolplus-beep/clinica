@@ -12,11 +12,11 @@ use Illuminate\Http\Request;
 class ProtectedOnlineSlotsController extends Controller
 {
     /** Consulta cupos protegidos libres que Recepción puede habilitar para online. */
-    public function protectedBlocks(Request $request, AgendaAdjustments $service)
+    public function franjasProtegidas(Request $solicitud, AgendaAdjustments $servicio)
     {
-        $data = $request->validate(['doctor_id' => 'required|integer|exists:doctors,id', 'date' => 'required|date_format:Y-m-d|after_or_equal:today']);
-        abort_unless(Doctor::whereKey($data['doctor_id'])->where('status', 'Activo')->exists(), 422);
+        $datos = $solicitud->validate(['doctor_id' => 'required|integer|exists:doctors,id', 'date' => 'required|date_format:Y-m-d|after_or_equal:today']);
+        abort_unless(Doctor::whereKey($datos['doctor_id'])->where('status', 'Activo')->exists(), 422);
 
-        return array_values(array_filter($service->freeBlocks($data['doctor_id'], $data['date']), fn ($block) => $block['protected'] && $block['modality'] === 'presential'));
+        return array_values(array_filter($servicio->franjasLibres($datos['doctor_id'], $datos['date']), fn ($bloque) => $bloque['protected'] && $bloque['modality'] === 'presential'));
     }
 }

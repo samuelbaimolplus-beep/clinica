@@ -12,45 +12,45 @@ use Illuminate\Validation\ValidationException;
 class AccountEligibility
 {
     /** Obtiene la fecha autoritativa: la ficha del paciente cuando existe, o la fecha del personal. */
-    public function birthDate(User $user): ?string
+    public function fechaNacimiento(User $usuario): ?string
     {
-        $date = $user->role === 'Paciente' ? $user->patient()->value('birth_date') : $user->birth_date;
+        $fecha = $usuario->role === 'Paciente' ? $usuario->patient()->value('birth_date') : $usuario->birth_date;
 
-        return $date ? substr((string) $date, 0, 10) : null;
+        return $fecha ? substr((string) $fecha, 0, 10) : null;
     }
 
     /** Comprueba 18 años cumplidos con fecha completa; rechaza fechas ausentes, futuras o inválidas. */
-    public function adult(?string $date): bool
+    public function esMayorDeEdad(?string $fecha): bool
     {
-        if (! $date) {
+        if (! $fecha) {
             return false;
         }
         try {
-            $parsed = CarbonImmutable::createFromFormat('!Y-m-d', $date);
+            $fechaInterpretada = CarbonImmutable::createFromFormat('!Y-m-d', $fecha);
 
-            return $parsed && $parsed->format('Y-m-d') === $date && $parsed->lte(today()->subYearsNoOverflow(18));
+            return $fechaInterpretada && $fechaInterpretada->format('Y-m-d') === $fecha && $fechaInterpretada->lte(today()->subYearsNoOverflow(18));
         } catch (\Throwable) {
             return false;
         }
     }
 
     /** Detiene el alta o modificación de cuenta si no se cumple la mayoría de edad. */
-    public function assertAdult(?string $date): void
+    public function exigirMayoriaDeEdad(?string $fecha): void
     {
-        if (! $this->adult($date)) {
+        if (! $this->esMayorDeEdad($fecha)) {
             throw ValidationException::withMessages(['birth_date' => 'La cuenta requiere una fecha de nacimiento válida y 18 años cumplidos. La ficha de paciente puede registrarse sin cuenta a cualquier edad.']);
         }
     }
 
     /** Comprueba si falta la aceptación del paciente o si corresponde renovar la versión de términos. */
-    public function needsConsent(User $user): bool
+    public function requiereConsentimiento(User $usuario): bool
     {
-        return $user->role === 'Paciente' && (! $user->terms_accepted_at || $user->terms_version !== config('clinic.terms_version'));
+        return $usuario->role === 'Paciente' && (! $usuario->terms_accepted_at || $usuario->terms_version !== config('clinic.terms_version'));
     }
 
     /** Reúne mayoría de edad y consentimiento; la verificación de correo se comprueba separadamente. */
-    public function ready(User $user): bool
+    public function cumpleRequisitos(User $usuario): bool
     {
-        return $this->adult($this->birthDate($user)) && ! $this->needsConsent($user);
+        return $this->esMayorDeEdad($this->fechaNacimiento($usuario)) && ! $this->requiereConsentimiento($usuario);
     }
 }

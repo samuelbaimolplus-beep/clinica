@@ -5,33 +5,33 @@
 namespace App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Http;
 
 use App\Http\Controllers\Controller;
-use App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Validacion\CreatePatientAccountRequest;
-use App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Validacion\RegisterManagedPatientRequest;
 use App\Models\Patient;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\EmailActivation;
 use App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Servicios\CreatePatientAccount;
+use App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Validacion\CreatePatientAccountRequest;
+use App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Validacion\RegisterManagedPatientRequest;
 
 class ManagedPatientAccountController extends Controller
 {
-    /** Registra dependencias o el alta asistida según la responsabilidad de esta clase. */
-    public function register(RegisterManagedPatientRequest $request, CreatePatientAccount $service)
+    /** Registra al paciente con su cuenta y solicita el envío del código de activación. */
+    public function registrar(RegisterManagedPatientRequest $solicitud, CreatePatientAccount $servicio)
     {
-        $patient = $service->register($request->validated(), $request->user());
-        $patient->setAttribute('activation_email_sent', app(EmailActivation::class)->send($patient->account));
+        $paciente = $servicio->registrar($solicitud->validated(), $solicitud->user());
+        $paciente->setAttribute('activation_email_sent', app(EmailActivation::class)->enviar($paciente->account));
 
-        return response()->json($patient, 201)
+        return response()->json($paciente, 201)
             ->header('Cache-Control', 'no-store');
     }
 
-    /** Registra la operación solicitada después de validar entradas y permisos. */
-    public function store(CreatePatientAccountRequest $request, CreatePatientAccount $service, int $id)
+    /** Crea y vincula una cuenta al paciente existente después de validar entradas y permisos. */
+    public function crearCuentaParaPaciente(CreatePatientAccountRequest $solicitud, CreatePatientAccount $servicio, int $id)
     {
-        $user = $service->link(Patient::findOrFail($id), $request->validated(), $request->user());
+        $usuario = $servicio->vincular(Patient::findOrFail($id), $solicitud->validated(), $solicitud->user());
 
-        $sent = app(EmailActivation::class)->send($user);
+        $enviado = app(EmailActivation::class)->enviar($usuario);
 
-        return response()->json(['user' => $user, 'activation_email_sent' => $sent,
-            'message' => $sent ? 'Cuenta creada. El paciente debe confirmar el código enviado a su correo para activarla.'
+        return response()->json(['user' => $usuario, 'activation_email_sent' => $enviado,
+            'message' => $enviado ? 'Cuenta creada. El paciente debe confirmar el código enviado a su correo para activarla.'
                 : 'Cuenta creada pendiente de activación. Solicite el código desde Activar mi cuenta.'], 201)
             ->header('Cache-Control', 'no-store');
     }

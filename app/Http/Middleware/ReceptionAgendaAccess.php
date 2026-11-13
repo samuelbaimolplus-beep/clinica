@@ -15,7 +15,7 @@ class ReceptionAgendaAccess
     public function handle(Request $request, Closure $next)
     {
         if (! $request->user()->hasStaffRole('Recepcionista')) {
-            app(AuditLogger::class)->record('schedules', 'access_denied', result: 'denied');
+            app(AuditLogger::class)->registrar('schedules', 'access_denied', resultado: 'denied');
             abort(403);
         }
 

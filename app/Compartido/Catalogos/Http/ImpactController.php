@@ -4,17 +4,17 @@
 
 namespace App\Compartido\Catalogos\Http;
 
-use App\Http\Controllers\Controller;
 use App\Compartido\Catalogos\Servicios\CatalogImpact;
+use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 
 class ImpactController extends Controller
 {
     /** Atiende la operación única de esta clase usando las dependencias resueltas por Laravel. */
-    public function __invoke(Request $request, CatalogImpact $impact)
+    public function __invoke(Request $solicitud, CatalogImpact $impacto)
     {
-        abort_unless($request->user()->hasStaffRole('Administrador', 'Recepcionista'), 403);
+        abort_unless($solicitud->user()->hasStaffRole('Administrador', 'Recepcionista'), 403);
 
-        return $impact->affected();
+        return $impacto->citasAfectadas();
     }
 }

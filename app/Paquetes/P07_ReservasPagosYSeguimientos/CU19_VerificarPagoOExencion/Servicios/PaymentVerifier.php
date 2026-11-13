@@ -16,26 +16,26 @@ class PaymentVerifier
         'payment_amount_minor' => 'nullable|integer|min:1', 'bank_reference' => 'nullable|string|max:180'];
 
     /** Obtiene la tarifa vigente desde la especialidad, sin confiar en un importe enviado por el navegador. */
-    public function tariff(int $specialtyId): int
+    public function tarifa(int $especialidadId): int
     {
-        $amount = Specialty::findOrFail($specialtyId)->fee_minor;
-        if ($amount === null || $amount < 1) {
+        $importe = Specialty::findOrFail($especialidadId)->fee_minor;
+        if ($importe === null || $importe < 1) {
             throw ValidationException::withMessages(['payment' => 'Administración debe definir la tarifa de esta especialidad antes de emitir fichas.']);
         }
 
-        return $amount;
+        return $importe;
     }
 
     /** Valida la confirmación y referencia del cobro presencial antes de registrar el pago. */
-    public function reception(array $data, int $amount, User $actor): Payment
+    public function verificarPagoPresencial(array $datos, int $importe, User $responsable): Payment
     {
-        abort_unless($actor->hasStaffRole('Recepcionista'), 403);
-        validator($data, ['payment_method' => 'required|in:cash,qr,transfer', 'payment_confirmed' => 'required|accepted',
-            'payment_amount_minor' => 'required|integer|in:'.$amount,
+        abort_unless($responsable->hasStaffRole('Recepcionista'), 403);
+        validator($datos, ['payment_method' => 'required|in:cash,qr,transfer', 'payment_confirmed' => 'required|accepted',
+            'payment_amount_minor' => 'required|integer|in:'.$importe,
             'bank_reference' => 'nullable|required_unless:payment_method,cash|string|max:180|unique:payments,bank_reference'])->validate();
 
-        return Payment::create(['method' => $data['payment_method'], 'amount_minor' => $amount, 'status' => 'confirmed',
-            'bank_reference' => $data['payment_method'] === 'cash' ? null : trim($data['bank_reference']),
-            'confirmed_by' => $actor->id, 'confirmed_at' => now()]);
+        return Payment::create(['method' => $datos['payment_method'], 'amount_minor' => $importe, 'status' => 'confirmed',
+            'bank_reference' => $datos['payment_method'] === 'cash' ? null : trim($datos['bank_reference']),
+            'confirmed_by' => $responsable->id, 'confirmed_at' => now()]);
     }
 }

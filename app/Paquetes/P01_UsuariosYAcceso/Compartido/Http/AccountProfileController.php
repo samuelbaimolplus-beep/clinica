@@ -18,51 +18,51 @@ use Illuminate\Validation\ValidationException;
 class AccountProfileController extends Controller
 {
     /** Recupera el detalle autorizado del registro sin modificar su persistencia. */
-    public function show(Request $request)
+    public function consultarDetalle(Request $solicitud)
     {
-        return response()->json(['user' => $request->user(), 'patient' => $request->user()->patient])
+        return response()->json(['user' => $solicitud->user(), 'patient' => $solicitud->user()->patient])
             ->header('Cache-Control', 'no-store');
     }
 
     /** Actualiza los datos permitidos del titular o registro seleccionado. */
-    public function update(Request $request)
+    public function actualizar(Request $solicitud)
     {
-        if (is_string($request->input('email'))) {
-            $request->merge(['email' => mb_strtolower(trim($request->input('email')))]);
+        if (is_string($solicitud->input('email'))) {
+            $solicitud->merge(['email' => mb_strtolower(trim($solicitud->input('email')))]);
         }
-        $isPatient = $request->user()->role === 'Paciente';
-        $data = $request->validate([
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($request->user()->id)],
-            'phone' => [$isPatient ? 'required' : 'prohibited', 'string', 'max:30'],
-            'address' => [$isPatient ? 'nullable' : 'prohibited', 'string', 'max:1000'],
+        $esPaciente = $solicitud->user()->role === 'Paciente';
+        $datos = $solicitud->validate([
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($solicitud->user()->id)],
+            'phone' => [$esPaciente ? 'required' : 'prohibited', 'string', 'max:30'],
+            'address' => [$esPaciente ? 'nullable' : 'prohibited', 'string', 'max:1000'],
             'current_password' => 'required|string|max:255|current_password',
         ]);
-        [$user, $emailChanged] = DB::transaction(function () use ($request, $data, $isPatient) {
+        [$usuario, $cambioCorreo] = DB::transaction(function () use ($solicitud, $datos, $esPaciente) {
             // Mismo orden que el alta de cuenta: paciente, luego usuario.
-            $patient = $isPatient ? Patient::whereKey($request->user()->patient_id)->lockForUpdate()->firstOrFail() : null;
-            $user = User::whereKey($request->user()->id)->lockForUpdate()->firstOrFail();
-            if (! Hash::check($data['current_password'], $user->password)) {
+            $paciente = $esPaciente ? Patient::whereKey($solicitud->user()->patient_id)->lockForUpdate()->firstOrFail() : null;
+            $usuario = User::whereKey($solicitud->user()->id)->lockForUpdate()->firstOrFail();
+            if (! Hash::check($datos['current_password'], $usuario->password)) {
                 throw ValidationException::withMessages(['current_password' => 'La contraseña actual no es correcta.']);
             }
-            $emailChanged = $user->email !== $data['email'];
-            $user->fill(['email' => $data['email']])->save();
-            if ($patient) {
-                $patient->fill(['email' => $data['email'], 'phone' => $data['phone'], 'address' => $data['address'] ?? null])->save();
+            $cambioCorreo = $usuario->email !== $datos['email'];
+            $usuario->fill(['email' => $datos['email']])->save();
+            if ($paciente) {
+                $paciente->fill(['email' => $datos['email'], 'phone' => $datos['phone'], 'address' => $datos['address'] ?? null])->save();
             }
 
-            return [$user, $emailChanged];
+            return [$usuario, $cambioCorreo];
         });
-        if ($emailChanged) {
-            $sent = app(EmailActivation::class)->send($user);
+        if ($cambioCorreo) {
+            $enviado = app(EmailActivation::class)->enviar($usuario);
             Auth::logout();
-            $request->session()->invalidate();
-            $request->session()->regenerateToken();
+            $solicitud->session()->invalidate();
+            $solicitud->session()->regenerateToken();
 
-            return response()->json(['user' => null, 'activation_required' => true, 'activation_email_sent' => $sent,
-                'email' => $user->email, 'csrf' => csrf_token(), 'message' => 'Datos actualizados. Confirme el código enviado al nuevo correo para volver a acceder.'])
+            return response()->json(['user' => null, 'activation_required' => true, 'activation_email_sent' => $enviado,
+                'email' => $usuario->email, 'csrf' => csrf_token(), 'message' => 'Datos actualizados. Confirme el código enviado al nuevo correo para volver a acceder.'])
                 ->header('Cache-Control', 'no-store');
         }
 
-        return response()->json(['user' => $user, 'message' => 'Datos de contacto actualizados.'])->header('Cache-Control', 'no-store');
+        return response()->json(['user' => $usuario, 'message' => 'Datos de contacto actualizados.'])->header('Cache-Control', 'no-store');
     }
 }

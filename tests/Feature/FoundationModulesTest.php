@@ -117,7 +117,7 @@ class FoundationModulesTest extends TestCase
         $existing = $this->staff();
         $auditCount = AuditEvent::count();
         try {
-            app(CreatePatientAccount::class)->register($this->registration(['email' => $existing->email]), $existing);
+            app(CreatePatientAccount::class)->registrar($this->registration(['email' => $existing->email]), $existing);
             $this->fail('La unicidad del correo debió impedir la cuenta.');
         } catch (QueryException $exception) {
             $this->assertSame('23505', $exception->errorInfo[0]);

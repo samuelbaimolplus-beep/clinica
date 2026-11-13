@@ -11,11 +11,11 @@ use Illuminate\Http\Request;
 class ReceptionInboxController extends Controller
 {
     /** Devuelve el aviso de solicitudes pendientes para el trabajo de Recepción. */
-    public function receptionInbox(Request $request)
+    public function bandejaRecepcion(Request $solicitud)
     {
-        abort_unless($request->user()->hasStaffRole('Recepcionista'), 403);
-        $query = RescheduleRequest::where('status', 'pending');
+        abort_unless($solicitud->user()->hasStaffRole('Recepcionista'), 403);
+        $consultaDatos = RescheduleRequest::where('status', 'pending');
 
-        return response()->json(['pending' => (clone $query)->count(), 'latest_id' => $query->max('id')])->header('Cache-Control', 'no-store');
+        return response()->json(['pending' => (clone $consultaDatos)->count(), 'latest_id' => $consultaDatos->max('id')])->header('Cache-Control', 'no-store');
     }
 }

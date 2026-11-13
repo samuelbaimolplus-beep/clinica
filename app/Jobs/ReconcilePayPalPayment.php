@@ -23,7 +23,7 @@ class ReconcilePayPalPayment implements ShouldQueue
     {
         $booking = BookingRequest::find($this->bookingId);
         if ($booking) {
-            $service->reconcile($booking, true);
+            $service->conciliar($booking, true);
         }
     }
 }

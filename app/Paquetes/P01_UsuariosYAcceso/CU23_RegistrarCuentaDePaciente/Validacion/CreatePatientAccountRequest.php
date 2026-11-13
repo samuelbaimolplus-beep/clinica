@@ -13,7 +13,7 @@ class CreatePatientAccountRequest extends FormRequest
     /** Normaliza las entradas antes de aplicar reglas; no concede permisos ni omite validaciones. */
     protected function prepareForValidation(): void
     {
-        $this->normalizeAccountCredentials();
+        $this->normalizarCredenciales();
     }
 
     /** Decide si la solicitud puede continuar; complementa los controles de las rutas. */
@@ -25,6 +25,6 @@ class CreatePatientAccountRequest extends FormRequest
     /** Define los campos aceptados, tipos, límites y relaciones válidas para esta solicitud. */
     public function rules(): array
     {
-        return $this->accountRules();
+        return $this->reglasCuenta();
     }
 }

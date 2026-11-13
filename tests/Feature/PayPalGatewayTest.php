@@ -34,20 +34,20 @@ class PayPalGatewayTest extends TestCase
     public function test_conversion_rounds_using_integer_cents_and_the_snapshot_survives_rate_changes(): void
     {
         $gateway = new PayPalGateway;
-        $this->assertSame(1255, $gateway->snapshot(12550)['provider_amount_minor']);
+        $this->assertSame(1255, $gateway->instantaneaImporte(12550)['provider_amount_minor']);
         config(['paypal.bob_per_usd' => '3']);
-        $this->assertSame(33, $gateway->snapshot(100)['provider_amount_minor']);
-        $this->assertSame('12.55', $gateway->usdValue($this->payment()));
-        $this->assertTrue($gateway->matches($this->order(), $this->payment()));
+        $this->assertSame(33, $gateway->instantaneaImporte(100)['provider_amount_minor']);
+        $this->assertSame('12.55', $gateway->importeUsd($this->payment()));
+        $this->assertTrue($gateway->coincideConPago($this->order(), $this->payment()));
     }
 
     public function test_zero_rate_disables_payments_and_rejects_conversion(): void
     {
         config(['paypal.bob_per_usd' => '0']);
         $gateway = new PayPalGateway;
-        $this->assertFalse($gateway->configured());
+        $this->assertFalse($gateway->estaConfigurada());
         $this->expectException(ValidationException::class);
-        $gateway->snapshot(10000);
+        $gateway->instantaneaImporte(10000);
     }
 
     public function test_amount_currency_identity_and_multiple_units_must_match(): void
@@ -63,7 +63,7 @@ class PayPalGatewayTest extends TestCase
                 'invoice' => $order['purchase_units'][0]['invoice_id'] = 'CVS-99-1',
                 'units' => $order['purchase_units'][] = $order['purchase_units'][0],
             };
-            $this->assertFalse($gateway->matches($order, $this->payment()), $change);
+            $this->assertFalse($gateway->coincideConPago($order, $this->payment()), $change);
         }
     }
 
@@ -76,8 +76,8 @@ class PayPalGatewayTest extends TestCase
             '*/v2/checkout/orders/ORDER-31/capture' => Http::response($order),
         ]);
         $gateway = new PayPalGateway;
-        $this->assertSame('pending', $gateway->status($this->payment())['status']);
-        $this->assertSame('pending', $gateway->status($this->payment())['status']);
+        $this->assertSame('pending', $gateway->consultarEstado($this->payment())['status']);
+        $this->assertSame('pending', $gateway->consultarEstado($this->payment())['status']);
         $captures = Http::recorded(fn ($request) => str_ends_with($request->url(), '/capture'));
         $this->assertCount(2, $captures);
         foreach ($captures as [$request]) {
@@ -100,7 +100,7 @@ class PayPalGatewayTest extends TestCase
             $order['purchase_units'][0]['payments']['captures'] = match ($scenario) {
                 'missing' => [], 'duplicate' => [$capture, $capture], default => [$capture],
             };
-            $this->assertSame($scenario === 'valid' ? 'confirmed' : 'unknown', (new PayPalGateway)->status($this->payment())['status'], $scenario);
+            $this->assertSame($scenario === 'valid' ? 'confirmed' : 'unknown', (new PayPalGateway)->consultarEstado($this->payment())['status'], $scenario);
         }
     }
 
@@ -109,7 +109,7 @@ class PayPalGatewayTest extends TestCase
         $gateway = new PayPalGateway;
         foreach (['https://www.paypal.com/checkoutnow?token=ORDER-31', 'https://evil.test/checkoutnow?token=ORDER-31',
             'https://user@www.sandbox.paypal.com/checkoutnow?token=ORDER-31', 'https://www.sandbox.paypal.com/checkoutnow?token=OTHER'] as $url) {
-            $this->assertNull($gateway->approvalUrl(['id' => 'ORDER-31', 'links' => [['rel' => 'approve', 'href' => $url]]]));
+            $this->assertNull($gateway->urlAprobacion(['id' => 'ORDER-31', 'links' => [['rel' => 'approve', 'href' => $url]]]));
         }
     }
 
@@ -118,7 +118,7 @@ class PayPalGatewayTest extends TestCase
         config(['app.url' => 'https://clinica-publica.example.test/']);
         Http::fake(['*/v1/oauth2/token' => Http::response(['access_token' => 'token']),
             '*/v2/checkout/orders' => Http::response($this->order())]);
-        (new PayPalGateway)->create($this->payment());
+        (new PayPalGateway)->crearOrden($this->payment());
         Http::assertSent(function ($request) {
             if (! str_ends_with($request->url(), '/v2/checkout/orders')) {
                 return false;

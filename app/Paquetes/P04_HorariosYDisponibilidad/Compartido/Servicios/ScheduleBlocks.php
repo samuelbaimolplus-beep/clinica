@@ -10,20 +10,20 @@ use Carbon\CarbonImmutable;
 class ScheduleBlocks
 {
     /** Construye las franjas aplicables al día solicitado a partir del horario semanal. */
-    public function forDate(int $doctorId, string $date): array
+    public function franjasParaFecha(int $medicoId, string $fecha): array
     {
-        $day = CarbonImmutable::parse($date);
-        $ranges = Schedule::where('doctor_id', $doctorId)->where('weekday', $day->dayOfWeek)->orderBy('start_time')->get();
-        $blocks = [];
-        foreach ($ranges as $range) {
-            $end = CarbonImmutable::parse($date.' '.$range->end_time);
-            for ($start = CarbonImmutable::parse($date.' '.$range->start_time); $start->addMinutes($range->duration) <= $end; $start = $start->addMinutes($range->duration)) {
+        $dia = CarbonImmutable::parse($fecha);
+        $intervalos = Schedule::where('doctor_id', $medicoId)->where('weekday', $dia->dayOfWeek)->orderBy('start_time')->get();
+        $bloques = [];
+        foreach ($intervalos as $intervalo) {
+            $fin = CarbonImmutable::parse($fecha.' '.$intervalo->end_time);
+            for ($inicio = CarbonImmutable::parse($fecha.' '.$intervalo->start_time); $inicio->addMinutes($intervalo->duration) <= $fin; $inicio = $inicio->addMinutes($intervalo->duration)) {
                 // Una consulta que cruza el límite de 120 minutos permanece protegida entera.
-                $blocks[] = ['schedule_id' => $range->id, 'start' => $start, 'end' => $start->addMinutes($range->duration),
-                    'protected' => $start < CarbonImmutable::parse($date.' '.$range->start_time)->addMinutes(120)];
+                $bloques[] = ['schedule_id' => $intervalo->id, 'start' => $inicio, 'end' => $inicio->addMinutes($intervalo->duration),
+                    'protected' => $inicio < CarbonImmutable::parse($fecha.' '.$intervalo->start_time)->addMinutes(120)];
             }
         }
 
-        return $blocks;
+        return $bloques;
     }
 }

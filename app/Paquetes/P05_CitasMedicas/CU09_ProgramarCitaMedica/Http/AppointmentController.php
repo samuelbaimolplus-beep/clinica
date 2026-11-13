@@ -12,11 +12,11 @@ use Illuminate\Http\Request;
 class AppointmentController extends Controller
 {
     /** Registra la operación solicitada después de validar entradas y permisos. */
-    public function store(Request $r, AppointmentService $service)
+    public function registrar(Request $peticion, AppointmentService $servicio)
     {
-        abort_unless($r->user()->hasStaffRole('Recepcionista'), 403);
-        $d = $r->validate(['patient_id' => 'required|integer|exists:patients,id', 'doctor_id' => 'required|integer|exists:doctors,id', 'specialty_id' => 'required|integer|exists:specialties,id', 'date' => 'required|date_format:Y-m-d|after_or_equal:today', 'start_time' => 'required|date_format:H:i', 'reason' => 'nullable|string|max:3000', 'idempotency_key' => 'required|uuid', 'parent_appointment_id' => 'nullable|integer|exists:appointments,id', 'followup_change_cause' => 'nullable|in:patient,clinic', 'followup_change_reason' => 'nullable|string|max:3000'] + PaymentVerifier::INPUT);
+        abort_unless($peticion->user()->hasStaffRole('Recepcionista'), 403);
+        $criterios = $peticion->validate(['patient_id' => 'required|integer|exists:patients,id', 'doctor_id' => 'required|integer|exists:doctors,id', 'specialty_id' => 'required|integer|exists:specialties,id', 'date' => 'required|date_format:Y-m-d|after_or_equal:today', 'start_time' => 'required|date_format:H:i', 'reason' => 'nullable|string|max:3000', 'idempotency_key' => 'required|uuid', 'parent_appointment_id' => 'nullable|integer|exists:appointments,id', 'followup_change_cause' => 'nullable|in:patient,clinic', 'followup_change_reason' => 'nullable|string|max:3000'] + PaymentVerifier::INPUT);
 
-        return response()->json($service->book($d, $r->user()), 201);
+        return response()->json($servicio->programar($criterios, $peticion->user()), 201);
     }
 }

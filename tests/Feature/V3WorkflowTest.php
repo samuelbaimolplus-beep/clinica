@@ -223,7 +223,7 @@ class V3WorkflowTest extends TestCase
         $this->actingAs($this->admin)->putJson('/api/schedules/'.$this->shift->id, $this->shiftData(['start_time' => '09:00']))->assertUnprocessable();
         $this->assertSame('08:00:00', $this->shift->fresh()->start_time);
         $logger = Mockery::mock(new AuditLogger);
-        $logger->shouldReceive('record')->andThrow(new \RuntimeException('Fallo simulado'));
+        $logger->shouldReceive('registrar')->andThrow(new \RuntimeException('Fallo simulado'));
         $this->app->instance(AuditLogger::class, $logger);
         $this->actingAs($this->reception)->postJson('/api/agenda-adjustments', ['kind' => 'online_opening', 'blocks' => [$this->block('08:30', '09:00')]])->assertStatus(503);
         $this->assertDatabaseCount('agenda_adjustments', 1);

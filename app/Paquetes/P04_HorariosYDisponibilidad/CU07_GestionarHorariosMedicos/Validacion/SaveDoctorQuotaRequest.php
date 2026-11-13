@@ -18,9 +18,9 @@ class SaveDoctorQuotaRequest extends FormRequest
     /** Define los campos aceptados, tipos, límites y relaciones válidas para esta solicitud. */
     public function rules(): array
     {
-        $percent = ['required', 'integer', 'between:0,100'];
+        $porcentaje = ['required', 'integer', 'between:0,100'];
 
         return ['doctor_id' => ['required', 'integer', Rule::exists('doctors', 'id')->where('status', 'Activo')],
-            'presential_percent' => $percent, 'online_percent' => $percent];
+            'presential_percent' => $porcentaje, 'online_percent' => $porcentaje];
     }
 }

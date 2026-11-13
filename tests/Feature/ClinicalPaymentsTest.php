@@ -123,9 +123,9 @@ class ClinicalPaymentsTest extends TestCase
     private function paypalOrder(Payment $payment, string $state = 'APPROVED', ?string $captureState = null, bool $wrongAmount = false): array
     {
         $gateway = app(PayPalGateway::class);
-        $ref = $gateway->reference($payment);
+        $ref = $gateway->referencia($payment);
         $id = 'PP-'.$ref;
-        $amount = ['currency_code' => 'USD', 'value' => $wrongAmount ? '0.01' : $gateway->usdValue($payment)];
+        $amount = ['currency_code' => 'USD', 'value' => $wrongAmount ? '0.01' : $gateway->importeUsd($payment)];
         $unit = ['reference_id' => $ref, 'custom_id' => $ref, 'invoice_id' => $ref, 'amount' => $amount];
         if ($captureState) {
             $unit['payments']['captures'] = [['id' => 'CAP-'.$payment->id, 'status' => $captureState, 'amount' => $amount, 'final_capture' => true]];
@@ -159,7 +159,7 @@ class ClinicalPaymentsTest extends TestCase
                 $created = $this->paypalOrder($payment, 'CREATED');
                 if ($race) {
                     $payment->update(['reference' => $created['id']]);
-                    app(OnlineBookingService::class)->reconcile(BookingRequest::findOrFail($payment->booking_request_id), true);
+                    app(OnlineBookingService::class)->conciliar(BookingRequest::findOrFail($payment->booking_request_id), true);
                 }
 
                 return Http::response($created, 201);

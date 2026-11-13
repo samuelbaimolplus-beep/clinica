@@ -12,18 +12,18 @@ use Illuminate\Support\Facades\Auth;
 class LogoutController extends Controller
 {
     /** Invalida la sesión actual y renueva la protección contra peticiones falsificadas. */
-    public function logout(Request $request)
+    public function cerrarSesion(Request $solicitud)
     {
-        if (! $request->user()) {
+        if (! $solicitud->user()) {
             return response()->json(['message' => 'La sesión ya finalizó. Debe iniciar sesión nuevamente.', 'csrf' => csrf_token()], 401);
         }
         try {
-            app(AuditLogger::class)->record('auth', 'logout', $request->user());
+            app(AuditLogger::class)->registrar('auth', 'logout', $solicitud->user());
             Auth::logout();
-            $request->session()->invalidate();
-            $request->session()->regenerateToken();
-        } catch (\Throwable $exception) {
-            report($exception);
+            $solicitud->session()->invalidate();
+            $solicitud->session()->regenerateToken();
+        } catch (\Throwable $excepcion) {
+            report($excepcion);
 
             return response()->json(['message' => 'No se pudo completar el cierre de sesión. Intente nuevamente.'], 503);
         }

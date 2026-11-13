@@ -11,11 +11,11 @@ use Illuminate\Http\Request;
 class AccountActivationController extends Controller
 {
     /** Atiende la operación única de esta clase usando las dependencias resueltas por Laravel. */
-    public function __invoke(Request $request, EmailActivation $activation)
+    public function __invoke(Request $solicitud, EmailActivation $activacion)
     {
-        abort_if($request->user(), 409, 'Cierre su sesión antes de activar una cuenta.');
-        $data = $request->validate(['email' => 'required|email|max:255', 'code' => 'required|string|regex:/^[0-9]{8}$/D']);
-        $activation->confirm($data['email'], $data['code']);
+        abort_if($solicitud->user(), 409, 'Cierre su sesión antes de activar una cuenta.');
+        $datos = $solicitud->validate(['email' => 'required|email|max:255', 'code' => 'required|string|regex:/^[0-9]{8}$/D']);
+        $activacion->confirmar($datos['email'], $datos['code']);
 
         return response()->json(['message' => 'Correo confirmado. Su cuenta está activada; ya puede iniciar sesión.'])
             ->header('Cache-Control', 'no-store');

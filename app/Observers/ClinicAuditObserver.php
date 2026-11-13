@@ -42,13 +42,13 @@ class ClinicAuditObserver
             default => 'appointments',
         };
         $changes = [];
-        foreach (AuditDetails::attributes($attributes) as $field => $value) {
+        foreach (AuditDetails::atributosPermitidos($attributes) as $field => $value) {
             $changes[$field] = [
                 'before' => $action === 'created' ? null : $model->getRawOriginal($field),
                 'after' => $action === 'deleted' ? null : $value,
             ];
         }
-        app(AuditLogger::class)->record($module, $action, $model, details: [
+        app(AuditLogger::class)->registrar($module, $action, $model, detalles: [
             'fields' => array_keys($changes), 'changes' => $changes,
             'security_changed' => $action === 'updated' && array_key_exists('password', $attributes),
         ]);

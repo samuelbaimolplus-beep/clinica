@@ -14,7 +14,7 @@ class RegisterManagedPatientRequest extends SavePatientRequest
     protected function prepareForValidation(): void
     {
         parent::prepareForValidation();
-        $this->normalizeAccountCredentials();
+        $this->normalizarCredenciales();
     }
 
     /** Decide si la solicitud puede continuar; complementa los controles de las rutas. */
@@ -26,6 +26,6 @@ class RegisterManagedPatientRequest extends SavePatientRequest
     /** Define los campos aceptados, tipos, límites y relaciones válidas para esta solicitud. */
     public function rules(): array
     {
-        return array_replace(parent::rules(), $this->accountRules());
+        return array_replace(parent::rules(), $this->reglasCuenta());
     }
 }

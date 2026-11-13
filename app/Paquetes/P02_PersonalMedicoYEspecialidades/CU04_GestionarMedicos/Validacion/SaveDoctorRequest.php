@@ -4,8 +4,8 @@
 
 namespace App\Paquetes\P02_PersonalMedicoYEspecialidades\CU04_GestionarMedicos\Validacion;
 
-use App\Models\Doctor;
 use App\Compartido\Catalogos\Validacion\PersonRules;
+use App\Models\Doctor;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -27,7 +27,7 @@ class SaveDoctorRequest extends FormRequest
             Doctor::findOrFail($id);
         }
 
-        return $this->personRules() + [
+        return $this->reglasPersona() + [
             'registration' => ['required', 'string', 'max:80', Rule::unique('doctors')->ignore($id)],
             'email' => ['required', 'email', 'max:255', Rule::unique('doctors')->ignore($id)],
             'specialty_ids' => 'required|array|min:1',

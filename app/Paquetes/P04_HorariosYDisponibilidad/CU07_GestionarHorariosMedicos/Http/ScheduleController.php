@@ -19,64 +19,64 @@ use Illuminate\Http\Request;
 class ScheduleController extends Controller
 {
     /** Consulta el listado y sus filtros; la ruta aplica los permisos del módulo. */
-    public function index(Request $r)
+    public function listar(Request $peticion)
     {
-        abort_unless($r->user()->hasStaffRole('Administrador'), 403);
-        $d = $r->validate(['doctor_id' => 'required|integer|exists:doctors,id']);
+        abort_unless($peticion->user()->hasStaffRole('Administrador'), 403);
+        $criterios = $peticion->validate(['doctor_id' => 'required|integer|exists:doctors,id']);
 
-        return ['schedules' => Schedule::where('doctor_id', $d['doctor_id'])->orderBy('weekday')->orderBy('start_time')->get(),
-            'unavailabilities' => Unavailability::where('doctor_id', $d['doctor_id'])->orderByDesc('starts_at')->get(),
-            'quota' => DoctorQuota::where('doctor_id', $d['doctor_id'])->first() ?? ['presential_percent' => 50, 'online_percent' => 50]];
+        return ['schedules' => Schedule::where('doctor_id', $criterios['doctor_id'])->orderBy('weekday')->orderBy('start_time')->get(),
+            'unavailabilities' => Unavailability::where('doctor_id', $criterios['doctor_id'])->orderByDesc('starts_at')->get(),
+            'quota' => DoctorQuota::where('doctor_id', $criterios['doctor_id'])->first() ?? ['presential_percent' => 50, 'online_percent' => 50]];
     }
 
     /** Coordina la validación y persistencia de esta operación; delega las reglas del dominio al servicio correspondiente. */
-    public function save(SaveScheduleRequest $request, ScheduleService $service, ?int $id = null)
+    public function guardar(SaveScheduleRequest $solicitud, ScheduleService $servicio, ?int $id = null)
     {
-        $schedule = $service->save($request->validated(), $id);
+        $horario = $servicio->guardar($solicitud->validated(), $id);
 
-        return response()->json($schedule, $schedule->wasRecentlyCreated ? 201 : 200);
+        return response()->json($horario, $horario->wasRecentlyCreated ? 201 : 200);
     }
 
     /** Registra una ausencia médica y devuelve las citas que requieren gestión. */
-    public function unavailable(SaveUnavailabilityRequest $request, ScheduleService $service)
+    public function registrarAusencia(SaveUnavailabilityRequest $solicitud, ScheduleService $servicio)
     {
-        return response()->json($service->unavailable($request->validated()), 201);
+        return response()->json($servicio->registrarAusencia($solicitud->validated()), 201);
     }
 
     /** Muestra el impacto previsto antes de que el usuario confirme el cambio. */
-    public function preview(SaveUnavailabilityRequest $request, ScheduleService $service)
+    public function previsualizarAusencia(SaveUnavailabilityRequest $solicitud, ScheduleService $servicio)
     {
-        return response()->json($service->unavailable($request->validated(), true));
+        return response()->json($servicio->registrarAusencia($solicitud->validated(), true));
     }
 
-    public function absenceImpacts(Request $request, ScheduleImpact $service, int $id)
+    public function consultarImpactoAusencia(Request $solicitud, ScheduleImpact $servicio, int $id)
     {
-        abort_unless($request->user()->can('manage-schedules'), 403);
-        $absence = Unavailability::findOrFail($id);
+        abort_unless($solicitud->user()->can('manage-schedules'), 403);
+        $ausencia = Unavailability::findOrFail($id);
 
-        return ['unavailability' => $absence, 'affected' => $absence->cancelled_at ? []
-            : $service->overlapping($absence->doctor_id, $absence->starts_at, $absence->ends_at)];
+        return ['unavailability' => $ausencia, 'affected' => $ausencia->cancelled_at ? []
+            : $servicio->citasSuperpuestas($ausencia->doctor_id, $ausencia->starts_at, $ausencia->ends_at)];
     }
 
-    public function cancelAbsence(Request $request, ScheduleService $service, int $id)
+    public function retirarAusencia(Request $solicitud, ScheduleService $servicio, int $id)
     {
-        abort_unless($request->user()->can('manage-schedules'), 403);
-        $data = $request->validate(['reason' => 'required|string|max:300']);
+        abort_unless($solicitud->user()->can('manage-schedules'), 403);
+        $datos = $solicitud->validate(['reason' => 'required|string|max:300']);
 
-        return $service->cancelUnavailability($id, $data['reason'], $request->user());
+        return $servicio->retirarAusencia($id, $datos['reason'], $solicitud->user());
     }
 
     /** Recibe porcentajes validados y delega su persistencia en el servicio de cupos. */
-    public function quota(SaveDoctorQuotaRequest $request, DoctorQuotaService $service)
+    public function guardarDistribucion(SaveDoctorQuotaRequest $solicitud, DoctorQuotaService $servicio)
     {
-        return response()->json($service->save($request->validated()));
+        return response()->json($servicio->guardar($solicitud->validated()));
     }
 
     /** Calcula cupos y franjas utilizables según turnos, modalidades, ausencias y ajustes. */
-    public function capacity(Request $request, DoctorQuotaService $service)
+    public function calcularCapacidad(Request $solicitud, DoctorQuotaService $servicio)
     {
-        $data = $request->validate(['doctor_id' => 'required|integer|exists:doctors,id', 'date' => 'required|date_format:Y-m-d']);
+        $datos = $solicitud->validate(['doctor_id' => 'required|integer|exists:doctors,id', 'date' => 'required|date_format:Y-m-d']);
 
-        return $service->capacity($data['doctor_id'], $data['date']);
+        return $servicio->calcularCapacidad($datos['doctor_id'], $datos['date']);
     }
 }

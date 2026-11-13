@@ -13,26 +13,26 @@ use Illuminate\Validation\Rule;
 class AgendaAdjustmentController extends Controller
 {
     /** Consulta el listado y sus filtros; la ruta aplica los permisos del módulo. */
-    public function index(Request $request)
+    public function listar(Request $solicitud)
     {
-        $data = $request->validate(['date' => 'required|date_format:Y-m-d', 'specialty_id' => 'nullable|integer|exists:specialties,id']);
+        $datos = $solicitud->validate(['date' => 'required|date_format:Y-m-d', 'specialty_id' => 'nullable|integer|exists:specialties,id']);
 
-        return AgendaAdjustment::where('date', $data['date'])->when($data['specialty_id'] ?? null, fn ($q, $id) => $q->where('specialty_id', $id))->orderBy('start_time')->get();
+        return AgendaAdjustment::where('date', $datos['date'])->when($datos['specialty_id'] ?? null, fn ($consulta, $id) => $consulta->where('specialty_id', $id))->orderBy('start_time')->get();
     }
 
     /** Calcula una propuesta de franjas; todavía no confirma bloqueos ni crea citas. */
-    public function propose(Request $request, AgendaAdjustments $service)
+    public function proponer(Request $solicitud, AgendaAdjustments $servicio)
     {
-        $data = $request->validate(['specialty_id' => 'required|integer|exists:specialties,id',
+        $datos = $solicitud->validate(['specialty_id' => 'required|integer|exists:specialties,id',
             'date' => 'required|date_format:Y-m-d|after_or_equal:today', 'quantity' => 'required|integer|between:1,100']);
 
-        return $service->propose($data['specialty_id'], $data['date'], $data['quantity']);
+        return $servicio->proponer($datos['specialty_id'], $datos['date'], $datos['quantity']);
     }
 
     /** Registra la operación solicitada después de validar entradas y permisos. */
-    public function store(Request $request, AgendaAdjustments $service)
+    public function registrar(Request $solicitud, AgendaAdjustments $servicio)
     {
-        $data = $request->validate([
+        $datos = $solicitud->validate([
             'kind' => ['required', Rule::in(['presential_block', 'online_opening'])],
             'specialty_id' => 'required_if:kind,presential_block|prohibited_if:kind,online_opening|nullable|integer|exists:specialties,id',
             'blocks' => 'required|array|min:1|max:100', 'blocks.*' => 'array:doctor_id,date,start_time,end_time',
@@ -42,20 +42,20 @@ class AgendaAdjustmentController extends Controller
             'quantity' => 'nullable|integer|min:1',
         ]);
 
-        return response()->json($service->create($data['kind'], $data['specialty_id'] ?? null, $data['blocks'], $request->user(), $data['quantity'] ?? null), 201);
+        return response()->json($servicio->crear($datos['kind'], $datos['specialty_id'] ?? null, $datos['blocks'], $solicitud->user(), $datos['quantity'] ?? null), 201);
     }
 
     /** Libera un bloqueo autorizado conservando el registro de la operación. */
-    public function release(Request $request, AgendaAdjustments $service, int $id)
+    public function liberar(Request $solicitud, AgendaAdjustments $servicio, int $id)
     {
-        return $service->release($id, $request->user());
+        return $servicio->liberar($id, $solicitud->user());
     }
 
     /** Libera los bloqueos seleccionados después de validar sus estados y permisos. */
-    public function releaseSelected(Request $request, AgendaAdjustments $service)
+    public function liberarSeleccionados(Request $solicitud, AgendaAdjustments $servicio)
     {
-        $data = $request->validate(['ids' => 'required|array|min:1|max:100', 'ids.*' => 'required|integer|distinct|exists:agenda_adjustments,id']);
+        $datos = $solicitud->validate(['ids' => 'required|array|min:1|max:100', 'ids.*' => 'required|integer|distinct|exists:agenda_adjustments,id']);
 
-        return $service->releaseSelected($data['ids'], $request->user());
+        return $servicio->liberarSeleccionados($datos['ids'], $solicitud->user());
     }
 }

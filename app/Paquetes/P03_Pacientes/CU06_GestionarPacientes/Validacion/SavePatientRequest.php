@@ -21,7 +21,7 @@ class SavePatientRequest extends FormRequest
     /** Define los campos aceptados, tipos, límites y relaciones válidas para esta solicitud. */
     public function rules(): array
     {
-        return $this->personRules() + [
+        return $this->reglasPersona() + [
             'identity' => ['nullable', 'string', 'max:40', Rule::unique('patients')->ignore($this->route('id'))],
             'birth_date' => 'required|date_format:Y-m-d|before_or_equal:today',
             'sex' => ['required', Rule::in(['Femenino', 'Masculino'])],

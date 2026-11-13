@@ -26,237 +26,237 @@ use Illuminate\Validation\ValidationException;
 class AppointmentService
 {
     /** Devuelve franjas con su estado, descontando ocupación, retenciones y horarios pasados. */
-    public function slots(int $doctorId, string $date, ?int $exclude = null, string $modality = 'presential', ?int $hold = null): array
+    public function franjasDisponibles(int $medicoId, string $fecha, ?int $excluirId = null, string $modalidad = 'presential', ?int $retencion = null): array
     {
-        if (Doctor::findOrFail($doctorId)->status !== 'Activo') {
+        if (Doctor::findOrFail($medicoId)->status !== 'Activo') {
             return [];
         }
-        $busy = Appointment::where('doctor_id', $doctorId)->where('date', $date)->whereIn('status', Appointment::ACTIVE)
-            ->when($exclude, fn ($q) => $q->whereKeyNot($exclude))->get();
-        // A pending/unknown provider transaction retains its slot even beyond the local timer (RN43).
-        $holds = BookingRequest::where('doctor_id', $doctorId)->where('date', $date)->whereIn('status', ['held', 'processing'])
-            ->when($hold, fn ($q) => $q->whereKeyNot($hold))->get();
+        $ocupadas = Appointment::where('doctor_id', $medicoId)->where('date', $fecha)->whereIn('status', Appointment::ACTIVE)
+            ->when($excluirId, fn ($consulta) => $consulta->whereKeyNot($excluirId))->get();
+        // Un pago pendiente o desconocido conserva su franja aunque venza el temporizador local (RN43).
+        $retenciones = BookingRequest::where('doctor_id', $medicoId)->where('date', $fecha)->whereIn('status', ['held', 'processing'])
+            ->when($retencion, fn ($consulta) => $consulta->whereKeyNot($retencion))->get();
 
-        return array_map(function ($b) use ($date, $modality, $busy, $holds) {
-            $occupied = $busy->contains(fn ($a) => $a->start_time < $b['end_time'].':00' && $a->end_time > $b['start_time'].':00');
-            $retained = $holds->contains(fn ($a) => $a->start_time < $b['end_time'].':00' && $a->end_time > $b['start_time'].':00');
+        return array_map(function ($bloque) use ($fecha, $modalidad, $ocupadas, $retenciones) {
+            $ocupada = $ocupadas->contains(fn ($citaActual) => $citaActual->start_time < $bloque['end_time'].':00' && $citaActual->end_time > $bloque['start_time'].':00');
+            $retenida = $retenciones->contains(fn ($citaActual) => $citaActual->start_time < $bloque['end_time'].':00' && $citaActual->end_time > $bloque['start_time'].':00');
 
-            return $b + ['start' => $b['start_time'], 'end' => $b['end_time'], 'detail' => '',
-                'status' => $b['modality'] !== $modality ? 'Otra modalidad' : ($occupied || $retained ? 'Ocupado' : (CarbonImmutable::parse($date.' '.$b['start_time']) < now() ? 'Pasado' : 'Disponible'))];
-        }, app(DoctorQuotaService::class)->capacity($doctorId, $date)['blocks']);
+            return $bloque + ['start' => $bloque['start_time'], 'end' => $bloque['end_time'], 'detail' => '',
+                'status' => $bloque['modality'] !== $modalidad ? 'Otra modalidad' : ($ocupada || $retenida ? 'Ocupado' : (CarbonImmutable::parse($fecha.' '.$bloque['start_time']) < now() ? 'Pasado' : 'Disponible'))];
+        }, app(DoctorQuotaService::class)->calcularCapacidad($medicoId, $fecha)['blocks']);
     }
 
     /** Crea o reprograma la cita de forma atómica: cupo, paciente, pago, identidad de franja e historial. */
-    public function book(array $data, User $actor, ?int $id = null): Appointment
+    public function programar(array $datos, User $responsable, ?int $id = null): Appointment
     {
-        abort_unless($actor->hasStaffRole('Recepcionista'), 403);
+        abort_unless($responsable->hasStaffRole('Recepcionista'), 403);
 
-        return DB::transaction(function () use ($data, $actor, $id) {
+        return DB::transaction(function () use ($datos, $responsable, $id) {
             $original = $id ? Appointment::findOrFail($id) : null;
-            $patient = Patient::whereKey($original?->patient_id ?? $data['patient_id'])->lockForUpdate()->firstOrFail();
-            // Stable lock order also covers transfers between doctors.
-            $doctorIds = array_unique(array_filter([$original?->doctor_id, (int) $data['doctor_id']]));
-            Doctor::whereIn('id', $doctorIds)->orderBy('id')->lockForUpdate()->get();
-            $doctor = Doctor::findOrFail($data['doctor_id']);
-            $a = $id ? Appointment::whereKey($id)->lockForUpdate()->firstOrFail() : new Appointment;
-            $specialtyId = $original?->specialty_id ?? $data['specialty_id'];
+            $paciente = Patient::whereKey($original?->patient_id ?? $datos['patient_id'])->lockForUpdate()->firstOrFail();
+            // El orden estable de bloqueo también protege los cambios de un médico a otro.
+            $medicosIds = array_unique(array_filter([$original?->doctor_id, (int) $datos['doctor_id']]));
+            Doctor::whereIn('id', $medicosIds)->orderBy('id')->lockForUpdate()->get();
+            $medico = Doctor::findOrFail($datos['doctor_id']);
+            $citaActual = $id ? Appointment::whereKey($id)->lockForUpdate()->firstOrFail() : new Appointment;
+            $especialidadId = $original?->specialty_id ?? $datos['specialty_id'];
             if (! $id) {
-                validator($data, ['idempotency_key' => 'required|uuid'])->validate();
-                $existing = BookingRequest::where('idempotency_key', $data['idempotency_key'])->first();
-                if ($existing) {
-                    if ($existing->created_by !== $actor->id || $existing->patient_id !== $patient->id || $existing->doctor_id !== $doctor->id
-                        || $existing->specialty_id !== (int) $specialtyId || $existing->date !== $data['date'] || substr($existing->start_time, 0, 5) !== $data['start_time']) {
-                        $this->fail('La clave de operación ya se utilizó con otros datos.');
+                validator($datos, ['idempotency_key' => 'required|uuid'])->validate();
+                $existente = BookingRequest::where('idempotency_key', $datos['idempotency_key'])->first();
+                if ($existente) {
+                    if ($existente->created_by !== $responsable->id || $existente->patient_id !== $paciente->id || $existente->doctor_id !== $medico->id
+                        || $existente->specialty_id !== (int) $especialidadId || $existente->date !== $datos['date'] || substr($existente->start_time, 0, 5) !== $datos['start_time']) {
+                        $this->rechazar('La clave de operación ya se utilizó con otros datos.');
                     }
 
-                    return $existing->appointment()->with('patient', 'doctor', 'specialty', 'events', 'payment')->firstOrFail();
+                    return $existente->appointment()->with('patient', 'doctor', 'specialty', 'events', 'payment')->firstOrFail();
                 }
             }
-            if ($id && ! in_array($a->status, Appointment::ACTIVE)) {
-                $this->fail('Solo se reprograman citas vigentes.');
+            if ($id && ! in_array($citaActual->status, Appointment::ACTIVE)) {
+                $this->rechazar('Solo se reprograman citas vigentes.');
             }
             if ($id) {
-                validator($data, ['cause' => 'required|in:patient,clinic', 'patient_accepted' => 'required|accepted', 'change_reason' => 'required|string|max:3000'])->validate();
+                validator($datos, ['cause' => 'required|in:patient,clinic', 'patient_accepted' => 'required|accepted', 'change_reason' => 'required|string|max:3000'])->validate();
             }
-            $slot = $this->validateSelection($patient, $doctor, $specialtyId, $data['date'], $data['start_time'], $original?->modality ?? 'presential', $id);
-            $before = $id ? $a->only(['doctor_id', 'date', 'start_time', 'end_time', 'status', 'attendance_at', 'missed_call_at']) : null;
-            if ($id && $a->doctor_id === $doctor->id && $a->date === $data['date'] && substr($a->start_time, 0, 5) === $data['start_time']) {
-                $this->fail('Seleccione una programación diferente de la actual.');
+            $franja = $this->validarSeleccion($paciente, $medico, $especialidadId, $datos['date'], $datos['start_time'], $original?->modality ?? 'presential', $id);
+            $antes = $id ? $citaActual->only(['doctor_id', 'date', 'start_time', 'end_time', 'status', 'attendance_at', 'missed_call_at']) : null;
+            if ($id && $citaActual->doctor_id === $medico->id && $citaActual->date === $datos['date'] && substr($citaActual->start_time, 0, 5) === $datos['start_time']) {
+                $this->rechazar('Seleccione una programación diferente de la actual.');
             }
-            [$parent, $free] = app(FollowupPolicy::class)->evaluate($data, $id, $patient, (int) $specialtyId);
-            $losesExemption = $id && $a->complimentary && $data['cause'] === 'patient';
-            $unverifiedLegacy = $id && ! $a->complimentary && $a->payment?->status !== 'confirmed';
-            $payment = (! $id && ! $free) || $losesExemption || $unverifiedLegacy
-                ? app(PaymentVerifier::class)->reception($data, app(PaymentVerifier::class)->tariff($specialtyId), $actor) : null;
-            $a->fill(['patient_id' => $patient->id, 'doctor_id' => $doctor->id, 'specialty_id' => $specialtyId,
-                'date' => $data['date'], 'start_time' => $slot['start'], 'end_time' => $slot['end']]);
-            $a->clinical_slot_id = ClinicalSlot::identify($doctor->id, $data['date'], $slot['start'], $slot['end']);
+            [$citaOrigen, $esGratuita] = app(FollowupPolicy::class)->evaluar($datos, $id, $paciente, (int) $especialidadId);
+            $pierdeExencion = $id && $citaActual->complimentary && $datos['cause'] === 'patient';
+            $pagoHistoricoSinVerificar = $id && ! $citaActual->complimentary && $citaActual->payment?->status !== 'confirmed';
+            $pago = (! $id && ! $esGratuita) || $pierdeExencion || $pagoHistoricoSinVerificar
+                ? app(PaymentVerifier::class)->verificarPagoPresencial($datos, app(PaymentVerifier::class)->tarifa($especialidadId), $responsable) : null;
+            $citaActual->fill(['patient_id' => $paciente->id, 'doctor_id' => $medico->id, 'specialty_id' => $especialidadId,
+                'date' => $datos['date'], 'start_time' => $franja['start'], 'end_time' => $franja['end']]);
+            $citaActual->clinical_slot_id = ClinicalSlot::identify($medico->id, $datos['date'], $franja['start'], $franja['end']);
             if ($id) {
-                $a->fill(['status' => 'Programada', 'attendance_at' => null, 'missed_call_at' => null]);
+                $citaActual->fill(['status' => 'Programada', 'attendance_at' => null, 'missed_call_at' => null]);
             }
             if (! $id) {
-                $request = BookingRequest::create(['idempotency_key' => $data['idempotency_key'], 'patient_id' => $patient->id, 'doctor_id' => $doctor->id,
-                    'specialty_id' => $specialtyId, 'created_by' => $actor->id, 'date' => $data['date'], 'start_time' => $slot['start'], 'end_time' => $slot['end'],
-                    'modality' => 'presential', 'clinical_slot_id' => $a->clinical_slot_id, 'amount_minor' => $payment?->amount_minor ?? 0, 'status' => 'completed', 'expires_at' => now(), 'deadline_at' => now()]);
-                if ($payment) {
-                    $payment->update(['booking_request_id' => $request->id]);
+                $solicitud = BookingRequest::create(['idempotency_key' => $datos['idempotency_key'], 'patient_id' => $paciente->id, 'doctor_id' => $medico->id,
+                    'specialty_id' => $especialidadId, 'created_by' => $responsable->id, 'date' => $datos['date'], 'start_time' => $franja['start'], 'end_time' => $franja['end'],
+                    'modality' => 'presential', 'clinical_slot_id' => $citaActual->clinical_slot_id, 'amount_minor' => $pago?->amount_minor ?? 0, 'status' => 'completed', 'expires_at' => now(), 'deadline_at' => now()]);
+                if ($pago) {
+                    $pago->update(['booking_request_id' => $solicitud->id]);
                 }
-                $a->fill(['booking_request_id' => $request->id, 'status' => 'Programada', 'reason' => $data['reason'] ?? null,
-                    'created_by' => $actor->id, 'modality' => 'presential', 'parent_appointment_id' => $parent?->id, 'complimentary' => $free]);
+                $citaActual->fill(['booking_request_id' => $solicitud->id, 'status' => 'Programada', 'reason' => $datos['reason'] ?? null,
+                    'created_by' => $responsable->id, 'modality' => 'presential', 'parent_appointment_id' => $citaOrigen?->id, 'complimentary' => $esGratuita]);
             }
-            if ($payment) {
-                $a->fill(['payment_id' => $payment->id, 'complimentary' => false]);
+            if ($pago) {
+                $citaActual->fill(['payment_id' => $pago->id, 'complimentary' => false]);
             }
-            $a->save();
-            $this->consumeDemand($a);
+            $citaActual->save();
+            $this->consumirBloqueoDemanda($citaActual);
             if ($id) {
                 RescheduleRequest::where('appointment_id', $id)->where('status', 'pending')->get()->each->update([
-                    'status' => 'accepted', 'response' => $data['change_reason'], 'resolved_by' => $actor->id, 'resolved_at' => now()]);
+                    'status' => 'accepted', 'response' => $datos['change_reason'], 'resolved_by' => $responsable->id, 'resolved_at' => now()]);
             }
-            $this->event($a, $actor, $id ? 'Reprogramación' : 'Creación', ['before' => $before, 'after' => $a->only(['doctor_id', 'date', 'start_time', 'end_time']),
-                'cause' => $data['cause'] ?? ($parent ? ($data['followup_change_cause'] ?? 'patient') : null), 'patient_accepted' => $data['patient_accepted'] ?? null, 'reason' => $data['change_reason'] ?? $data['followup_change_reason'] ?? null]);
+            $this->registrarEvento($citaActual, $responsable, $id ? 'Reprogramación' : 'Creación', ['before' => $antes, 'after' => $citaActual->only(['doctor_id', 'date', 'start_time', 'end_time']),
+                'cause' => $datos['cause'] ?? ($citaOrigen ? ($datos['followup_change_cause'] ?? 'patient') : null), 'patient_accepted' => $datos['patient_accepted'] ?? null, 'reason' => $datos['change_reason'] ?? $datos['followup_change_reason'] ?? null]);
 
-            return $a->load('patient', 'doctor', 'specialty', 'events', 'payment');
+            return $citaActual->load('patient', 'doctor', 'specialty', 'events', 'payment');
         }, 3);
     }
 
     /** Revalida médico, especialidad, paciente, horario y superposiciones dentro de la operación del servidor. */
-    public function validateSelection(Patient $patient, Doctor $doctor, int $specialtyId, string $date, string $start, string $modality, ?int $exclude = null, ?int $hold = null): array
+    public function validarSeleccion(Patient $paciente, Doctor $medico, int $especialidadId, string $fecha, string $inicio, string $modalidad, ?int $excluirId = null, ?int $retencion = null): array
     {
-        $specialty = Specialty::findOrFail($specialtyId);
-        if ($patient->status !== 'Activo' || $doctor->status !== 'Activo' || $specialty->status !== 'Activo' || ! $doctor->specialties()->whereKey($specialtyId)->exists()) {
-            $this->fail('Paciente, médico y especialidad deben estar activos y vinculados.');
+        $especialidad = Specialty::findOrFail($especialidadId);
+        if ($paciente->status !== 'Activo' || $medico->status !== 'Activo' || $especialidad->status !== 'Activo' || ! $medico->specialties()->whereKey($especialidadId)->exists()) {
+            $this->rechazar('Paciente, médico y especialidad deben estar activos y vinculados.');
         }
-        $slot = collect($this->slots($doctor->id, $date, $exclude, $modality, $hold))->firstWhere('start', $start);
-        if (! $slot || $slot['status'] !== 'Disponible') {
-            $this->fail('El cupo ya no está disponible para esta modalidad.');
+        $franja = collect($this->franjasDisponibles($medico->id, $fecha, $excluirId, $modalidad, $retencion))->firstWhere('start', $inicio);
+        if (! $franja || $franja['status'] !== 'Disponible') {
+            $this->rechazar('El cupo ya no está disponible para esta modalidad.');
         }
-        $demand = AgendaAdjustment::where('doctor_id', $doctor->id)->where('date', $date)->where('status', 'active')->where('kind', 'presential_block')
-            ->where('start_time', '<', $slot['end'])->where('end_time', '>', $slot['start'])->first();
-        if ($demand && ($modality !== 'presential' || $demand->specialty_id !== $specialtyId || $date !== today()->toDateString())) {
-            $this->fail('El bloqueo presencial corresponde a otra especialidad.');
+        $bloqueoDemanda = AgendaAdjustment::where('doctor_id', $medico->id)->where('date', $fecha)->where('status', 'active')->where('kind', 'presential_block')
+            ->where('start_time', '<', $franja['end'])->where('end_time', '>', $franja['start'])->first();
+        if ($bloqueoDemanda && ($modalidad !== 'presential' || $bloqueoDemanda->specialty_id !== $especialidadId || $fecha !== today()->toDateString())) {
+            $this->rechazar('El bloqueo presencial corresponde a otra especialidad.');
         }
-        $overlap = fn ($q) => $q->where('patient_id', $patient->id)->where('date', $date)->where('start_time', '<', $slot['end'])->where('end_time', '>', $slot['start']);
-        if (Appointment::where($overlap)->whereIn('status', Appointment::ACTIVE)->when($exclude, fn ($q) => $q->whereKeyNot($exclude))->exists()
-            || BookingRequest::where($overlap)->whereIn('status', ['held', 'processing'])->when($hold, fn ($q) => $q->whereKeyNot($hold))->exists()) {
-            $this->fail('El paciente tiene una cita o retención que se superpone.');
+        $filtrarSuperposicion = fn ($consulta) => $consulta->where('patient_id', $paciente->id)->where('date', $fecha)->where('start_time', '<', $franja['end'])->where('end_time', '>', $franja['start']);
+        if (Appointment::where($filtrarSuperposicion)->whereIn('status', Appointment::ACTIVE)->when($excluirId, fn ($consulta) => $consulta->whereKeyNot($excluirId))->exists()
+            || BookingRequest::where($filtrarSuperposicion)->whereIn('status', ['held', 'processing'])->when($retencion, fn ($consulta) => $consulta->whereKeyNot($retencion))->exists()) {
+            $this->rechazar('El paciente tiene una cita o retención que se superpone.');
         }
 
-        return $slot;
+        return $franja;
     }
 
     /** Marca como consumido el bloqueo presencial utilizado por una cita real. */
-    public function consumeDemand(Appointment $a): void
+    public function consumirBloqueoDemanda(Appointment $citaActual): void
     {
-        if ($a->modality !== 'presential') {
+        if ($citaActual->modality !== 'presential') {
             return;
         }
-        AgendaAdjustment::where('doctor_id', $a->doctor_id)->where('date', $a->date)->where('start_time', $a->start_time)->where('end_time', $a->end_time)
-            ->where('specialty_id', $a->specialty_id)->where('kind', 'presential_block')->where('status', 'active')->get()
-            ->each->update(['status' => 'consumed', 'appointment_id' => $a->id]);
+        AgendaAdjustment::where('doctor_id', $citaActual->doctor_id)->where('date', $citaActual->date)->where('start_time', $citaActual->start_time)->where('end_time', $citaActual->end_time)
+            ->where('specialty_id', $citaActual->specialty_id)->where('kind', 'presential_block')->where('status', 'active')->get()
+            ->each->update(['status' => 'consumed', 'appointment_id' => $citaActual->id]);
     }
 
     /** Aplica una transición de estado válida; conserva el historial y evita operaciones incompatibles. */
-    public function transition(int $id, string $action, User $actor, ?string $reason = null, array $data = []): Appointment
+    public function cambiarEstado(int $id, string $accion, User $responsable, ?string $motivo = null, array $datos = []): Appointment
     {
-        return DB::transaction(function () use ($id, $action, $actor, $reason, $data) {
-            $a = Appointment::whereKey($id)->lockForUpdate()->firstOrFail();
-            if ($actor->role === 'Médico' && $a->doctor_id !== $actor->doctor_id) {
+        return DB::transaction(function () use ($id, $accion, $responsable, $motivo, $datos) {
+            $citaActual = Appointment::whereKey($id)->lockForUpdate()->firstOrFail();
+            if ($responsable->role === 'Médico' && $citaActual->doctor_id !== $responsable->doctor_id) {
                 abort(403, 'Solo puede operar su propia agenda.');
             }
-            if (! in_array($a->status, Appointment::ACTIVE)) {
-                $this->fail('La cita ya no está vigente.');
+            if (! in_array($citaActual->status, Appointment::ACTIVE)) {
+                $this->rechazar('La cita ya no está vigente.');
             }
-            if (in_array($action, ['attendance', 'absent', 'attend', 'missed-call']) && $a->date !== today()->toDateString()) {
-                $this->fail('Esta operación solo corresponde a citas de hoy.');
+            if (in_array($accion, ['attendance', 'absent', 'attend', 'missed-call']) && $citaActual->date !== today()->toDateString()) {
+                $this->rechazar('Esta operación solo corresponde a citas de hoy.');
             }
-            $before = $a->status;
-            switch ($action) {
+            $antes = $citaActual->status;
+            switch ($accion) {
                 case 'cancel':
-                    validator($data, ['cause' => 'required|in:patient,clinic'])->validate();
-                    $a->fill(['status' => 'Cancelada', 'cancellation_reason' => $reason, 'cancellation_cause' => $data['cause'], 'cancelled_at' => now()]);
-                    RescheduleRequest::where('appointment_id', $a->id)->where('status', 'pending')->get()->each->update(['status' => 'closed', 'response' => 'Cita cancelada por Recepción.', 'resolved_by' => $actor->id, 'resolved_at' => now()]);
+                    validator($datos, ['cause' => 'required|in:patient,clinic'])->validate();
+                    $citaActual->fill(['status' => 'Cancelada', 'cancellation_reason' => $motivo, 'cancellation_cause' => $datos['cause'], 'cancelled_at' => now()]);
+                    RescheduleRequest::where('appointment_id', $citaActual->id)->where('status', 'pending')->get()->each->update(['status' => 'closed', 'response' => 'Cita cancelada por Recepción.', 'resolved_by' => $responsable->id, 'resolved_at' => now()]);
                     break;
                 case 'attendance':
-                    $needsPayment = $this->needsPayment($a);
-                    if ($a->attendance_at && ! $needsPayment) {
-                        $this->fail('La asistencia ya fue registrada.');
+                    $requierePago = $this->requierePago($citaActual);
+                    if ($citaActual->attendance_at && ! $requierePago) {
+                        $this->rechazar('La asistencia ya fue registrada.');
                     }
-                    if ($needsPayment) {
-                        $payment = app(PaymentVerifier::class)->reception($data, app(PaymentVerifier::class)->tariff($a->specialty_id), $actor);
-                        $a->fill(['payment_id' => $payment->id, 'complimentary' => false]);
+                    if ($requierePago) {
+                        $pago = app(PaymentVerifier::class)->verificarPagoPresencial($datos, app(PaymentVerifier::class)->tarifa($citaActual->specialty_id), $responsable);
+                        $citaActual->fill(['payment_id' => $pago->id, 'complimentary' => false]);
                     }
-                    $a->fill(['status' => 'Confirmada', 'attendance_at' => $a->attendance_at ?? now()]);
+                    $citaActual->fill(['status' => 'Confirmada', 'attendance_at' => $citaActual->attendance_at ?? now()]);
                     break;
                 case 'missed-call':
-                    if ($a->attendance_at) {
-                        $this->fail('El paciente ya está presente.');
+                    if ($citaActual->attendance_at) {
+                        $this->rechazar('El paciente ya está presente.');
                     }
-                    $a->missed_call_at = now();
+                    $citaActual->missed_call_at = now();
                     break;
                 case 'absent':
-                    if ($a->attendance_at) {
-                        $this->fail('El paciente ya registró asistencia.');
+                    if ($citaActual->attendance_at) {
+                        $this->rechazar('El paciente ya registró asistencia.');
                     }
-                    validator($data, ['definitive' => 'required|accepted', 'reason' => 'required|string|max:3000'])->validate();
-                    $a->status = 'Inasistencia';
+                    validator($datos, ['definitive' => 'required|accepted', 'reason' => 'required|string|max:3000'])->validate();
+                    $citaActual->status = 'Inasistencia';
                     break;
                 case 'attend':
-                    if ($this->needsPayment($a)) {
-                        $this->fail('Recepción debe verificar el pago antes de continuar la atención.');
+                    if ($this->requierePago($citaActual)) {
+                        $this->rechazar('Recepción debe verificar el pago antes de continuar la atención.');
                     }
-                    if (! $a->attendance_at || $a->status !== 'Confirmada') {
-                        $this->fail('Debe registrarse la presencia antes de finalizar la consulta.');
+                    if (! $citaActual->attendance_at || $citaActual->status !== 'Confirmada') {
+                        $this->rechazar('Debe registrarse la presencia antes de finalizar la consulta.');
                     }
-                    validator($data, ['consultation_finished' => 'required|accepted', 'followup_suggested_at' => 'nullable|date|after:now', 'followup_note' => 'nullable|string|max:3000'])->validate();
-                    $a->fill(['status' => 'Atendida', 'attended_at' => now(), 'followup_suggested_at' => $data['followup_suggested_at'] ?? null, 'followup_note' => $data['followup_note'] ?? null]);
+                    validator($datos, ['consultation_finished' => 'required|accepted', 'followup_suggested_at' => 'nullable|date|after:now', 'followup_note' => 'nullable|string|max:3000'])->validate();
+                    $citaActual->fill(['status' => 'Atendida', 'attended_at' => now(), 'followup_suggested_at' => $datos['followup_suggested_at'] ?? null, 'followup_note' => $datos['followup_note'] ?? null]);
                     break;
                 default: abort(404);
             }
-            $a->save();
-            $this->event($a, $actor, $action, ['before' => $before, 'after' => $a->status, 'reason' => $reason, 'attendance_at' => $a->attendance_at]);
+            $citaActual->save();
+            $this->registrarEvento($citaActual, $responsable, $accion, ['before' => $antes, 'after' => $citaActual->status, 'reason' => $motivo, 'attendance_at' => $citaActual->attendance_at]);
 
-            return $a->load('patient', 'doctor', 'specialty', 'events', 'payment');
+            return $citaActual->load('patient', 'doctor', 'specialty', 'events', 'payment');
         });
     }
 
     /** Añade el cambio al historial de la cita con actor y datos permitidos. */
-    public function event(Appointment $a, User $actor, string $action, array $details): void
+    public function registrarEvento(Appointment $citaActual, User $responsable, string $accion, array $detalles): void
     {
         DB::statement('CALL public.registrar_evento_cita(?, ?, ?, ?::jsonb)', [
-            $a->id, $actor->id, $action, json_encode((object) $details, JSON_THROW_ON_ERROR),
+            $citaActual->id, $responsable->id, $accion, json_encode((object) $detalles, JSON_THROW_ON_ERROR),
         ]);
-        $before = is_array($details['before'] ?? null) ? $details['before'] : ['status' => $details['before'] ?? null];
-        $after = is_array($details['after'] ?? null) ? $details['after'] : ['status' => $details['after'] ?? $a->status];
-        foreach (['cause' => 'change_cause', 'patient_accepted' => 'patient_accepted'] as $key => $field) {
-            if (isset($details[$key])) {
-                $after[$field] = $details[$key];
+        $antes = is_array($detalles['before'] ?? null) ? $detalles['before'] : ['status' => $detalles['before'] ?? null];
+        $despues = is_array($detalles['after'] ?? null) ? $detalles['after'] : ['status' => $detalles['after'] ?? $citaActual->status];
+        foreach (['cause' => 'change_cause', 'patient_accepted' => 'patient_accepted'] as $clave => $campo) {
+            if (isset($detalles[$clave])) {
+                $despues[$campo] = $detalles[$clave];
             }
         }
-        $changes = [];
-        foreach (AuditDetails::attributes($after) as $field => $value) {
-            $changes[$field] = ['before' => $before[$field] ?? null, 'after' => $value];
+        $cambios = [];
+        foreach (AuditDetails::atributosPermitidos($despues) as $campo => $valor) {
+            $cambios[$campo] = ['before' => $antes[$campo] ?? null, 'after' => $valor];
         }
-        app(AuditLogger::class)->record('appointments', match ($action) {
-            'Creación' => 'booked', 'Reprogramación' => 'rescheduled', default => $action,
-        }, $a, details: ['reason' => $details['reason'] ?? null, 'fields' => array_keys($changes), 'changes' => $changes], actorId: $actor->id);
+        app(AuditLogger::class)->registrar('appointments', match ($accion) {
+            'Creación' => 'booked', 'Reprogramación' => 'rescheduled', default => $accion,
+        }, $citaActual, detalles: ['reason' => $detalles['reason'] ?? null, 'fields' => array_keys($cambios), 'changes' => $cambios], responsableId: $responsable->id);
     }
 
     /** Comprueba si el pago confirmado o la exención vigente permiten continuar la atención. */
-    public function needsPayment(Appointment $a): bool
+    public function requierePago(Appointment $citaActual): bool
     {
-        if ($a->complimentary) {
-            $arrival = $a->attendance_at ? CarbonImmutable::parse($a->attendance_at) : now();
+        if ($citaActual->complimentary) {
+            $llegada = $citaActual->attendance_at ? CarbonImmutable::parse($citaActual->attendance_at) : now();
 
-            return $a->missed_call_at !== null || $arrival->gt(CarbonImmutable::parse($a->date.' '.$a->start_time));
+            return $citaActual->missed_call_at !== null || $llegada->gt(CarbonImmutable::parse($citaActual->date.' '.$citaActual->start_time));
         }
 
-        return $a->payment?->status !== 'confirmed';
+        return $citaActual->payment?->status !== 'confirmed';
     }
 
     /** Interrumpe la operación con un error de validación comprensible. */
-    private function fail(string $message): never
+    private function rechazar(string $mensaje): never
     {
-        throw ValidationException::withMessages(['appointment' => $message]);
+        throw ValidationException::withMessages(['appointment' => $mensaje]);
     }
 }

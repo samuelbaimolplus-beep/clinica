@@ -13,23 +13,23 @@ use Illuminate\Validation\ValidationException;
 class FollowupPolicy
 {
     /** Evalúa la política aplicable a la operación sin sustituir la autorización del actor. */
-    public function evaluate(array $data, ?int $id, Patient $patient, int $specialtyId): array
+    public function evaluar(array $datos, ?int $id, Patient $paciente, int $especialidadId): array
     {
-        $parent = null;
-        $free = false;
-        if (! $id && ! empty($data['parent_appointment_id'])) {
-            $parent = Appointment::whereKey($data['parent_appointment_id'])->lockForUpdate()->firstOrFail();
-            if ($parent->status !== 'Atendida' || $parent->patient_id !== $patient->id || $parent->specialty_id !== $specialtyId || ! $parent->followup_suggested_at) {
+        $citaOrigen = null;
+        $esGratuita = false;
+        if (! $id && ! empty($datos['parent_appointment_id'])) {
+            $citaOrigen = Appointment::whereKey($datos['parent_appointment_id'])->lockForUpdate()->firstOrFail();
+            if ($citaOrigen->status !== 'Atendida' || $citaOrigen->patient_id !== $paciente->id || $citaOrigen->specialty_id !== $especialidadId || ! $citaOrigen->followup_suggested_at) {
                 throw ValidationException::withMessages(['appointment' => 'El seguimiento requiere una consulta atendida y una recomendación médica de la misma especialidad.']);
             }
-            $suggested = CarbonImmutable::parse($parent->followup_suggested_at);
-            $free = $suggested->format('Y-m-d H:i') === $data['date'].' '.$data['start_time'];
-            if (! $free && ($data['followup_change_cause'] ?? 'patient') === 'clinic') {
-                validator($data, ['followup_change_reason' => 'required|string|max:3000'])->validate();
-                $free = true;
+            $fechaSugerida = CarbonImmutable::parse($citaOrigen->followup_suggested_at);
+            $esGratuita = $fechaSugerida->format('Y-m-d H:i') === $datos['date'].' '.$datos['start_time'];
+            if (! $esGratuita && ($datos['followup_change_cause'] ?? 'patient') === 'clinic') {
+                validator($datos, ['followup_change_reason' => 'required|string|max:3000'])->validate();
+                $esGratuita = true;
             }
         }
 
-        return [$parent, $free];
+        return [$citaOrigen, $esGratuita];
     }
 }

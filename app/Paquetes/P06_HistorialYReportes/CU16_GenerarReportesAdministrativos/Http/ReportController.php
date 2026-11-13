@@ -13,61 +13,61 @@ use Illuminate\Validation\Rule;
 class ReportController extends Controller
 {
     /** Consulta el listado y sus filtros; la ruta aplica los permisos del módulo. */
-    public function index(Request $r)
+    public function listar(Request $peticion)
     {
-        abort_unless($r->user()->hasStaffRole('Administrador'), 403);
-        $d = $r->validate([
+        abort_unless($peticion->user()->hasStaffRole('Administrador'), 403);
+        $criterios = $peticion->validate([
             'type' => ['required', Rule::in(['REP01', 'REP02', 'REP03', 'REP04', 'REP05', 'REP06', 'REP07'])],
-            'date' => ['nullable', 'date_format:Y-m-d', Rule::requiredIf(fn () => $r->input('type') === 'REP07' || ($r->input('type') === 'REP01' && ! $r->filled('from')))],
+            'date' => ['nullable', 'date_format:Y-m-d', Rule::requiredIf(fn () => $peticion->input('type') === 'REP07' || ($peticion->input('type') === 'REP01' && ! $peticion->filled('from')))],
             'from' => 'required_if:type,REP02,REP03,REP04,REP06|nullable|date_format:Y-m-d',
             'to' => 'required_with:from|nullable|date_format:Y-m-d|after_or_equal:from',
             'doctor_id' => 'required_if:type,REP02,REP07|nullable|integer|exists:doctors,id',
             'specialty_id' => 'required_if:type,REP03|nullable|integer|exists:specialties,id',
             'status' => ['nullable', Rule::in(Appointment::STATES)], 'format' => ['nullable', Rule::in(['json', 'csv'])],
         ]);
-        if ($d['type'] === 'REP05') {
-            $rows = Patient::orderBy('last_name')->get();
-            $headers = ['Código', 'CI', 'Paciente', 'Nacimiento', 'Sexo', 'Teléfono', 'Estado'];
-            $table = $rows->map(fn ($p) => ['PAC-'.str_pad($p->id, 3, '0', STR_PAD_LEFT), $p->identity, $p->first_name.' '.$p->last_name, $p->birth_date, $p->sex, $p->phone, $p->status]);
+        if ($criterios['type'] === 'REP05') {
+            $filas = Patient::orderBy('last_name')->get();
+            $cabeceras = ['Código', 'CI', 'Paciente', 'Nacimiento', 'Sexo', 'Teléfono', 'Estado'];
+            $tabla = $filas->map(fn ($elementoActual) => ['PAC-'.str_pad($elementoActual->id, 3, '0', STR_PAD_LEFT), $elementoActual->identity, $elementoActual->first_name.' '.$elementoActual->last_name, $elementoActual->birth_date, $elementoActual->sex, $elementoActual->phone, $elementoActual->status]);
         } else {
-            $q = Appointment::with('patient', 'doctor', 'specialty')->orderBy('date')->orderBy('start_time');
-            if ($d['type'] === 'REP07' || ($d['type'] === 'REP01' && ! empty($d['date']))) {
-                $q->where('date', $d['date']);
+            $consulta = Appointment::with('patient', 'doctor', 'specialty')->orderBy('date')->orderBy('start_time');
+            if ($criterios['type'] === 'REP07' || ($criterios['type'] === 'REP01' && ! empty($criterios['date']))) {
+                $consulta->where('date', $criterios['date']);
             } else {
-                $q->whereBetween('date', [$d['from'], $d['to']]);
+                $consulta->whereBetween('date', [$criterios['from'], $criterios['to']]);
             }
-            if (in_array($d['type'], ['REP02', 'REP07']) && ! empty($d['doctor_id'])) {
-                $q->where('doctor_id', $d['doctor_id']);
+            if (in_array($criterios['type'], ['REP02', 'REP07']) && ! empty($criterios['doctor_id'])) {
+                $consulta->where('doctor_id', $criterios['doctor_id']);
             }
-            if ($d['type'] === 'REP03' && ! empty($d['specialty_id'])) {
-                $q->where('specialty_id', $d['specialty_id']);
+            if ($criterios['type'] === 'REP03' && ! empty($criterios['specialty_id'])) {
+                $consulta->where('specialty_id', $criterios['specialty_id']);
             }
-            if ($d['type'] === 'REP04' && ! empty($d['status'])) {
-                $q->where('status', $d['status']);
+            if ($criterios['type'] === 'REP04' && ! empty($criterios['status'])) {
+                $consulta->where('status', $criterios['status']);
             }
-            $rows = $q->get();
-            $headers = ['Código', 'Paciente', 'Médico', 'Especialidad', 'Fecha', 'Inicio', 'Fin', 'Estado'];
-            $table = $rows->map(fn ($a) => ['CIT-'.str_pad($a->id, 4, '0', STR_PAD_LEFT), $a->patient->first_name.' '.$a->patient->last_name, $a->doctor->first_name.' '.$a->doctor->last_name, $a->specialty->name, $a->date, substr($a->start_time, 0, 5), substr($a->end_time, 0, 5), $a->status]);
+            $filas = $consulta->get();
+            $cabeceras = ['Código', 'Paciente', 'Médico', 'Especialidad', 'Fecha', 'Inicio', 'Fin', 'Estado'];
+            $tabla = $filas->map(fn ($citaActual) => ['CIT-'.str_pad($citaActual->id, 4, '0', STR_PAD_LEFT), $citaActual->patient->first_name.' '.$citaActual->patient->last_name, $citaActual->doctor->first_name.' '.$citaActual->doctor->last_name, $citaActual->specialty->name, $citaActual->date, substr($citaActual->start_time, 0, 5), substr($citaActual->end_time, 0, 5), $citaActual->status]);
         }
-        $summary = ['total' => $rows->count()];
-        if ($d['type'] !== 'REP05') {
-            foreach (Appointment::STATES as $status) {
-                $n = $rows->where('status', $status)->count();
-                $summary[$status] = ['count' => $n, 'percentage' => $rows->count() ? round($n * 100 / $rows->count(), 1) : 0];
+        $resumen = ['total' => $filas->count()];
+        if ($criterios['type'] !== 'REP05') {
+            foreach (Appointment::STATES as $estado) {
+                $cantidad = $filas->where('status', $estado)->count();
+                $resumen[$estado] = ['count' => $cantidad, 'percentage' => $filas->count() ? round($cantidad * 100 / $filas->count(), 1) : 0];
             }
         }
-        if (($d['format'] ?? '') === 'csv') {
-            return response()->streamDownload(function () use ($headers, $table) {
-                $out = fopen('php://output', 'w');
-                fwrite($out, "\xEF\xBB\xBF");
-                fputcsv($out, $headers, ';', '"', '');
-                foreach ($table as $row) {
-                    fputcsv($out, array_map(fn ($v) => preg_match('/^[\s]*[=+@\-]/u', (string) $v) ? "'".$v : $v, $row), ';', '"', '');
+        if (($criterios['format'] ?? '') === 'csv') {
+            return response()->streamDownload(function () use ($cabeceras, $tabla) {
+                $salida = fopen('php://output', 'w');
+                fwrite($salida, "\xEF\xBB\xBF");
+                fputcsv($salida, $cabeceras, ';', '"', '');
+                foreach ($tabla as $fila) {
+                    fputcsv($salida, array_map(fn ($valorCelda) => preg_match('/^[\s]*[=+@\-]/u', (string) $valorCelda) ? "'".$valorCelda : $valorCelda, $fila), ';', '"', '');
                 }
-                fclose($out);
-            }, $d['type'].'-'.now()->format('Ymd-His').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+                fclose($salida);
+            }, $criterios['type'].'-'.now()->format('Ymd-His').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
         }
 
-        return ['headers' => $headers, 'rows' => $table, 'summary' => $summary];
+        return ['headers' => $cabeceras, 'rows' => $tabla, 'summary' => $resumen];
     }
 }

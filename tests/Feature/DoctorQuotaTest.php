@@ -137,7 +137,7 @@ class DoctorQuotaTest extends TestCase
     public function test_audit_failure_rolls_back_the_quota_configuration(): void
     {
         $logger = Mockery::mock(new AuditLogger);
-        $logger->shouldReceive('record')->andThrow(new \RuntimeException('Fallo simulado de auditoría'));
+        $logger->shouldReceive('registrar')->andThrow(new \RuntimeException('Fallo simulado de auditoría'));
         $this->app->instance(AuditLogger::class, $logger);
         $this->saveQuota('50', '50')->assertStatus(503);
         $this->assertDatabaseCount('doctor_quotas', 0);

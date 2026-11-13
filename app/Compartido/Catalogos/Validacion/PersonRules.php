@@ -13,7 +13,7 @@ use Illuminate\Validation\Rule;
 trait PersonRules
 {
     /** Construye las reglas reutilizadas por fichas de personas. */
-    protected function personRules(): array
+    protected function reglasPersona(): array
     {
         return ['first_name' => 'required|string|max:100', 'last_name' => 'required|string|max:150',
             'phone' => 'required|string|max:30', 'status' => ['required', Rule::in(['Activo', 'Inactivo'])]];
@@ -22,16 +22,16 @@ trait PersonRules
     /** Normaliza las entradas antes de aplicar reglas; no concede permisos ni omite validaciones. */
     protected function prepareForValidation(): void
     {
-        foreach (['name', 'first_name', 'last_name', 'email', 'username', 'identity', 'registration'] as $field) {
-            if (is_string($this->input($field))) {
-                $value = trim($this->input($field));
-                $value = match ($field) {
-                    'name' => $this instanceof SaveSpecialtyRequest ? SpecialtyName::display($value) : $value,
-                    'email', 'username' => mb_strtolower($value),
-                    'identity', 'registration' => mb_strtoupper($value),
-                    default => $value,
+        foreach (['name', 'first_name', 'last_name', 'email', 'username', 'identity', 'registration'] as $campo) {
+            if (is_string($this->input($campo))) {
+                $valor = trim($this->input($campo));
+                $valor = match ($campo) {
+                    'name' => $this instanceof SaveSpecialtyRequest ? SpecialtyName::display($valor) : $valor,
+                    'email', 'username' => mb_strtolower($valor),
+                    'identity', 'registration' => mb_strtoupper($valor),
+                    default => $valor,
                 };
-                $this->merge([$field => $value === '' ? null : $value]);
+                $this->merge([$campo => $valor === '' ? null : $valor]);
             }
         }
         if (! $this->route('id') && ($this instanceof SaveDoctorRequest || $this instanceof SaveSpecialtyRequest || $this instanceof SavePatientRequest)) {

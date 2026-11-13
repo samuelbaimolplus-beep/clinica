@@ -19,49 +19,49 @@ use Illuminate\Http\Request;
 class WorkspaceController extends Controller
 {
     /** Atiende la operación única de esta clase usando las dependencias resueltas por Laravel. */
-    public function __invoke(Request $request, AppointmentService $service)
+    public function __invoke(Request $solicitud, AppointmentService $servicio)
     {
-        $user = $request->user();
-        abort_unless(in_array($user->role, ['Superadmin', 'Administrador', 'Recepcionista', 'Médico', 'Paciente'], true), 403);
-        $query = Appointment::query();
-        if ($user->role === 'Paciente') {
-            $query->where('patient_id', $user->patient_id);
-        } elseif ($user->role === 'Médico') {
-            $query->where('doctor_id', $user->doctor_id);
+        $usuario = $solicitud->user();
+        abort_unless(in_array($usuario->role, ['Superadmin', 'Administrador', 'Recepcionista', 'Médico', 'Paciente'], true), 403);
+        $consultaDatos = Appointment::query();
+        if ($usuario->role === 'Paciente') {
+            $consultaDatos->where('patient_id', $usuario->patient_id);
+        } elseif ($usuario->role === 'Médico') {
+            $consultaDatos->where('doctor_id', $usuario->doctor_id);
         }
-        $today = today()->toDateString();
-        $daily = (clone $query)->where('date', $today);
-        $next = (clone $query)->where('date', '>=', $today)->whereIn('status', Appointment::ACTIVE)
+        $hoy = today()->toDateString();
+        $citasDelDia = (clone $consultaDatos)->where('date', $hoy);
+        $siguiente = (clone $consultaDatos)->where('date', '>=', $hoy)->whereIn('status', Appointment::ACTIVE)
             ->with('patient:id,first_name,last_name', 'doctor:id,first_name,last_name', 'specialty:id,name', 'payment')
             ->orderBy('date')->orderBy('start_time')->orderBy('id')->limit(6)->get();
-        $records = $next->map(fn ($a) => [
-            'id' => $a->id, 'date' => $a->date, 'start_time' => $a->start_time, 'end_time' => $a->end_time,
-            'status' => $a->status, 'attendance_at' => $a->attendance_at,
-            'patient' => $a->patient?->only(['id', 'first_name', 'last_name']),
-            'doctor' => $a->doctor?->only(['id', 'first_name', 'last_name']),
-            'specialty' => $a->specialty?->only(['id', 'name']),
-            'requires_arrival_payment' => $service->needsPayment($a),
+        $registros = $siguiente->map(fn ($citaActual) => [
+            'id' => $citaActual->id, 'date' => $citaActual->date, 'start_time' => $citaActual->start_time, 'end_time' => $citaActual->end_time,
+            'status' => $citaActual->status, 'attendance_at' => $citaActual->attendance_at,
+            'patient' => $citaActual->patient?->only(['id', 'first_name', 'last_name']),
+            'doctor' => $citaActual->doctor?->only(['id', 'first_name', 'last_name']),
+            'specialty' => $citaActual->specialty?->only(['id', 'name']),
+            'requires_arrival_payment' => $servicio->requierePago($citaActual),
         ]);
-        $staff = $user->hasStaffRole('Administrador', 'Recepcionista');
-        $setup = $user->hasStaffRole('Administrador') ? [
+        $esPersonal = $usuario->hasStaffRole('Administrador', 'Recepcionista');
+        $preparacion = $usuario->hasStaffRole('Administrador') ? [
             'specialties' => Specialty::where('status', 'Activo')->count(),
             'doctors' => Doctor::where('status', 'Activo')->count(),
             'scheduled_doctors' => Schedule::whereIn('doctor_id', Doctor::where('status', 'Activo')->select('id'))->distinct()->count('doctor_id'),
         ] : null;
 
         return response()->json([
-            'date' => $today,
+            'date' => $hoy,
             'today' => [
-                'total' => (clone $daily)->count(),
-                'expected' => (clone $daily)->whereIn('status', Appointment::ACTIVE)->whereNull('attendance_at')->count(),
-                'waiting' => (clone $daily)->where('status', 'Confirmada')->whereNotNull('attendance_at')->count(),
-                'attended' => (clone $daily)->where('status', 'Atendida')->count(),
+                'total' => (clone $citasDelDia)->count(),
+                'expected' => (clone $citasDelDia)->whereIn('status', Appointment::ACTIVE)->whereNull('attendance_at')->count(),
+                'waiting' => (clone $citasDelDia)->where('status', 'Confirmada')->whereNotNull('attendance_at')->count(),
+                'attended' => (clone $citasDelDia)->where('status', 'Atendida')->count(),
             ],
-            'next' => $records,
-            'requests' => $user->hasStaffRole('Recepcionista') ? RescheduleRequest::where('status', 'pending')->count() : null,
-            'refunds' => $user->hasStaffRole('Administrador') ? RefundRequest::whereIn('status', ['pending', 'approved'])->count() : null,
-            'patients' => $staff ? Patient::count() : null,
-            'setup' => $setup,
+            'next' => $registros,
+            'requests' => $usuario->hasStaffRole('Recepcionista') ? RescheduleRequest::where('status', 'pending')->count() : null,
+            'refunds' => $usuario->hasStaffRole('Administrador') ? RefundRequest::whereIn('status', ['pending', 'approved'])->count() : null,
+            'patients' => $esPersonal ? Patient::count() : null,
+            'setup' => $preparacion,
         ])->header('Cache-Control', 'private, no-store');
     }
 }

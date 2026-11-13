@@ -16,7 +16,7 @@ Artisan::command('clinica:conciliar-pagos', function () {
     $count = 0;
     BookingRequest::whereIn('status', ['held', 'processing'])->where('modality', 'online')->orderBy('id')->chunkById(50, function ($bookings) use (&$count) {
         foreach ($bookings as $booking) {
-            app(OnlineBookingService::class)->reconcile($booking);
+            app(OnlineBookingService::class)->conciliar($booking);
             $count++;
         }
     });

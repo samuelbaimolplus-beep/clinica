@@ -62,7 +62,7 @@ class EstablishedUseCasesTest extends TestCase
     private function failAudit(): void
     {
         $logger = Mockery::mock(new AuditLogger);
-        $logger->shouldReceive('record')->andThrow(new \RuntimeException('DETALLE_INTERNO_NO_PUBLICAR'));
+        $logger->shouldReceive('registrar')->andThrow(new \RuntimeException('DETALLE_INTERNO_NO_PUBLICAR'));
         $this->app->instance(AuditLogger::class, $logger);
     }
 

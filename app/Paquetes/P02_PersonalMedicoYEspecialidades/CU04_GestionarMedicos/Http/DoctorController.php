@@ -4,39 +4,39 @@
 
 namespace App\Paquetes\P02_PersonalMedicoYEspecialidades\CU04_GestionarMedicos\Http;
 
-use App\Http\Controllers\Controller;
-use App\Paquetes\P02_PersonalMedicoYEspecialidades\CU04_GestionarMedicos\Validacion\SaveDoctorRequest;
-use App\Models\Doctor;
 use App\Compartido\Catalogos\Servicios\CatalogImpact;
 use App\Compartido\Catalogos\Servicios\CatalogService;
+use App\Http\Controllers\Controller;
+use App\Models\Doctor;
+use App\Paquetes\P02_PersonalMedicoYEspecialidades\CU04_GestionarMedicos\Validacion\SaveDoctorRequest;
 use Illuminate\Http\Request;
 
 class DoctorController extends Controller
 {
     /** Consulta el listado y sus filtros; la ruta aplica los permisos del módulo. */
-    public function index(Request $request)
+    public function listar(Request $solicitud)
     {
-        $data = $request->validate(['search' => 'nullable|string|max:150']);
-        $search = mb_strtolower(trim($data['search'] ?? ''));
+        $datos = $solicitud->validate(['search' => 'nullable|string|max:150']);
+        $busqueda = mb_strtolower(trim($datos['search'] ?? ''));
 
-        return Doctor::with('specialties')->when($search !== '', fn ($query) => $query->where(fn ($query) => $query->whereRaw("strpos(lower(first_name || ' ' || last_name), ?) > 0", [$search])
-            ->orWhereHas('specialties', fn ($specialty) => $specialty->whereRaw('strpos(lower(name), ?) > 0', [$search]))))
+        return Doctor::with('specialties')->when($busqueda !== '', fn ($consultaDatos) => $consultaDatos->where(fn ($consultaDatos) => $consultaDatos->whereRaw("strpos(lower(first_name || ' ' || last_name), ?) > 0", [$busqueda])
+            ->orWhereHas('specialties', fn ($especialidad) => $especialidad->whereRaw('strpos(lower(name), ?) > 0', [$busqueda]))))
             ->orderBy('id')->get();
     }
 
     /** Recupera el detalle autorizado del registro sin modificar su persistencia. */
-    public function show(int $id, CatalogImpact $impact)
+    public function consultarDetalle(int $id, CatalogImpact $impacto)
     {
-        $doctor = Doctor::with('specialties')->findOrFail($id);
+        $medico = Doctor::with('specialties')->findOrFail($id);
 
-        return $doctor->setAttribute('affected_appointments', $impact->affected(doctorId: $id));
+        return $medico->setAttribute('affected_appointments', $impacto->citasAfectadas(medicoId: $id));
     }
 
     /** Coordina la validación y persistencia de esta operación; delega las reglas del dominio al servicio correspondiente. */
-    public function save(SaveDoctorRequest $request, CatalogService $service, ?int $id = null)
+    public function guardar(SaveDoctorRequest $solicitud, CatalogService $servicio, ?int $id = null)
     {
-        $record = $id ? Doctor::findOrFail($id) : new Doctor;
+        $registro = $id ? Doctor::findOrFail($id) : new Doctor;
 
-        return response()->json($service->save($record, $request->validated(), $request->user()), $id ? 200 : 201);
+        return response()->json($servicio->guardar($registro, $solicitud->validated(), $solicitud->user()), $id ? 200 : 201);
     }
 }

@@ -15,23 +15,23 @@ use Illuminate\Support\Str;
 class AccountManagementController extends Controller
 {
     /** Consulta el listado y sus filtros; la ruta aplica los permisos del módulo. */
-    public function index(Request $request)
+    public function listar(Request $solicitud)
     {
-        abort_unless($request->user()->role === 'Superadmin', 403);
+        abort_unless($solicitud->user()->role === 'Superadmin', 403);
 
         return response()->json(User::orderBy('name')->get(['id', 'name', 'username', 'email', 'role', 'status', 'email_verified_at']))
             ->header('Cache-Control', 'no-store');
     }
 
     /** Cambia una contraseña autorizada sin exponer ni recuperar la anterior. */
-    public function password(Request $request, int $id)
+    public function cambiarContrasena(Request $solicitud, int $id)
     {
-        abort_unless($request->user()->role === 'Superadmin', 403);
-        $data = $request->validate(['password' => 'required|string|min:6|max:128|confirmed']);
-        DB::transaction(function () use ($request, $id, $data) {
-            $account = User::whereKey($id)->lockForUpdate()->firstOrFail();
-            $account->forceFill(['password' => $data['password'], 'remember_token' => Str::random(60)])->save();
-            app(AuditLogger::class)->record('users', 'password_reset_by_superadmin', $account, actorId: $request->user()->id);
+        abort_unless($solicitud->user()->role === 'Superadmin', 403);
+        $datos = $solicitud->validate(['password' => 'required|string|min:6|max:128|confirmed']);
+        DB::transaction(function () use ($solicitud, $id, $datos) {
+            $cuenta = User::whereKey($id)->lockForUpdate()->firstOrFail();
+            $cuenta->forceFill(['password' => $datos['password'], 'remember_token' => Str::random(60)])->save();
+            app(AuditLogger::class)->registrar('users', 'password_reset_by_superadmin', $cuenta, responsableId: $solicitud->user()->id);
         });
 
         return response()->json(['message' => 'Contraseña cambiada. La contraseña anterior deja de funcionar y las sesiones previas deberán autenticarse nuevamente.'])

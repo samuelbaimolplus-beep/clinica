@@ -10,25 +10,25 @@ use InvalidArgumentException;
 final class QuotaAllocator
 {
     /** Reparte cantidades enteras de cupos respetando los porcentajes configurados. */
-    public function allocate(int $capacity, int $presentialBasisPoints, int $onlineBasisPoints): array
+    public function distribuir(int $capacidad, int $presencialPuntosBase, int $onlinePuntosBase): array
     {
-        if ($capacity < 0 || $presentialBasisPoints < 0 || $onlineBasisPoints < 0
-            || $presentialBasisPoints + $onlineBasisPoints !== 10000) {
+        if ($capacidad < 0 || $presencialPuntosBase < 0 || $onlinePuntosBase < 0
+            || $presencialPuntosBase + $onlinePuntosBase !== 10000) {
             throw new InvalidArgumentException('La capacidad debe ser no negativa y los porcentajes deben sumar 100%.');
         }
-        $presentialNumerator = $capacity * $presentialBasisPoints;
-        $onlineNumerator = $capacity * $onlineBasisPoints;
-        $presential = intdiv($presentialNumerator, 10000);
-        $online = intdiv($onlineNumerator, 10000);
-        $remaining = $capacity - $presential - $online;
-        if ($remaining > 0) {
-            if ($presentialNumerator % 10000 >= $onlineNumerator % 10000) {
-                $presential += $remaining;
+        $numeradorPresencial = $capacidad * $presencialPuntosBase;
+        $numeradorOnline = $capacidad * $onlinePuntosBase;
+        $presencial = intdiv($numeradorPresencial, 10000);
+        $enLinea = intdiv($numeradorOnline, 10000);
+        $restantes = $capacidad - $presencial - $enLinea;
+        if ($restantes > 0) {
+            if ($numeradorPresencial % 10000 >= $numeradorOnline % 10000) {
+                $presencial += $restantes;
             } else {
-                $online += $remaining;
+                $enLinea += $restantes;
             }
         }
 
-        return ['presential' => $presential, 'online' => $online];
+        return ['presential' => $presencial, 'online' => $enLinea];
     }
 }

@@ -16,7 +16,7 @@ class ClinicSession
         if (! $request->user()) {
             return response()->json(['message' => 'Debe iniciar sesión.', 'csrf' => csrf_token()], 401);
         }
-        if ($message = app(SessionSecurity::class)->validate($request)) {
+        if ($message = app(SessionSecurity::class)->validarSesion($request)) {
             return response()->json(['message' => $message, 'csrf' => csrf_token()], 401);
         }
 

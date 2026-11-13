@@ -12,38 +12,38 @@ use Illuminate\Support\Collection;
 class CatalogImpact
 {
     /** Calcula las citas afectadas por el cambio conservando su programación y estado. */
-    public function affected(?int $doctorId = null, ?int $specialtyId = null): Collection
+    public function citasAfectadas(?int $medicoId = null, ?int $especialidadId = null): Collection
     {
         return Appointment::query()->with(['doctor:id,status', 'doctor.specialties:id', 'specialty:id,status'])
             ->whereIn('status', Appointment::ACTIVE)
             ->whereRaw('(date + start_time) >= ?::timestamp', [now()->format('Y-m-d H:i:s')])
-            ->when($doctorId, fn ($query) => $query->where('doctor_id', $doctorId))
-            ->when($specialtyId, fn ($query) => $query->where('specialty_id', $specialtyId))
-            ->where(function (Builder $query) {
-                $query->whereHas('doctor', fn ($doctor) => $doctor->where('status', 'Inactivo'))
-                    ->orWhereHas('specialty', fn ($specialty) => $specialty->where('status', 'Inactivo'))
-                    ->orWhereNotExists(fn ($link) => $link->selectRaw('1')->from('doctor_specialty')
+            ->when($medicoId, fn ($consultaDatos) => $consultaDatos->where('doctor_id', $medicoId))
+            ->when($especialidadId, fn ($consultaDatos) => $consultaDatos->where('specialty_id', $especialidadId))
+            ->where(function (Builder $consultaDatos) {
+                $consultaDatos->whereHas('doctor', fn ($medico) => $medico->where('status', 'Inactivo'))
+                    ->orWhereHas('specialty', fn ($especialidad) => $especialidad->where('status', 'Inactivo'))
+                    ->orWhereNotExists(fn ($vinculo) => $vinculo->selectRaw('1')->from('doctor_specialty')
                         ->whereColumn('doctor_specialty.doctor_id', 'appointments.doctor_id')
                         ->whereColumn('doctor_specialty.specialty_id', 'appointments.specialty_id'));
             })->orderBy('date')->orderBy('start_time')->get()
-            ->map(function (Appointment $appointment) {
-                $reasons = [];
-                $origins = [];
-                if ($appointment->doctor->status !== 'Activo') {
-                    $reasons[] = 'Médico inactivo';
-                    $origins[] = ['entity' => 'Doctor', 'id' => $appointment->doctor_id];
+            ->map(function (Appointment $cita) {
+                $motivos = [];
+                $origenes = [];
+                if ($cita->doctor->status !== 'Activo') {
+                    $motivos[] = 'Médico inactivo';
+                    $origenes[] = ['entity' => 'Doctor', 'id' => $cita->doctor_id];
                 }
-                if ($appointment->specialty->status !== 'Activo') {
-                    $reasons[] = 'Especialidad inactiva';
-                    $origins[] = ['entity' => 'Specialty', 'id' => $appointment->specialty_id];
+                if ($cita->specialty->status !== 'Activo') {
+                    $motivos[] = 'Especialidad inactiva';
+                    $origenes[] = ['entity' => 'Specialty', 'id' => $cita->specialty_id];
                 }
-                if (! $appointment->doctor->specialties->contains('id', $appointment->specialty_id)) {
-                    $reasons[] = 'Especialidad retirada del médico';
-                    $origins[] = ['entity' => 'DoctorSpecialty', 'doctor_id' => $appointment->doctor_id, 'specialty_id' => $appointment->specialty_id];
+                if (! $cita->doctor->specialties->contains('id', $cita->specialty_id)) {
+                    $motivos[] = 'Especialidad retirada del médico';
+                    $origenes[] = ['entity' => 'DoctorSpecialty', 'doctor_id' => $cita->doctor_id, 'specialty_id' => $cita->specialty_id];
                 }
 
-                return $appointment->only(['id', 'doctor_id', 'specialty_id', 'date', 'start_time', 'end_time', 'status'])
-                    + ['reasons' => $reasons, 'origins' => $origins];
+                return $cita->only(['id', 'doctor_id', 'specialty_id', 'date', 'start_time', 'end_time', 'status'])
+                    + ['reasons' => $motivos, 'origins' => $origenes];
             });
     }
 }

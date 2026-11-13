@@ -13,18 +13,18 @@ use Illuminate\Http\Request;
 class ReferenceController extends Controller
 {
     /** Atiende la operación única de esta clase usando las dependencias resueltas por Laravel. */
-    public function __invoke(Request $request)
+    public function __invoke(Request $solicitud)
     {
         // RN12: el paciente nunca descarga padrones ni datos de otros pacientes.
-        $role = $request->user()->role;
-        if ($role === 'Paciente') {
+        $rol = $solicitud->user()->role;
+        if ($rol === 'Paciente') {
             return ['doctors' => [], 'specialties' => [], 'patients' => []];
         }
 
         return [
-            'doctors' => Doctor::with('specialties')->when($role === 'Médico', fn ($q) => $q->whereKey($request->user()->doctor_id))->orderBy('last_name')->get(),
+            'doctors' => Doctor::with('specialties')->when($rol === 'Médico', fn ($consulta) => $consulta->whereKey($solicitud->user()->doctor_id))->orderBy('last_name')->get(),
             'specialties' => Specialty::orderBy('name')->get(),
-            'patients' => $request->user()->can('manage-patients')
+            'patients' => $solicitud->user()->can('manage-patients')
                 ? Patient::orderBy('last_name')->get() : [],
         ];
     }

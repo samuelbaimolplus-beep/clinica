@@ -17,66 +17,66 @@ use Illuminate\Validation\ValidationException;
 class DoctorQuotaService
 {
     /** Coordina la validación y persistencia de esta operación; delega las reglas del dominio al servicio correspondiente. */
-    public function save(array $data): DoctorQuota
+    public function guardar(array $datos): DoctorQuota
     {
-        if ($this->basisPoints($data['presential_percent']) + $this->basisPoints($data['online_percent']) !== 10000) {
+        if ($this->puntosBase($datos['presential_percent']) + $this->puntosBase($datos['online_percent']) !== 10000) {
             throw ValidationException::withMessages(['presential_percent' => 'Los porcentajes presenciales y online deben sumar exactamente 100%.']);
         }
 
-        return DB::transaction(function () use ($data) {
-            $doctor = Doctor::whereKey($data['doctor_id'])->lockForUpdate()->firstOrFail();
-            if (BookingRequest::where('doctor_id', $doctor->id)->whereIn('status', ['held', 'processing'])->exists()) {
+        return DB::transaction(function () use ($datos) {
+            $medico = Doctor::whereKey($datos['doctor_id'])->lockForUpdate()->firstOrFail();
+            if (BookingRequest::where('doctor_id', $medico->id)->whereIn('status', ['held', 'processing'])->exists()) {
                 throw ValidationException::withMessages(['quota' => 'Concilie los pagos online retenidos antes de cambiar la distribución.']);
             }
-            if ($doctor->status !== 'Activo') {
+            if ($medico->status !== 'Activo') {
                 throw ValidationException::withMessages(['doctor_id' => 'El médico debe estar activo.']);
             }
 
-            return DoctorQuota::updateOrCreate(['doctor_id' => $doctor->id], $data);
+            return DoctorQuota::updateOrCreate(['doctor_id' => $medico->id], $datos);
         });
     }
 
     /** Calcula cupos y franjas utilizables según turnos, modalidades, ausencias y ajustes. */
-    public function capacity(int $doctorId, string $date): array
+    public function calcularCapacidad(int $medicoId, string $fecha): array
     {
-        $ranges = app(ShiftModalities::class)->forDate($doctorId, $date);
-        $day = CarbonImmutable::parse($date);
-        $blocks = Unavailability::active()->where('doctor_id', $doctorId)->where('starts_at', '<', $day->addDay())->where('ends_at', '>', $day)->get();
-        $usable = array_filter($ranges, fn ($range) => ! $blocks->contains(fn ($block) => CarbonImmutable::parse($block->starts_at) < $range['end'] && CarbonImmutable::parse($block->ends_at) > $range['start']));
-        $adjustments = AgendaAdjustment::where('doctor_id', $doctorId)->where('date', $date)->where('status', 'active')
-            ->when($date !== today()->toDateString(), fn ($query) => $query->where('kind', 'online_opening'))->get();
-        $usable = array_map(function ($block) use ($adjustments) {
-            $adjustment = $adjustments->first(fn ($item) => $item->start_time === $block['start']->format('H:i:s') && $item->end_time === $block['end']->format('H:i:s'));
-            $block['demand_blocked'] = $adjustment?->kind === 'presential_block';
-            $block['early_online'] = $adjustment?->kind === 'online_opening';
-            if ($adjustment) {
-                $block['modality'] = $block['early_online'] ? 'online' : 'presential';
+        $intervalos = app(ShiftModalities::class)->franjasParaFecha($medicoId, $fecha);
+        $dia = CarbonImmutable::parse($fecha);
+        $bloques = Unavailability::active()->where('doctor_id', $medicoId)->where('starts_at', '<', $dia->addDay())->where('ends_at', '>', $dia)->get();
+        $utilizables = array_filter($intervalos, fn ($intervalo) => ! $bloques->contains(fn ($bloque) => CarbonImmutable::parse($bloque->starts_at) < $intervalo['end'] && CarbonImmutable::parse($bloque->ends_at) > $intervalo['start']));
+        $ajustes = AgendaAdjustment::where('doctor_id', $medicoId)->where('date', $fecha)->where('status', 'active')
+            ->when($fecha !== today()->toDateString(), fn ($consultaDatos) => $consultaDatos->where('kind', 'online_opening'))->get();
+        $utilizables = array_map(function ($bloque) use ($ajustes) {
+            $ajuste = $ajustes->first(fn ($elementoLista) => $elementoLista->start_time === $bloque['start']->format('H:i:s') && $elementoLista->end_time === $bloque['end']->format('H:i:s'));
+            $bloque['demand_blocked'] = $ajuste?->kind === 'presential_block';
+            $bloque['early_online'] = $ajuste?->kind === 'online_opening';
+            if ($ajuste) {
+                $bloque['modality'] = $bloque['early_online'] ? 'online' : 'presential';
             }
 
-            return $block;
-        }, $usable);
-        $total = count($usable);
-        $quota = DoctorQuota::where('doctor_id', $doctorId)->first();
-        $presential = count(array_filter($usable, fn ($block) => $block['modality'] === 'presential'));
-        $online = $total - $presential;
+            return $bloque;
+        }, $utilizables);
+        $total = count($utilizables);
+        $distribucion = DoctorQuota::where('doctor_id', $medicoId)->first();
+        $presencial = count(array_filter($utilizables, fn ($bloque) => $bloque['modality'] === 'presential'));
+        $enLinea = $total - $presencial;
 
-        return ['date' => $date, 'configured_blocks' => count($ranges), 'blocked_blocks' => count($ranges) - $total,
-            'total_capacity' => $total, 'quota' => $quota ?? ['presential_percent' => 50, 'online_percent' => 50],
-            'uses_default_quota' => $quota === null, 'protection_minutes' => 120,
-            'protected_capacity' => count(array_filter($usable, fn ($block) => $block['protected'])),
-            'presential_capacity' => $presential, 'online_capacity' => $online,
+        return ['date' => $fecha, 'configured_blocks' => count($intervalos), 'blocked_blocks' => count($intervalos) - $total,
+            'total_capacity' => $total, 'quota' => $distribucion ?? ['presential_percent' => 50, 'online_percent' => 50],
+            'uses_default_quota' => $distribucion === null, 'protection_minutes' => 120,
+            'protected_capacity' => count(array_filter($utilizables, fn ($bloque) => $bloque['protected'])),
+            'presential_capacity' => $presencial, 'online_capacity' => $enLinea,
             'rounding_policy' => 'largest_remainder_presential_tie',
-            'blocks' => array_map(fn ($block) => ['schedule_id' => $block['schedule_id'],
-                'start_time' => $block['start']->format('H:i'), 'end_time' => $block['end']->format('H:i'),
-                'protected' => $block['protected'], 'modality' => $block['modality'],
-                'demand_blocked' => $block['demand_blocked'], 'early_online' => $block['early_online']], array_values($usable))];
+            'blocks' => array_map(fn ($bloque) => ['schedule_id' => $bloque['schedule_id'],
+                'start_time' => $bloque['start']->format('H:i'), 'end_time' => $bloque['end']->format('H:i'),
+                'protected' => $bloque['protected'], 'modality' => $bloque['modality'],
+                'demand_blocked' => $bloque['demand_blocked'], 'early_online' => $bloque['early_online']], array_values($utilizables))];
     }
 
     /** Representa porcentajes sin depender de redondeos binarios de coma flotante. */
-    private function basisPoints(string|int|float $value): int
+    private function puntosBase(string|int|float $valor): int
     {
-        [$whole, $fraction] = array_pad(explode('.', (string) $value, 2), 2, '');
+        [$entero, $fraccion] = array_pad(explode('.', (string) $valor, 2), 2, '');
 
-        return (int) $whole * 100 + (int) str_pad($fraction, 2, '0');
+        return (int) $entero * 100 + (int) str_pad($fraccion, 2, '0');
     }
 }

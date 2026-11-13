@@ -4,30 +4,30 @@
 
 namespace App\Paquetes\P05_CitasMedicas\CU17_ConsultarCitasAfectadas\Http;
 
+use App\Compartido\Catalogos\Servicios\CatalogImpact;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
-use App\Compartido\Catalogos\Servicios\CatalogImpact;
 use App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios\ScheduleImpact;
 use Illuminate\Http\Request;
 
 class ScheduleImpactController extends Controller
 {
     /** Atiende la operación única de esta clase usando las dependencias resueltas por Laravel. */
-    public function __invoke(Request $request, ScheduleImpact $schedules, CatalogImpact $catalogs)
+    public function __invoke(Request $solicitud, ScheduleImpact $horarios, CatalogImpact $catalogos)
     {
-        abort_unless($request->user()->hasStaffRole('Recepcionista'), 403);
-        $data = $request->validate(['doctor_id' => 'nullable|integer|exists:doctors,id']);
-        $doctorId = $data['doctor_id'] ?? null;
+        abort_unless($solicitud->user()->hasStaffRole('Recepcionista'), 403);
+        $datos = $solicitud->validate(['doctor_id' => 'nullable|integer|exists:doctors,id']);
+        $medicoId = $datos['doctor_id'] ?? null;
 
-        $affected = $schedules->affected($doctorId)->concat($catalogs->affected($doctorId))->groupBy('id')
-            ->map(fn ($items) => array_replace($items->first(), ['reasons' => $items->pluck('reasons')->flatten()->unique()->values()->all(),
-                'origins' => $items->pluck('origins')->flatten(1)->unique(fn ($origin) => json_encode($origin))->values()->all()]))
-            ->sortBy(fn ($item) => $item['date'].' '.$item['start_time'])->values();
-        if ($request->user()->hasStaffRole('Recepcionista')) {
-            $appointments = Appointment::whereIn('id', $affected->pluck('id'))->with(['patient:id,first_name,last_name,phone', 'specialty:id,name'])->get()->keyBy('id');
-            $affected = $affected->map(fn ($item) => $item + ['patient' => $appointments[$item['id']]->patient, 'specialty' => $appointments[$item['id']]->specialty]);
+        $afectadas = $horarios->citasAfectadas($medicoId)->concat($catalogos->citasAfectadas($medicoId))->groupBy('id')
+            ->map(fn ($elementos) => array_replace($elementos->first(), ['reasons' => $elementos->pluck('reasons')->flatten()->unique()->values()->all(),
+                'origins' => $elementos->pluck('origins')->flatten(1)->unique(fn ($origenRegistro) => json_encode($origenRegistro))->values()->all()]))
+            ->sortBy(fn ($elementoLista) => $elementoLista['date'].' '.$elementoLista['start_time'])->values();
+        if ($solicitud->user()->hasStaffRole('Recepcionista')) {
+            $citas = Appointment::whereIn('id', $afectadas->pluck('id'))->with(['patient:id,first_name,last_name,phone', 'specialty:id,name'])->get()->keyBy('id');
+            $afectadas = $afectadas->map(fn ($elementoLista) => $elementoLista + ['patient' => $citas[$elementoLista['id']]->patient, 'specialty' => $citas[$elementoLista['id']]->specialty]);
         }
 
-        return $affected;
+        return $afectadas;
     }
 }

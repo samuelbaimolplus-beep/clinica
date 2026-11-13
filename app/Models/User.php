@@ -5,8 +5,8 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
-use App\Support\Username;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\AccountEligibility;
+use App\Support\Username;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Validation\ValidationException;
 
 #[Fillable(['name', 'username', 'email', 'password', 'role', 'status', 'doctor_id', 'patient_id', 'birth_date', 'terms_accepted_at', 'terms_version'])]
 #[Hidden(['password', 'remember_token'])]
@@ -27,7 +28,7 @@ class User extends Authenticatable
     {
         static::updating(function (User $user) {
             if ($user->isDirty(['birth_date', 'patient_id', 'role'])) {
-                app(AccountEligibility::class)->assertAdult(app(AccountEligibility::class)->birthDate($user));
+                app(AccountEligibility::class)->exigirMayoriaDeEdad(app(AccountEligibility::class)->fechaNacimiento($user));
             }
             if ($user->isDirty('email')) {
                 $user->email_verified_at = null;
@@ -35,9 +36,9 @@ class User extends Authenticatable
         });
         static::creating(function (User $user) {
             $eligibility = app(AccountEligibility::class);
-            $eligibility->assertAdult($eligibility->birthDate($user));
-            if ($eligibility->needsConsent($user)) {
-                throw \Illuminate\Validation\ValidationException::withMessages(['terms_accepted' => 'El paciente debe aceptar los términos vigentes para tener una cuenta.']);
+            $eligibility->exigirMayoriaDeEdad($eligibility->fechaNacimiento($user));
+            if ($eligibility->requiereConsentimiento($user)) {
+                throw ValidationException::withMessages(['terms_accepted' => 'El paciente debe aceptar los términos vigentes para tener una cuenta.']);
             }
             // Compatibilidad con altas por consola y clientes anteriores al campo username.
             if (! filled($user->username)) {

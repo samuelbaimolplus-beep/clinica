@@ -33,6 +33,6 @@ class ClinicalAccessAudit
     /** Registra o comunica el acceso rechazado sin exponer datos del recurso. */
     private function denied(): void
     {
-        app(AuditLogger::class)->record('clinical_access', 'denied', result: 'denied', details: ['reason' => 'Acceso clínico denegado por permisos o titularidad.']);
+        app(AuditLogger::class)->registrar('clinical_access', 'denied', resultado: 'denied', detalles: ['reason' => 'Acceso clínico denegado por permisos o titularidad.']);
     }
 }

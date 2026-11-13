@@ -29,71 +29,71 @@ final class AuditDetails
         'created_at', 'updated_at', 'specialty_ids', 'specialties', 'change_cause', 'patient_accepted',
     ];
 
-    public static function attributes(array $attributes): array
+    public static function atributosPermitidos(array $atributos): array
     {
-        return array_intersect_key($attributes, array_flip(self::FIELDS));
+        return array_intersect_key($atributos, array_flip(self::FIELDS));
     }
 
     /** La misma selección se aplica al escribir y al consultar eventos históricos. */
-    public static function sanitize(array $details): array
+    public static function sanear(array $detalles): array
     {
-        $safe = array_intersect_key($details, array_flip([
+        $permitidos = array_intersect_key($detalles, array_flip([
             'fields', 'specialty_ids', 'reason', 'terms_version', 'changes', 'record',
             'actor', 'request', 'related', 'security_changed',
         ]));
-        foreach (['changes', 'record'] as $key) {
-            if (isset($safe[$key])) {
-                $safe[$key] = self::attributes((array) $safe[$key]);
+        foreach (['changes', 'record'] as $clave) {
+            if (isset($permitidos[$clave])) {
+                $permitidos[$clave] = self::atributosPermitidos((array) $permitidos[$clave]);
             }
         }
-        if (isset($safe['fields'])) {
-            $safe['fields'] = array_values(array_intersect((array) $safe['fields'], self::FIELDS));
+        if (isset($permitidos['fields'])) {
+            $permitidos['fields'] = array_values(array_intersect((array) $permitidos['fields'], self::FIELDS));
         }
-        if (isset($safe['actor'])) {
-            $safe['actor'] = array_intersect_key((array) $safe['actor'], array_flip(['id', 'name', 'username', 'role']));
+        if (isset($permitidos['actor'])) {
+            $permitidos['actor'] = array_intersect_key((array) $permitidos['actor'], array_flip(['id', 'name', 'username', 'role']));
         }
-        if (isset($safe['request'])) {
-            $safe['request'] = array_intersect_key((array) $safe['request'], array_flip(['method', 'route']));
+        if (isset($permitidos['request'])) {
+            $permitidos['request'] = array_intersect_key((array) $permitidos['request'], array_flip(['method', 'route']));
         }
 
-        return self::withoutSecrets($safe);
+        return self::excluirSecretos($permitidos);
     }
 
-    private static function withoutSecrets(array $values): array
+    private static function excluirSecretos(array $valores): array
     {
-        $safe = [];
-        foreach ($values as $key => $value) {
-            if (is_string($key) && preg_match('/password|contrase|token|secret|credential|authorization|cookie|session_id|idempotency|approval_url|provider_payload|provider_response/i', $key)) {
+        $permitidos = [];
+        foreach ($valores as $clave => $valor) {
+            if (is_string($clave) && preg_match('/password|contrase|token|secret|credential|authorization|cookie|session_id|idempotency|approval_url|provider_payload|provider_response/i', $clave)) {
                 continue;
             }
-            $safe[$key] = is_array($value) ? self::withoutSecrets($value) : $value;
+            $permitidos[$clave] = is_array($valor) ? self::excluirSecretos($valor) : $valor;
         }
 
-        return $safe;
+        return $permitidos;
     }
 
     /** Conserva los nombres vigentes en ese momento, aunque después se editen los catálogos. */
-    public static function related(Model $model): array
+    public static function registrosRelacionados(Model $modelo): array
     {
-        $related = [];
-        $source = $model;
-        if (! $model->getAttribute('doctor_id')) {
-            if ($model->getAttribute('appointment_id')) {
-                $source = (new Appointment)->setConnection($model->getConnectionName())->find($model->getAttribute('appointment_id')) ?? $model;
-            } elseif ($model->getAttribute('booking_request_id')) {
-                $source = (new BookingRequest)->setConnection($model->getConnectionName())->find($model->getAttribute('booking_request_id')) ?? $model;
+        $relacionados = [];
+        $origen = $modelo;
+        if (! $modelo->getAttribute('doctor_id')) {
+            if ($modelo->getAttribute('appointment_id')) {
+                $origen = (new Appointment)->setConnection($modelo->getConnectionName())->find($modelo->getAttribute('appointment_id')) ?? $modelo;
+            } elseif ($modelo->getAttribute('booking_request_id')) {
+                $origen = (new BookingRequest)->setConnection($modelo->getConnectionName())->find($modelo->getAttribute('booking_request_id')) ?? $modelo;
             }
         }
-        foreach (['doctor_id' => Doctor::class, 'patient_id' => Patient::class, 'specialty_id' => Specialty::class] as $field => $class) {
-            if (! $source->getAttribute($field)) {
+        foreach (['doctor_id' => Doctor::class, 'patient_id' => Patient::class, 'specialty_id' => Specialty::class] as $campo => $clase) {
+            if (! $origen->getAttribute($campo)) {
                 continue;
             }
-            $record = (new $class)->setConnection($model->getConnectionName())->find($source->getAttribute($field));
-            if ($record) {
-                $related[$field] = ['id' => $record->id, 'label' => $record->name ?? trim($record->first_name.' '.$record->last_name)];
+            $registro = (new $clase)->setConnection($modelo->getConnectionName())->find($origen->getAttribute($campo));
+            if ($registro) {
+                $relacionados[$campo] = ['id' => $registro->id, 'label' => $registro->name ?? trim($registro->first_name.' '.$registro->last_name)];
             }
         }
 
-        return $related;
+        return $relacionados;
     }
 }

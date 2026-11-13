@@ -6,8 +6,8 @@ namespace App\Paquetes\P01_UsuariosYAcceso\Compartido\Http;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\SessionSecurity;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -17,26 +17,26 @@ use Illuminate\Validation\ValidationException;
 class AccountPasswordController extends Controller
 {
     /** Atiende la operación única de esta clase usando las dependencias resueltas por Laravel. */
-    public function __invoke(Request $request, SessionSecurity $sessions)
+    public function __invoke(Request $solicitud, SessionSecurity $sesiones)
     {
-        $data = $request->validate([
+        $datos = $solicitud->validate([
             'current_password' => 'required|string|max:255',
             'password' => 'required|string|min:10|max:128|confirmed|different:current_password',
         ]);
-        $user = DB::transaction(function () use ($request, $data) {
-            $user = User::whereKey($request->user()->id)->lockForUpdate()->firstOrFail();
-            if (! Hash::check($data['current_password'], $user->password)) {
+        $usuario = DB::transaction(function () use ($solicitud, $datos) {
+            $usuario = User::whereKey($solicitud->user()->id)->lockForUpdate()->firstOrFail();
+            if (! Hash::check($datos['current_password'], $usuario->password)) {
                 throw ValidationException::withMessages(['current_password' => 'La contraseña actual no es correcta.']);
             }
-            $user->forceFill(['password' => $data['password'], 'remember_token' => Str::random(60)])->save();
-            app(AuditLogger::class)->record('auth', 'password_changed', $user, actorId: $user->id);
+            $usuario->forceFill(['password' => $datos['password'], 'remember_token' => Str::random(60)])->save();
+            app(AuditLogger::class)->registrar('auth', 'password_changed', $usuario, responsableId: $usuario->id);
 
-            return $user;
+            return $usuario;
         });
-        $request->session()->regenerate(true);
-        $sessions->remember($request, $user);
+        $solicitud->session()->regenerate(true);
+        $sesiones->registrarFirmaSesion($solicitud, $usuario);
 
-        return response()->json(['user' => $user, 'csrf' => csrf_token(), 'message' => 'Contraseña actualizada. Las demás sesiones deberán iniciar sesión nuevamente.'])
+        return response()->json(['user' => $usuario, 'csrf' => csrf_token(), 'message' => 'Contraseña actualizada. Las demás sesiones deberán iniciar sesión nuevamente.'])
             ->header('Cache-Control', 'no-store');
     }
 }

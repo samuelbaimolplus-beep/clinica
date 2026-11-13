@@ -6,8 +6,8 @@ namespace App\Paquetes\P01_UsuariosYAcceso\Compartido\Http;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\EmailActivation;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
 use App\Support\ClinicAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,16 +19,16 @@ use Illuminate\Validation\ValidationException;
 class AccountRecoveryController extends Controller
 {
     /** Envía las instrucciones o el desafío de correo respetando los límites del servicio. */
-    public function send(Request $request)
+    public function enviar(Request $solicitud)
     {
-        abort_if($request->user(), 409, 'Cierre la sesión antes de recuperar su cuenta.');
-        $data = $request->validate(['email' => 'required|email|max:255', 'purpose' => 'required|in:verify,recover']);
-        $user = User::whereRaw('lower(email) = ?', [mb_strtolower(trim($data['email']))])->first();
-        if ($user && ClinicAccess::isActive($user)) {
-            if (! $user->email_verified_at) {
-                app(EmailActivation::class)->send($user);
-            } elseif ($data['purpose'] === 'recover') {
-                Password::sendResetLink(['email' => $user->email]);
+        abort_if($solicitud->user(), 409, 'Cierre la sesión antes de recuperar su cuenta.');
+        $datos = $solicitud->validate(['email' => 'required|email|max:255', 'purpose' => 'required|in:verify,recover']);
+        $usuario = User::whereRaw('lower(email) = ?', [mb_strtolower(trim($datos['email']))])->first();
+        if ($usuario && ClinicAccess::isActive($usuario)) {
+            if (! $usuario->email_verified_at) {
+                app(EmailActivation::class)->enviar($usuario);
+            } elseif ($datos['purpose'] === 'recover') {
+                Password::sendResetLink(['email' => $usuario->email]);
             }
         }
 
@@ -36,25 +36,25 @@ class AccountRecoveryController extends Controller
     }
 
     /** Restablece la contraseña después de verificar el token de recuperación. */
-    public function reset(Request $request)
+    public function restablecer(Request $solicitud)
     {
-        abort_if($request->user(), 409, 'Cierre la sesión antes de recuperar su cuenta.');
-        $data = $request->validate(['email' => 'required|email|max:255', 'token' => 'required|string|max:255',
+        abort_if($solicitud->user(), 409, 'Cierre la sesión antes de recuperar su cuenta.');
+        $datos = $solicitud->validate(['email' => 'required|email|max:255', 'token' => 'required|string|max:255',
             'password' => 'required|string|min:10|max:128|confirmed']);
-        $data['email'] = mb_strtolower(trim($data['email']));
-        $status = DB::transaction(function () use ($data) {
-            DB::table('password_reset_tokens')->where('email', $data['email'])->lockForUpdate()->first();
+        $datos['email'] = mb_strtolower(trim($datos['email']));
+        $estado = DB::transaction(function () use ($datos) {
+            DB::table('password_reset_tokens')->where('email', $datos['email'])->lockForUpdate()->first();
 
-            return Password::reset($data, function (User $user, string $password) {
-                $user = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
-                if (! ClinicAccess::isActive($user) || ! $user->email_verified_at) {
+            return Password::reset($datos, function (User $usuario, string $contrasena) {
+                $usuario = User::whereKey($usuario->id)->lockForUpdate()->firstOrFail();
+                if (! ClinicAccess::isActive($usuario) || ! $usuario->email_verified_at) {
                     throw ValidationException::withMessages(['email' => 'No se puede recuperar esta cuenta. Verifique el correo o contacte a Recepción.']);
                 }
-                $user->forceFill(['password' => $password, 'remember_token' => Str::random(60)])->save();
-                app(AuditLogger::class)->record('auth', 'password_recovered', $user, actorId: $user->id);
+                $usuario->forceFill(['password' => $contrasena, 'remember_token' => Str::random(60)])->save();
+                app(AuditLogger::class)->registrar('auth', 'password_recovered', $usuario, responsableId: $usuario->id);
             });
         });
-        if ($status !== Password::PASSWORD_RESET) {
+        if ($estado !== Password::PASSWORD_RESET) {
             throw ValidationException::withMessages(['email' => 'El enlace no es válido o ha vencido. Solicite la recuperación nuevamente.']);
         }
 

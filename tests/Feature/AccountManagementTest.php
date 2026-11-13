@@ -96,7 +96,7 @@ class AccountManagementTest extends TestCase
         // Ejecutar la misma operación administrativa sin reemplazar la sesión del paciente del navegador.
         $request = Request::create('/api/supervision/accounts/'.$this->patientUser->id.'/password', 'POST', ['password' => 'NuevaSegura2026', 'password_confirmation' => 'NuevaSegura2026']);
         $request->setUserResolver(fn () => $this->superadmin);
-        app(AccountManagementController::class)->password($request, $this->patientUser->id);
+        app(AccountManagementController::class)->cambiarContrasena($request, $this->patientUser->id);
         $this->getJson('/api/references')->assertUnauthorized();
         $this->postJson('/api/login', ['email' => $this->patientUser->username, 'password' => 'AnteriorSegura2026'])->assertUnprocessable();
         $this->postJson('/api/login', ['email' => $this->patientUser->username, 'password' => 'NuevaSegura2026'])->assertOk();

@@ -16,76 +16,76 @@ use Illuminate\Validation\ValidationException;
 class RefundService
 {
     /** Evalúa y registra una solicitud de devolución sin cancelar automáticamente la cita. */
-    public function request(int $id, string $reason, User $actor): RefundRequest
+    public function solicitar(int $id, string $motivo, User $responsable): RefundRequest
     {
-        return DB::transaction(function () use ($id, $reason, $actor) {
-            $a = Appointment::whereKey($id)->lockForUpdate()->firstOrFail();
-            abort_unless($actor->hasStaffRole('Recepcionista') || ($actor->role === 'Paciente' && $a->patient_id === $actor->patient_id), 403);
-            if ($a->status !== 'Cancelada' || ! $a->cancelled_at) {
-                $this->fail('Primero Recepción debe cancelar la cita mediante CU11. Solicitar un reembolso no cancela la cita.');
+        return DB::transaction(function () use ($id, $motivo, $responsable) {
+            $cita = Appointment::whereKey($id)->lockForUpdate()->firstOrFail();
+            abort_unless($responsable->hasStaffRole('Recepcionista') || ($responsable->role === 'Paciente' && $cita->patient_id === $responsable->patient_id), 403);
+            if ($cita->status !== 'Cancelada' || ! $cita->cancelled_at) {
+                $this->rechazar('Primero Recepción debe cancelar la cita mediante CU11. Solicitar un reembolso no cancela la cita.');
             }
-            $payment = Payment::whereKey($a->payment_id)->lockForUpdate()->first();
-            if (! $payment || $payment->status !== 'confirmed') {
-                $this->fail('La cita no tiene un pago confirmado reembolsable.');
+            $pago = Payment::whereKey($cita->payment_id)->lockForUpdate()->first();
+            if (! $pago || $pago->status !== 'confirmed') {
+                $this->rechazar('La cita no tiene un pago confirmado reembolsable.');
             }
-            if (RefundRequest::where('payment_id', $payment->id)->exists()) {
-                $this->fail('Ya existe una solicitud para este pago.');
+            if (RefundRequest::where('payment_id', $pago->id)->exists()) {
+                $this->rechazar('Ya existe una solicitud para este pago.');
             }
-            $start = CarbonImmutable::parse($a->date.' '.$a->start_time);
-            $cancelled = CarbonImmutable::parse($a->cancelled_at);
-            $paid = $payment->confirmed_at;
-            $eligible = $a->cancellation_cause === 'clinic' || $cancelled->lte($start->subHours(24))
-                || ($paid && $paid->gt($start->subHours(24)) && $paid->lt($start) && $cancelled->betweenIncluded($paid, $paid->addMinutes(15)));
+            $inicio = CarbonImmutable::parse($cita->date.' '.$cita->start_time);
+            $canceladoEl = CarbonImmutable::parse($cita->cancelled_at);
+            $pagadoEl = $pago->confirmed_at;
+            $procede = $cita->cancellation_cause === 'clinic' || $canceladoEl->lte($inicio->subHours(24))
+                || ($pagadoEl && $pagadoEl->gt($inicio->subHours(24)) && $pagadoEl->lt($inicio) && $canceladoEl->betweenIncluded($pagadoEl, $pagadoEl->addMinutes(15)));
 
-            return RefundRequest::create(['appointment_id' => $a->id, 'payment_id' => $payment->id, 'created_by' => $actor->id,
-                'amount_minor' => $payment->amount_minor, 'reason' => $reason, 'status' => $eligible ? 'pending' : 'ineligible',
-                'decision_reason' => $eligible ? null : 'No cumple anticipación de 24 horas ni gracia de 15 minutos; no consta causa atribuible a la clínica.']);
+            return RefundRequest::create(['appointment_id' => $cita->id, 'payment_id' => $pago->id, 'created_by' => $responsable->id,
+                'amount_minor' => $pago->amount_minor, 'reason' => $motivo, 'status' => $procede ? 'pending' : 'ineligible',
+                'decision_reason' => $procede ? null : 'No cumple anticipación de 24 horas ni gracia de 15 minutos; no consta causa atribuible a la clínica.']);
         });
     }
 
     /** Registra aprobación o rechazo autorizado y mantiene pendiente la entrega del dinero. */
-    public function decide(int $id, array $data, User $actor): RefundRequest
+    public function resolver(int $id, array $datos, User $responsable): RefundRequest
     {
-        abort_unless($actor->hasStaffRole('Administrador'), 403);
+        abort_unless($responsable->hasStaffRole('Administrador'), 403);
 
-        return DB::transaction(function () use ($id, $data, $actor) {
-            $r = RefundRequest::whereKey($id)->lockForUpdate()->firstOrFail();
-            abort_if($r->created_by === $actor->id, 403, 'No puede resolver su propia solicitud de reembolso.');
-            if ($r->status !== 'pending') {
-                $this->fail('Solo se resuelven solicitudes admitidas pendientes de decisión.');
+        return DB::transaction(function () use ($id, $datos, $responsable) {
+            $solicitudReembolso = RefundRequest::whereKey($id)->lockForUpdate()->firstOrFail();
+            abort_if($solicitudReembolso->created_by === $responsable->id, 403, 'No puede resolver su propia solicitud de reembolso.');
+            if ($solicitudReembolso->status !== 'pending') {
+                $this->rechazar('Solo se resuelven solicitudes admitidas pendientes de decisión.');
             }
-            $r->update(['status' => $data['decision'] === 'approve' ? 'approved' : 'rejected', 'decision_reason' => $data['reason'] ?? null,
-                'resolved_by' => $actor->id, 'resolved_at' => now()]);
+            $solicitudReembolso->update(['status' => $datos['decision'] === 'approve' ? 'approved' : 'rejected', 'decision_reason' => $datos['reason'] ?? null,
+                'resolved_by' => $responsable->id, 'resolved_at' => now()]);
 
-            return $r;
+            return $solicitudReembolso;
         });
     }
 
     /** Registra la entrega externa completa después de una aprobación válida. */
-    public function complete(int $id, array $data, User $actor): RefundRequest
+    public function registrarEntrega(int $id, array $datos, User $responsable): RefundRequest
     {
-        abort_unless($actor->hasStaffRole('Administrador'), 403);
+        abort_unless($responsable->hasStaffRole('Administrador'), 403);
 
-        return DB::transaction(function () use ($id, $data) {
-            $r = RefundRequest::whereKey($id)->lockForUpdate()->firstOrFail();
-            if ($r->status !== 'approved') {
-                $this->fail('Se requiere aprobación previa y no puede duplicarse la devolución.');
+        return DB::transaction(function () use ($id, $datos) {
+            $solicitudReembolso = RefundRequest::whereKey($id)->lockForUpdate()->firstOrFail();
+            if ($solicitudReembolso->status !== 'approved') {
+                $this->rechazar('Se requiere aprobación previa y no puede duplicarse la devolución.');
             }
-            if ((int) $data['amount_minor'] !== $r->amount_minor) {
-                $this->fail('El importe debe coincidir con el reembolso completo autorizado.');
+            if ((int) $datos['amount_minor'] !== $solicitudReembolso->amount_minor) {
+                $this->rechazar('El importe debe coincidir con el reembolso completo autorizado.');
             }
-            if (CarbonImmutable::parse($data['completed_at'])->lt(CarbonImmutable::parse($r->resolved_at))) {
-                $this->fail('La ejecución no puede ser anterior a la autorización.');
+            if (CarbonImmutable::parse($datos['completed_at'])->lt(CarbonImmutable::parse($solicitudReembolso->resolved_at))) {
+                $this->rechazar('La ejecución no puede ser anterior a la autorización.');
             }
-            $r->update(['status' => 'completed', 'executor' => $data['executor'], 'method' => $data['method'], 'reference' => $data['reference'] ?? null, 'completed_at' => $data['completed_at']]);
+            $solicitudReembolso->update(['status' => 'completed', 'executor' => $datos['executor'], 'method' => $datos['method'], 'reference' => $datos['reference'] ?? null, 'completed_at' => $datos['completed_at']]);
 
-            return $r;
+            return $solicitudReembolso;
         });
     }
 
     /** Interrumpe la operación con un error de validación comprensible. */
-    private function fail(string $message): never
+    private function rechazar(string $mensaje): never
     {
-        throw ValidationException::withMessages(['refund' => $message]);
+        throw ValidationException::withMessages(['refund' => $mensaje]);
     }
 }

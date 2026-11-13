@@ -4,39 +4,39 @@
 
 namespace App\Paquetes\P03_Pacientes\CU06_GestionarPacientes\Http;
 
-use App\Http\Controllers\Controller;
-use App\Paquetes\P03_Pacientes\CU06_GestionarPacientes\Validacion\SavePatientRequest;
-use App\Models\Patient;
 use App\Compartido\Catalogos\Servicios\CatalogService;
+use App\Http\Controllers\Controller;
+use App\Models\Patient;
+use App\Paquetes\P03_Pacientes\CU06_GestionarPacientes\Validacion\SavePatientRequest;
 use Illuminate\Http\Request;
 
 class PatientController extends Controller
 {
     /** Recupera el detalle autorizado del registro sin modificar su persistencia. */
-    public function show(int $id)
+    public function consultarDetalle(int $id)
     {
         return Patient::with('account:id,patient_id,username,email,status,email_verified_at')->findOrFail($id);
     }
 
     /** Consulta el listado y sus filtros; la ruta aplica los permisos del módulo. */
-    public function index(Request $request)
+    public function listar(Request $solicitud)
     {
-        $data = $request->validate(['search' => 'nullable|string|max:150']);
-        $search = mb_strtolower(trim($data['search'] ?? ''));
+        $datos = $solicitud->validate(['search' => 'nullable|string|max:150']);
+        $busqueda = mb_strtolower(trim($datos['search'] ?? ''));
 
-        return Patient::with('account:id,patient_id,username,email,status,email_verified_at')->when($search !== '', fn ($q) => $q->where(function ($q) use ($search) {
+        return Patient::with('account:id,patient_id,username,email,status,email_verified_at')->when($busqueda !== '', fn ($consulta) => $consulta->where(function ($consulta) use ($busqueda) {
             // strpos interpreta la búsqueda literalmente, sin comodines SQL proporcionados por el usuario.
-            $q->whereRaw('strpos(lower(coalesce(identity, ?)), ?) > 0', ['', $search])
-                ->orWhereRaw('strpos(lower(first_name), ?) > 0', [$search])
-                ->orWhereRaw('strpos(lower(last_name), ?) > 0', [$search]);
+            $consulta->whereRaw('strpos(lower(coalesce(identity, ?)), ?) > 0', ['', $busqueda])
+                ->orWhereRaw('strpos(lower(first_name), ?) > 0', [$busqueda])
+                ->orWhereRaw('strpos(lower(last_name), ?) > 0', [$busqueda]);
         }))->orderBy('id')->get();
     }
 
     /** Coordina la validación y persistencia de esta operación; delega las reglas del dominio al servicio correspondiente. */
-    public function save(SavePatientRequest $request, CatalogService $service, ?int $id = null)
+    public function guardar(SavePatientRequest $solicitud, CatalogService $servicio, ?int $id = null)
     {
-        $record = $id ? Patient::findOrFail($id) : new Patient;
+        $registro = $id ? Patient::findOrFail($id) : new Patient;
 
-        return response()->json($service->save($record, $request->validated(), $request->user()), $id ? 200 : 201);
+        return response()->json($servicio->guardar($registro, $solicitud->validated(), $solicitud->user()), $id ? 200 : 201);
     }
 }

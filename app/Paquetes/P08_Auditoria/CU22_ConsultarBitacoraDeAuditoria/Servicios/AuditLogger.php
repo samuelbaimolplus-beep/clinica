@@ -11,33 +11,33 @@ use Illuminate\Support\Facades\DB;
 final class AuditLogger
 {
     /** La IP proviene de la conexión HTTP y de los proxies confiables; nunca del formulario. */
-    public function clientIp(): ?string
+    public function ipCliente(): ?string
     {
-        $request = app()->bound('request') ? request() : null;
-        $ip = $request?->server('REMOTE_ADDR') ? $request->ip() : null;
+        $solicitud = app()->bound('request') ? request() : null;
+        $ip = $solicitud?->server('REMOTE_ADDR') ? $solicitud->ip() : null;
 
         return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : null;
     }
 
     /** RN59–RN62. Datos seleccionados por el servidor; nunca cuerpos HTTP, contraseñas ni tokens. */
-    public function record(string $module, string $action, ?Model $record = null, string $result = 'success', array $details = [], ?int $actorId = null): void
+    public function registrar(string $modulo, string $accion, ?Model $registro = null, string $resultado = 'success', array $detalles = [], ?int $responsableId = null): void
     {
-        $actorId ??= auth()->id();
-        $actor = $actorId ? User::find($actorId) : null;
-        $context = ['actor' => $actor?->only(['id', 'name', 'username', 'role']) ?? ['name' => 'Sistema / sin sesión']];
-        if ($record) {
-            $context['record'] = AuditDetails::attributes($record->getAttributes());
-            $context['related'] = AuditDetails::related($record);
+        $responsableId ??= auth()->id();
+        $responsable = $responsableId ? User::find($responsableId) : null;
+        $contexto = ['actor' => $responsable?->only(['id', 'name', 'username', 'role']) ?? ['name' => 'Sistema / sin sesión']];
+        if ($registro) {
+            $contexto['record'] = AuditDetails::atributosPermitidos($registro->getAttributes());
+            $contexto['related'] = AuditDetails::registrosRelacionados($registro);
         }
         if (app()->bound('request') && request()->route()) {
-            $context['request'] = ['method' => request()->method(), 'route' => request()->route()->uri()];
+            $contexto['request'] = ['method' => request()->method(), 'route' => request()->route()->uri()];
         }
-        $safe = AuditDetails::sanitize($details + $context);
+        $permitidos = AuditDetails::sanear($detalles + $contexto);
         DB::statement('CALL public.registrar_auditoria(?, ?, ?, ?, ?, ?, ?::jsonb, ?::inet)', [
-            $actorId, $module, $action,
-            $record ? class_basename($record) : null, $record?->getKey(), $result,
-            json_encode((object) $safe, JSON_THROW_ON_ERROR),
-            $this->clientIp(),
+            $responsableId, $modulo, $accion,
+            $registro ? class_basename($registro) : null, $registro?->getKey(), $resultado,
+            json_encode((object) $permitidos, JSON_THROW_ON_ERROR),
+            $this->ipCliente(),
         ]);
     }
 }

@@ -108,7 +108,7 @@ class DemoDataSeeder extends Seeder
                 while ($date->isSunday()) {
                     $date->addDay();
                 }
-                $slot = collect($service->slots($doctor->id, $date->toDateString()))->firstWhere('status', 'Disponible');
+                $slot = collect($service->franjasDisponibles($doctor->id, $date->toDateString()))->firstWhere('status', 'Disponible');
                 if (! $slot) {
                     continue;
                 }
@@ -116,14 +116,14 @@ class DemoDataSeeder extends Seeder
                 if (! $specialty->fee_minor) {
                     continue;
                 } // No inventar tarifas para registros preexistentes.
-                $a = $service->book(['patient_id' => $patients[$i]->id, 'doctor_id' => $doctor->id,
+                $a = $service->programar(['patient_id' => $patients[$i]->id, 'doctor_id' => $doctor->id,
                     'specialty_id' => $specialty->id, 'idempotency_key' => (string) Str::uuid(),
                     'payment_method' => 'cash', 'payment_amount_minor' => $specialty->fee_minor, 'payment_confirmed' => true,
                     'date' => $date->toDateString(), 'start_time' => $slot['start'], 'reason' => $reason.' · Cobro ficticio de demostración'], $reception);
                 if ($i === 9) {
-                    $newSlot = collect($service->slots($doctor->id, $date->toDateString()))->firstWhere('status', 'Disponible');
+                    $newSlot = collect($service->franjasDisponibles($doctor->id, $date->toDateString()))->firstWhere('status', 'Disponible');
                     if ($newSlot) {
-                        $service->book(['doctor_id' => $doctor->id, 'date' => $date->toDateString(), 'start_time' => $newSlot['start'], 'cause' => 'clinic', 'patient_accepted' => true, 'change_reason' => 'Cambio ficticio acordado para demostración'], $reception, $a->id);
+                        $service->programar(['doctor_id' => $doctor->id, 'date' => $date->toDateString(), 'start_time' => $newSlot['start'], 'cause' => 'clinic', 'patient_accepted' => true, 'change_reason' => 'Cambio ficticio acordado para demostración'], $reception, $a->id);
                     }
                 }
             }
@@ -151,7 +151,7 @@ class DemoDataSeeder extends Seeder
                     'attendance_at' => $status === 'Atendida' ? $start->copy()->subMinutes(5) : null,
                     'cancellation_reason' => $status === 'Cancelada' ? 'Cancelación ficticia: cambio de planes del paciente.' : null,
                 ]);
-                $service->event($a, $admin, 'Datos de demostración', ['after' => $status, 'reason' => 'Registro completamente ficticio para probar el sistema.']);
+                $service->registrarEvento($a, $admin, 'Datos de demostración', ['after' => $status, 'reason' => 'Registro completamente ficticio para probar el sistema.']);
             }
 
             $affected = Appointment::where('reason', 'like', '[DEMO-01]%')->first();

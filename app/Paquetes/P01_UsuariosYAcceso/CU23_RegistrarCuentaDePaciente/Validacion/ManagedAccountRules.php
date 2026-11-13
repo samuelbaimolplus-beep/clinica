@@ -10,7 +10,7 @@ use Illuminate\Validation\Rule;
 trait ManagedAccountRules
 {
     /** Normaliza correo y nombre de usuario antes de comprobar formato y unicidad. */
-    private function normalizeAccountCredentials(): void
+    private function normalizarCredenciales(): void
     {
         $this->merge([
             'email' => mb_strtolower(trim((string) $this->input('email'))),
@@ -19,7 +19,7 @@ trait ManagedAccountRules
     }
 
     /** Construye el contrato de una cuenta administrada presencialmente. */
-    private function accountRules(): array
+    private function reglasCuenta(): array
     {
         return [
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],

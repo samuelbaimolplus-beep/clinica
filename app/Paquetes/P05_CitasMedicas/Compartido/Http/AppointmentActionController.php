@@ -13,28 +13,28 @@ use Illuminate\Http\Request;
 class AppointmentActionController extends Controller
 {
     /** Autoriza la acción clínica solicitada y devuelve el estado confirmado por el servicio. */
-    public function action(Request $r, int $id, string $action, AppointmentService $service)
+    public function ejecutarAccion(Request $peticion, int $id, string $accion, AppointmentService $servicio)
     {
-        abort_unless(in_array($action, ['cancel', 'attendance', 'absent', 'attend', 'missed-call']), 404);
-        abort_unless(in_array($action, ['attend', 'missed-call']) ? in_array($r->user()->role, ['Médico', 'Superadmin'], true) : $r->user()->hasStaffRole('Recepcionista'), 403);
-        $d = $r->validate(['reason' => [in_array($action, ['cancel', 'absent']) ? 'required' : 'nullable', 'string', 'max:3000'], 'cause' => 'nullable|in:patient,clinic', 'definitive' => 'nullable|boolean', 'consultation_finished' => 'nullable|boolean', 'followup_suggested_at' => 'nullable|date|after:now', 'followup_note' => 'nullable|string|max:3000'] + PaymentVerifier::INPUT);
+        abort_unless(in_array($accion, ['cancel', 'attendance', 'absent', 'attend', 'missed-call']), 404);
+        abort_unless(in_array($accion, ['attend', 'missed-call']) ? in_array($peticion->user()->role, ['Médico', 'Superadmin'], true) : $peticion->user()->hasStaffRole('Recepcionista'), 403);
+        $criterios = $peticion->validate(['reason' => [in_array($accion, ['cancel', 'absent']) ? 'required' : 'nullable', 'string', 'max:3000'], 'cause' => 'nullable|in:patient,clinic', 'definitive' => 'nullable|boolean', 'consultation_finished' => 'nullable|boolean', 'followup_suggested_at' => 'nullable|date|after:now', 'followup_note' => 'nullable|string|max:3000'] + PaymentVerifier::INPUT);
 
-        $appointment = $service->transition($id, $action, $r->user(), $d['reason'] ?? null, $d);
-        if ($r->user()->role === 'Médico') {
-            $this->restrictPhysicianData($appointment);
+        $cita = $servicio->cambiarEstado($id, $accion, $peticion->user(), $criterios['reason'] ?? null, $criterios);
+        if ($peticion->user()->role === 'Médico') {
+            $this->limitarDatosMedico($cita);
         }
 
-        return $appointment;
+        return $cita;
     }
 
     /** Retira datos de contacto y de pago que no necesita la atención médica. */
-    private function restrictPhysicianData(Appointment $appointment): void
+    private function limitarDatosMedico(Appointment $cita): void
     {
-        $appointment->unsetRelation('payment');
-        $appointment->makeHidden(['payment_id', 'booking_request_id', 'created_by', 'clinical_slot_id', 'modality']);
-        $appointment->patient?->setVisible(['id', 'first_name', 'last_name']);
-        $appointment->doctor?->setVisible(['id', 'first_name', 'last_name']);
-        $appointment->specialty?->setVisible(['id', 'name']);
-        $appointment->events?->each(fn ($event) => $event->setVisible(['id', 'appointment_id', 'action', 'details', 'created_at']));
+        $cita->unsetRelation('payment');
+        $cita->makeHidden(['payment_id', 'booking_request_id', 'created_by', 'clinical_slot_id', 'modality']);
+        $cita->patient?->setVisible(['id', 'first_name', 'last_name']);
+        $cita->doctor?->setVisible(['id', 'first_name', 'last_name']);
+        $cita->specialty?->setVisible(['id', 'name']);
+        $cita->events?->each(fn ($evento) => $evento->setVisible(['id', 'appointment_id', 'action', 'details', 'created_at']));
     }
 }

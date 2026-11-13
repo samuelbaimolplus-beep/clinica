@@ -4,8 +4,6 @@
 
 namespace App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Servicios;
 
-use App\Paquetes\P07_ReservasPagosYSeguimientos\CU19_VerificarPagoOExencion\Servicios\PaymentVerifier;
-use App\Paquetes\P07_ReservasPagosYSeguimientos\Compartido\Integraciones\PayPalGateway;
 use App\Models\Appointment;
 use App\Models\BookingRequest;
 use App\Models\ClinicalSlot;
@@ -14,6 +12,8 @@ use App\Models\Patient;
 use App\Models\Payment;
 use App\Models\User;
 use App\Paquetes\P05_CitasMedicas\Compartido\Servicios\AppointmentService;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\Compartido\Integraciones\PayPalGateway;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\CU19_VerificarPagoOExencion\Servicios\PaymentVerifier;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -21,180 +21,180 @@ use Illuminate\Validation\ValidationException;
 class OnlineBookingService
 {
     /** Inicia una retención online y su intento de pago con una clave de idempotencia. */
-    public function start(array $data, User $actor): BookingRequest
+    public function iniciar(array $datos, User $responsable): BookingRequest
     {
-        if (! app(PayPalGateway::class)->configured()) {
-            $this->fail('El pago online de pruebas no está disponible. Contacte a Recepción.');
+        if (! app(PayPalGateway::class)->estaConfigurada()) {
+            $this->rechazar('El pago online de pruebas no está disponible. Contacte a Recepción.');
         }
-        $request = DB::transaction(function () use ($data, $actor) {
-            $patient = Patient::whereKey($actor->patient_id)->lockForUpdate()->firstOrFail();
-            $doctor = Doctor::whereKey($data['doctor_id'])->lockForUpdate()->firstOrFail();
-            $previous = BookingRequest::where('idempotency_key', $data['idempotency_key'])->first();
-            if ($previous) {
-                if ($previous->created_by !== $actor->id || $previous->doctor_id !== $doctor->id || $previous->specialty_id !== (int) $data['specialty_id'] || $previous->date !== $data['date'] || substr($previous->start_time, 0, 5) !== $data['start_time']) {
-                    $this->fail('La operación ya existe con otros datos.');
+        $reserva = DB::transaction(function () use ($datos, $responsable) {
+            $paciente = Patient::whereKey($responsable->patient_id)->lockForUpdate()->firstOrFail();
+            $medico = Doctor::whereKey($datos['doctor_id'])->lockForUpdate()->firstOrFail();
+            $anterior = BookingRequest::where('idempotency_key', $datos['idempotency_key'])->first();
+            if ($anterior) {
+                if ($anterior->created_by !== $responsable->id || $anterior->doctor_id !== $medico->id || $anterior->specialty_id !== (int) $datos['specialty_id'] || $anterior->date !== $datos['date'] || substr($anterior->start_time, 0, 5) !== $datos['start_time']) {
+                    $this->rechazar('La operación ya existe con otros datos.');
                 }
 
-                return $previous;
+                return $anterior;
             }
-            $slot = app(AppointmentService::class)->validateSelection($patient, $doctor, $data['specialty_id'], $data['date'], $data['start_time'], 'online');
-            app(PayPalGateway::class)->snapshot(app(PaymentVerifier::class)->tariff($data['specialty_id']));
+            $franja = app(AppointmentService::class)->validarSeleccion($paciente, $medico, $datos['specialty_id'], $datos['date'], $datos['start_time'], 'online');
+            app(PayPalGateway::class)->instantaneaImporte(app(PaymentVerifier::class)->tarifa($datos['specialty_id']));
 
-            return BookingRequest::create(['idempotency_key' => $data['idempotency_key'], 'patient_id' => $patient->id, 'doctor_id' => $doctor->id,
-                'specialty_id' => $data['specialty_id'], 'created_by' => $actor->id, 'date' => $data['date'], 'start_time' => $slot['start'], 'end_time' => $slot['end'],
-                'modality' => 'online', 'clinical_slot_id' => ClinicalSlot::identify($doctor->id, $data['date'], $slot['start'], $slot['end']), 'amount_minor' => app(PaymentVerifier::class)->tariff($data['specialty_id']), 'status' => 'held',
+            return BookingRequest::create(['idempotency_key' => $datos['idempotency_key'], 'patient_id' => $paciente->id, 'doctor_id' => $medico->id,
+                'specialty_id' => $datos['specialty_id'], 'created_by' => $responsable->id, 'date' => $datos['date'], 'start_time' => $franja['start'], 'end_time' => $franja['end'],
+                'modality' => 'online', 'clinical_slot_id' => ClinicalSlot::identify($medico->id, $datos['date'], $franja['start'], $franja['end']), 'amount_minor' => app(PaymentVerifier::class)->tarifa($datos['specialty_id']), 'status' => 'held',
                 'expires_at' => now()->addMinutes(5), 'deadline_at' => now()->addMinutes(10)]);
         }, 3);
-        $request->refresh();
-        if ($request->attempt === 0) {
-            return $this->attempt($request);
+        $reserva->refresh();
+        if ($reserva->attempt === 0) {
+            return $this->intentarPago($reserva);
         }
 
-        return $request;
+        return $reserva;
     }
 
     /** Ejecuta el intento de pago permitido sin crear un segundo cobro ante una respuesta ambigua. */
-    public function attempt(BookingRequest $request): BookingRequest
+    public function intentarPago(BookingRequest $reserva): BookingRequest
     {
-        $payment = DB::transaction(function () use ($request) {
-            $r = BookingRequest::whereKey($request->id)->lockForUpdate()->firstOrFail();
-            if ($r->status !== 'held' || $r->attempt >= 2 || now()->gte($r->deadline_at)) {
-                $this->fail('No hay otro intento disponible. Primero consulte el estado del pago.');
+        $pago = DB::transaction(function () use ($reserva) {
+            $reservaBloqueada = BookingRequest::whereKey($reserva->id)->lockForUpdate()->firstOrFail();
+            if ($reservaBloqueada->status !== 'held' || $reservaBloqueada->attempt >= 2 || now()->gte($reservaBloqueada->deadline_at)) {
+                $this->rechazar('No hay otro intento disponible. Primero consulte el estado del pago.');
             }
-            if ($r->payments()->whereNotIn('status', ['failed'])->exists()) {
-                $this->fail('Existe una transacción confirmada, pendiente o sin conciliar. No se genera otro cobro.');
+            if ($reservaBloqueada->payments()->whereNotIn('status', ['failed'])->exists()) {
+                $this->rechazar('Existe una transacción confirmada, pendiente o sin conciliar. No se genera otro cobro.');
             }
-            $r->update(['status' => 'processing', 'attempt' => $r->attempt + 1, 'expires_at' => now()->addMinutes(5)->min($r->deadline_at)]);
+            $reservaBloqueada->update(['status' => 'processing', 'attempt' => $reservaBloqueada->attempt + 1, 'expires_at' => now()->addMinutes(5)->min($reservaBloqueada->deadline_at)]);
 
-            return Payment::create(['booking_request_id' => $r->id, 'attempt' => $r->attempt, 'method' => 'paypal', 'amount_minor' => $r->amount_minor, 'status' => 'initializing']
-                + app(PayPalGateway::class)->snapshot($r->amount_minor));
+            return Payment::create(['booking_request_id' => $reservaBloqueada->id, 'attempt' => $reservaBloqueada->attempt, 'method' => 'paypal', 'amount_minor' => $reservaBloqueada->amount_minor, 'status' => 'initializing']
+                + app(PayPalGateway::class)->instantaneaImporte($reservaBloqueada->amount_minor));
         });
         try {
-            $data = app(PayPalGateway::class)->create($payment);
-            DB::transaction(function () use ($payment, $data) {
-                $p = Payment::whereKey($payment->id)->lockForUpdate()->firstOrFail();
-                if ($p->reference && $p->reference !== $data['reference']) {
+            $datos = app(PayPalGateway::class)->crearOrden($pago);
+            DB::transaction(function () use ($pago, $datos) {
+                $pagoBloqueado = Payment::whereKey($pago->id)->lockForUpdate()->firstOrFail();
+                if ($pagoBloqueado->reference && $pagoBloqueado->reference !== $datos['reference']) {
                     throw new \RuntimeException('Referencia de pago inconsistente.');
                 }
-                $p->fill(['reference' => $data['reference'], 'approval_url' => $data['approval_url']]);
-                // A webhook can confirm while the generation HTTP response is still in flight.
-                if ($p->status !== 'confirmed') {
-                    $p->fill(['status' => 'pending', 'next_check_at' => now()->addSeconds(30)]);
+                $pagoBloqueado->fill(['reference' => $datos['reference'], 'approval_url' => $datos['approval_url']]);
+                // La notificación puede confirmar el pago antes de recibir la respuesta de creación.
+                if ($pagoBloqueado->status !== 'confirmed') {
+                    $pagoBloqueado->fill(['status' => 'pending', 'next_check_at' => now()->addSeconds(30)]);
                 }
-                $p->save();
+                $pagoBloqueado->save();
             });
-        } catch (\Throwable $e) {
-            // A timeout can hide a provider-side charge. Do not retry or free its slot blindly.
-            DB::transaction(function () use ($payment) {
-                $p = Payment::whereKey($payment->id)->lockForUpdate()->firstOrFail();
-                if ($p->status !== 'confirmed') {
-                    $p->update(['status' => 'unknown']);
+        } catch (\Throwable $error) {
+            // Una espera agotada puede ocultar un cobro del proveedor: se conserva el cupo hasta conciliar.
+            DB::transaction(function () use ($pago) {
+                $pagoBloqueado = Payment::whereKey($pago->id)->lockForUpdate()->firstOrFail();
+                if ($pagoBloqueado->status !== 'confirmed') {
+                    $pagoBloqueado->update(['status' => 'unknown']);
                 }
             });
-            Log::warning('PayPal no confirmó la creación de la orden Sandbox.', ['payment_id' => $payment->id, 'error_type' => get_class($e)]);
+            Log::warning('PayPal no confirmó la creación de la orden Sandbox.', ['payment_id' => $pago->id, 'error_type' => get_class($error)]);
         }
 
-        return $request->fresh();
+        return $reserva->fresh();
     }
 
     /** CU18 FA02: descartar solo cuando no pueda quedar un cobro en proceso. */
-    public function cancel(BookingRequest $request): BookingRequest
+    public function descartar(BookingRequest $reserva): BookingRequest
     {
-        $request = $this->reconcile($request, true, true);
+        $reserva = $this->conciliar($reserva, true, true);
 
-        return DB::transaction(function () use ($request) {
-            Patient::whereKey($request->patient_id)->lockForUpdate()->firstOrFail();
-            Doctor::whereKey($request->doctor_id)->lockForUpdate()->firstOrFail();
-            $current = BookingRequest::whereKey($request->id)->lockForUpdate()->firstOrFail();
-            $payments = $current->payments()->orderBy('id')->lockForUpdate()->get();
-            if ($current->status === 'completed' || $payments->contains(fn ($p) => $p->status === 'confirmed')) {
-                $this->fail('El pago ya fue confirmado y la cita está formalizada. Su cancelación corresponde a Recepción.');
+        return DB::transaction(function () use ($reserva) {
+            Patient::whereKey($reserva->patient_id)->lockForUpdate()->firstOrFail();
+            Doctor::whereKey($reserva->doctor_id)->lockForUpdate()->firstOrFail();
+            $actual = BookingRequest::whereKey($reserva->id)->lockForUpdate()->firstOrFail();
+            $pagos = $actual->payments()->orderBy('id')->lockForUpdate()->get();
+            if ($actual->status === 'completed' || $pagos->contains(fn ($pagoBloqueado) => $pagoBloqueado->status === 'confirmed')) {
+                $this->rechazar('El pago ya fue confirmado y la cita está formalizada. Su cancelación corresponde a Recepción.');
             }
-            if ($payments->contains(fn ($p) => $p->status !== 'failed')) {
-                $this->fail('No se puede descartar mientras exista un pago pendiente o sin conciliar. Consulte el estado; se conserva el cupo.');
+            if ($pagos->contains(fn ($pagoBloqueado) => $pagoBloqueado->status !== 'failed')) {
+                $this->rechazar('No se puede descartar mientras exista un pago pendiente o sin conciliar. Consulte el estado; se conserva el cupo.');
             }
-            if (! in_array($current->status, ['cancelled', 'expired'])) {
-                $current->update(['status' => 'cancelled']);
+            if (! in_array($actual->status, ['cancelled', 'expired'])) {
+                $actual->update(['status' => 'cancelled']);
             }
 
-            return $current;
+            return $actual;
         }, 3);
     }
 
     /** Consulta al proveedor y aplica únicamente estados de pago comprobados en el servidor. */
-    public function reconcile(BookingRequest $request, bool $fromWebhook = false, bool $cancelUnapproved = false): BookingRequest
+    public function conciliar(BookingRequest $reserva, bool $desdeNotificacion = false, bool $descartarNoAprobado = false): BookingRequest
     {
         // Serializa captura y cancelación de la misma reserva, incluso durante la petición HTTP.
-        return DB::transaction(function () use ($request, $fromWebhook, $cancelUnapproved) {
-            Patient::whereKey($request->patient_id)->lockForUpdate()->firstOrFail();
-            Doctor::whereKey($request->doctor_id)->lockForUpdate()->firstOrFail();
-            $request = BookingRequest::whereKey($request->id)->lockForUpdate()->firstOrFail();
-            $payment = $request->payments()->latest('attempt')->lockForUpdate()->first();
-            if (! in_array($request->status, ['processing', 'held'])) {
-                return $request;
+        return DB::transaction(function () use ($reserva, $desdeNotificacion, $descartarNoAprobado) {
+            Patient::whereKey($reserva->patient_id)->lockForUpdate()->firstOrFail();
+            Doctor::whereKey($reserva->doctor_id)->lockForUpdate()->firstOrFail();
+            $reserva = BookingRequest::whereKey($reserva->id)->lockForUpdate()->firstOrFail();
+            $pago = $reserva->payments()->latest('attempt')->lockForUpdate()->first();
+            if (! in_array($reserva->status, ['processing', 'held'])) {
+                return $reserva;
             }
-            if (! $payment || $payment->status === 'failed') {
-                return DB::transaction(function () use ($request) {
-                    $r = BookingRequest::whereKey($request->id)->lockForUpdate()->firstOrFail();
-                    $last = $r->payments()->latest('attempt')->first();
-                    if ($r->status === 'held' && ((! $last && now()->gte($r->expires_at)) || ($last?->status === 'failed' && now()->gte($r->deadline_at)))) {
-                        $r->update(['status' => 'expired']);
+            if (! $pago || $pago->status === 'failed') {
+                return DB::transaction(function () use ($reserva) {
+                    $reservaBloqueada = BookingRequest::whereKey($reserva->id)->lockForUpdate()->firstOrFail();
+                    $ultimo = $reservaBloqueada->payments()->latest('attempt')->first();
+                    if ($reservaBloqueada->status === 'held' && ((! $ultimo && now()->gte($reservaBloqueada->expires_at)) || ($ultimo?->status === 'failed' && now()->gte($reservaBloqueada->deadline_at)))) {
+                        $reservaBloqueada->update(['status' => 'expired']);
                     }
 
-                    return $r;
+                    return $reservaBloqueada;
                 });
             }
             // Los registros históricos de otro proveedor no se reinterpretan como órdenes PayPal.
-            if ($payment->method !== 'paypal') {
-                return $request;
+            if ($pago->method !== 'paypal') {
+                return $reserva;
             }
-            // Respect provider backoff; repeated clicks do not create aggressive external polling.
-            if (! $fromWebhook && $payment->next_check_at?->isFuture()) {
-                return $request;
+            // Se respeta la espera entre consultas al proveedor aunque el usuario pulse repetidamente.
+            if (! $desdeNotificacion && $pago->next_check_at?->isFuture()) {
+                return $reserva;
             }
             try {
-                $result = app(PayPalGateway::class)->status($payment, $cancelUnapproved);
-                $state = $result['status'];
-            } catch (\Throwable $e) {
-                $payment->update(['poll_count' => $payment->poll_count + 1, 'next_check_at' => now()->addSeconds(min(480, 30 * (2 ** min(4, $payment->poll_count))))]);
-                Log::warning('PayPal no respondió a conciliación Sandbox.', ['payment_id' => $payment->id, 'error_type' => get_class($e)]);
+                $resultado = app(PayPalGateway::class)->consultarEstado($pago, $descartarNoAprobado);
+                $estadoPago = $resultado['status'];
+            } catch (\Throwable $error) {
+                $pago->update(['poll_count' => $pago->poll_count + 1, 'next_check_at' => now()->addSeconds(min(480, 30 * (2 ** min(4, $pago->poll_count))))]);
+                Log::warning('PayPal no respondió a conciliación Sandbox.', ['payment_id' => $pago->id, 'error_type' => get_class($error)]);
 
-                return $request;
+                return $reserva;
             }
 
-            return DB::transaction(function () use ($request, $payment, $state, $result) {
-                Patient::whereKey($request->patient_id)->lockForUpdate()->firstOrFail();
-                Doctor::whereKey($request->doctor_id)->lockForUpdate()->firstOrFail();
-                $r = BookingRequest::whereKey($request->id)->lockForUpdate()->firstOrFail();
-                $p = Payment::whereKey($payment->id)->lockForUpdate()->firstOrFail();
-                if ($r->status === 'completed') {
-                    return $r;
+            return DB::transaction(function () use ($reserva, $pago, $estadoPago, $resultado) {
+                Patient::whereKey($reserva->patient_id)->lockForUpdate()->firstOrFail();
+                Doctor::whereKey($reserva->doctor_id)->lockForUpdate()->firstOrFail();
+                $reservaBloqueada = BookingRequest::whereKey($reserva->id)->lockForUpdate()->firstOrFail();
+                $pagoBloqueado = Payment::whereKey($pago->id)->lockForUpdate()->firstOrFail();
+                if ($reservaBloqueada->status === 'completed') {
+                    return $reservaBloqueada;
                 }
-                // Monotonic confirmation: a concurrent stale response cannot undo a confirmed payment.
-                if ($p->status === 'confirmed') {
-                    $state = 'confirmed';
+                // Una respuesta concurrente atrasada nunca revierte un pago ya confirmado.
+                if ($pagoBloqueado->status === 'confirmed') {
+                    $estadoPago = 'confirmed';
                 }
-                $p->fill(array_intersect_key($result, array_flip(['reference', 'approval_url', 'capture_id'])));
-                $p->update(['status' => $state, 'confirmed_at' => $state === 'confirmed' ? ($p->confirmed_at ?? now()) : null,
-                    'poll_count' => $p->poll_count + 1, 'next_check_at' => now()->addSeconds(min(480, 30 * (2 ** min(4, $p->poll_count))))]);
-                if ($state === 'confirmed') {
-                    $a = Appointment::firstOrCreate(['booking_request_id' => $r->id], ['patient_id' => $r->patient_id, 'doctor_id' => $r->doctor_id,
-                        'specialty_id' => $r->specialty_id, 'date' => $r->date, 'start_time' => $r->start_time, 'end_time' => $r->end_time,
-                        'modality' => 'online', 'clinical_slot_id' => $r->clinical_slot_id, 'payment_id' => $p->id, 'status' => 'Programada', 'created_by' => $r->created_by]);
-                    app(AppointmentService::class)->event($a, User::findOrFail($r->created_by), 'Pago online confirmado y ficha emitida', ['payment_id' => $p->id]);
-                    $r->update(['status' => 'completed']);
-                } elseif ($state === 'failed') {
-                    $r->update(['status' => $r->attempt >= 2 || now()->gte($r->deadline_at) ? 'expired' : 'held']);
+                $pagoBloqueado->fill(array_intersect_key($resultado, array_flip(['reference', 'approval_url', 'capture_id'])));
+                $pagoBloqueado->update(['status' => $estadoPago, 'confirmed_at' => $estadoPago === 'confirmed' ? ($pagoBloqueado->confirmed_at ?? now()) : null,
+                    'poll_count' => $pagoBloqueado->poll_count + 1, 'next_check_at' => now()->addSeconds(min(480, 30 * (2 ** min(4, $pagoBloqueado->poll_count))))]);
+                if ($estadoPago === 'confirmed') {
+                    $citaActual = Appointment::firstOrCreate(['booking_request_id' => $reservaBloqueada->id], ['patient_id' => $reservaBloqueada->patient_id, 'doctor_id' => $reservaBloqueada->doctor_id,
+                        'specialty_id' => $reservaBloqueada->specialty_id, 'date' => $reservaBloqueada->date, 'start_time' => $reservaBloqueada->start_time, 'end_time' => $reservaBloqueada->end_time,
+                        'modality' => 'online', 'clinical_slot_id' => $reservaBloqueada->clinical_slot_id, 'payment_id' => $pagoBloqueado->id, 'status' => 'Programada', 'created_by' => $reservaBloqueada->created_by]);
+                    app(AppointmentService::class)->registrarEvento($citaActual, User::findOrFail($reservaBloqueada->created_by), 'Pago online confirmado y ficha emitida', ['payment_id' => $pagoBloqueado->id]);
+                    $reservaBloqueada->update(['status' => 'completed']);
+                } elseif ($estadoPago === 'failed') {
+                    $reservaBloqueada->update(['status' => $reservaBloqueada->attempt >= 2 || now()->gte($reservaBloqueada->deadline_at) ? 'expired' : 'held']);
                 }
 
-                return $r;
+                return $reservaBloqueada;
             }, 3);
         }, 3);
     }
 
     /** Interrumpe la operación con un error de validación comprensible. */
-    private function fail(string $message): never
+    private function rechazar(string $mensaje): never
     {
-        throw ValidationException::withMessages(['payment' => $message]);
+        throw ValidationException::withMessages(['payment' => $mensaje]);
     }
 }

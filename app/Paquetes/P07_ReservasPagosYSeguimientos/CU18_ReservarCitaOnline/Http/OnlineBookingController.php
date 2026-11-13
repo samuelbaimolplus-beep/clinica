@@ -12,70 +12,70 @@ use Illuminate\Http\Request;
 class OnlineBookingController extends Controller
 {
     /** Inicia la reserva online del paciente autenticado. */
-    public function onlineStart(Request $r, OnlineBookingService $service)
+    public function iniciarReservaOnline(Request $peticion, OnlineBookingService $servicio)
     {
-        abort_unless($r->user()->role === 'Paciente', 403);
-        $data = $r->validate(['doctor_id' => 'required|integer|exists:doctors,id', 'specialty_id' => 'required|integer|exists:specialties,id',
+        abort_unless($peticion->user()->role === 'Paciente', 403);
+        $datos = $peticion->validate(['doctor_id' => 'required|integer|exists:doctors,id', 'specialty_id' => 'required|integer|exists:specialties,id',
             'date' => 'required|date_format:Y-m-d|after_or_equal:today', 'start_time' => 'required|date_format:H:i', 'idempotency_key' => 'required|uuid']);
 
-        return $this->onlineResponse($service->start($data, $r->user()));
+        return $this->respuestaReservaOnline($servicio->iniciar($datos, $peticion->user()));
     }
 
     /** Concilia el estado de la reserva con el proveedor desde el servidor. */
-    public function onlineStatus(Request $r, int $id, OnlineBookingService $service)
+    public function consultarEstadoOnline(Request $peticion, int $id, OnlineBookingService $servicio)
     {
-        return $this->onlineResponse($service->reconcile($this->ownedBooking($r, $id)));
+        return $this->respuestaReservaOnline($servicio->conciliar($this->reservaPropia($peticion, $id)));
     }
 
     /** Muestra una operación online autorizada sin suplantar al titular. */
-    public function onlineShow(Request $r, int $id)
+    public function consultarReservaOnline(Request $peticion, int $id)
     {
-        $booking = BookingRequest::findOrFail($id);
-        abort_unless($r->user()->role === 'Superadmin' || ($r->user()->role === 'Paciente' && $booking->created_by === $r->user()->id), 403);
+        $reserva = BookingRequest::findOrFail($id);
+        abort_unless($peticion->user()->role === 'Superadmin' || ($peticion->user()->role === 'Paciente' && $reserva->created_by === $peticion->user()->id), 403);
 
-        return $this->onlineResponse($booking);
+        return $this->respuestaReservaOnline($reserva);
     }
 
     /** Inicia el siguiente intento permitido después de comprobar el estado del anterior. */
-    public function onlineRetry(Request $r, int $id, OnlineBookingService $service)
+    public function reintentarPagoOnline(Request $peticion, int $id, OnlineBookingService $servicio)
     {
-        $booking = $service->reconcile($this->ownedBooking($r, $id));
+        $reserva = $servicio->conciliar($this->reservaPropia($peticion, $id));
 
-        return $this->onlineResponse($service->attempt($booking));
+        return $this->respuestaReservaOnline($servicio->intentarPago($reserva));
     }
 
     /** Descarta una solicitud únicamente si el servidor confirma que no hay cobro en proceso. */
-    public function onlineCancel(Request $r, int $id, OnlineBookingService $service)
+    public function descartarReservaOnline(Request $peticion, int $id, OnlineBookingService $servicio)
     {
-        return $this->onlineResponse($service->cancel($this->ownedBooking($r, $id)));
+        return $this->respuestaReservaOnline($servicio->descartar($this->reservaPropia($peticion, $id)));
     }
 
     /** Resuelve una reserva dentro del ámbito del titular autenticado. */
-    private function ownedBooking(Request $r, int $id): BookingRequest
+    private function reservaPropia(Request $peticion, int $id): BookingRequest
     {
-        $booking = BookingRequest::findOrFail($id);
-        abort_unless($r->user()->role === 'Paciente' && $booking->created_by === $r->user()->id, 403);
+        $reserva = BookingRequest::findOrFail($id);
+        abort_unless($peticion->user()->role === 'Paciente' && $reserva->created_by === $peticion->user()->id, 403);
 
-        return $booking;
+        return $reserva;
     }
 
     /** Compone el resultado de reserva, pago y cita confirmada cuando existe. */
-    private function onlineResponse(BookingRequest $booking): array
+    private function respuestaReservaOnline(BookingRequest $reserva): array
     {
-        $payment = $booking->payments()->latest('attempt')->first();
+        $pago = $reserva->payments()->latest('attempt')->first();
 
-        return ['booking' => $booking, 'payment' => $payment,
-            'approval_url' => $payment?->method === 'paypal' ? $payment->approval_url : null,
-            'appointment' => $booking->appointment()->with('doctor', 'specialty', 'patient', 'payment')->first()];
+        return ['booking' => $reserva, 'payment' => $pago,
+            'approval_url' => $pago?->method === 'paypal' ? $pago->approval_url : null,
+            'appointment' => $reserva->appointment()->with('doctor', 'specialty', 'patient', 'payment')->first()];
     }
 
     /** Lista reservas dentro del ámbito del usuario. */
-    public function onlineList(Request $r)
+    public function listarReservasOnline(Request $peticion)
     {
-        abort_unless(in_array($r->user()->role, ['Superadmin', 'Paciente'], true), 403);
+        abort_unless(in_array($peticion->user()->role, ['Superadmin', 'Paciente'], true), 403);
 
-        return BookingRequest::when($r->user()->role === 'Paciente', fn ($q) => $q->where('created_by', $r->user()->id))
+        return BookingRequest::when($peticion->user()->role === 'Paciente', fn ($consulta) => $consulta->where('created_by', $peticion->user()->id))
             ->where('modality', 'online')->with('payments', 'patient:id,first_name,last_name', 'doctor:id,first_name,last_name', 'specialty:id,name')->latest()
-            ->when($r->user()->role === 'Paciente', fn ($q) => $q->limit(50))->get();
+            ->when($peticion->user()->role === 'Paciente', fn ($consulta) => $consulta->limit(50))->get();
     }
 }

@@ -14,58 +14,59 @@ use Illuminate\Support\Facades\Auth;
 class SessionSecurity
 {
     /** Guarda la firma vigente de la cuenta autenticada para detectar cambios posteriores. */
-    public function remember(Request $request, User $user): void
+    public function registrarFirmaSesion(Request $solicitud, User $usuario): void
     {
-        $request->session()->put('clinic.auth_user_id', $user->id);
-        $request->session()->put('clinic.auth_fingerprint', $this->fingerprint($user));
+        $solicitud->session()->put('clinic.auth_user_id', $usuario->id);
+        $solicitud->session()->put('clinic.auth_fingerprint', $this->calcularFirma($usuario));
     }
 
     /** Calcula una firma de credenciales y permisos sin guardar su contenido en la sesión. */
-    public function fingerprint(User $user): string
+    public function calcularFirma(User $usuario): string
     {
         // La sesión guarda una firma; nunca una copia de la contraseña o su hash.
         return hash_hmac('sha256', json_encode([
-            $user->id, $user->username, $user->password, $user->role, $user->doctor_id, $user->patient_id, $user->birth_date, $user->terms_version,
+            $usuario->id, $usuario->username, $usuario->password, $usuario->role, $usuario->doctor_id, $usuario->patient_id, $usuario->birth_date, $usuario->terms_version,
         ], JSON_THROW_ON_ERROR), config('app.key'));
     }
 
     /** Revalida la sesión frente al usuario actual y la revoca cuando dejó de cumplir las reglas. */
-    public function validate(Request $request): ?string
+    public function validarSesion(Request $solicitud): ?string
     {
-        if (! $request->user()) {
+        if (! $solicitud->user()) {
             return null;
         }
-        $user = $request->user()->fresh();
-        $reason = null;
-        if (! $user || ! ClinicAccess::isActive($user)) {
-            $reason = 'inactive_account';
-        } elseif (! $user->email_verified_at) {
-            $reason = 'email_unverified';
-        } elseif (! app(AccountEligibility::class)->ready($user)) {
-            $reason = 'account_eligibility';
-        } elseif ($request->session()->get('clinic.auth_user_id') === $user->id
-            && $request->session()->has('clinic.auth_fingerprint')
-            && ! hash_equals($request->session()->get('clinic.auth_fingerprint'), $this->fingerprint($user))) {
-            $reason = 'credentials_or_permissions_changed';
+        $usuario = $solicitud->user()->fresh();
+        $motivo = null;
+        if (! $usuario || ! ClinicAccess::isActive($usuario)) {
+            $motivo = 'inactive_account';
+        } elseif (! $usuario->email_verified_at) {
+            $motivo = 'email_unverified';
+        } elseif (! app(AccountEligibility::class)->cumpleRequisitos($usuario)) {
+            $motivo = 'account_eligibility';
+        } elseif ($solicitud->session()->get('clinic.auth_user_id') === $usuario->id
+            && $solicitud->session()->has('clinic.auth_fingerprint')
+            && ! hash_equals($solicitud->session()->get('clinic.auth_fingerprint'), $this->calcularFirma($usuario))) {
+            $motivo = 'credentials_or_permissions_changed';
         }
 
-        if ($reason) {
-            app(AuditLogger::class)->record('auth', 'session_revoked', $user, details: ['reason' => $reason]);
+        if ($motivo) {
+            app(AuditLogger::class)->registrar('auth', 'session_revoked', $usuario, detalles: ['reason' => $motivo]);
             Auth::logout();
-            $request->session()->invalidate();
-            $request->session()->regenerateToken();
+            $solicitud->session()->invalidate();
+            $solicitud->session()->regenerateToken();
 
-            if ($reason === 'account_eligibility') {
+            if ($motivo === 'account_eligibility') {
                 return 'Inicie sesión para verificar la edad y los términos de su cuenta. La atención en Recepción no requiere cuenta de paciente.';
             }
-            return $reason === 'email_unverified' ? 'Verifique su correo antes de iniciar sesión.' : ($reason === 'inactive_account'
+
+            return $motivo === 'email_unverified' ? 'Verifique su correo antes de iniciar sesión.' : ($motivo === 'inactive_account'
                 ? 'La cuenta está inactiva. Contacte al administrador.'
                 : 'Sus credenciales o permisos cambiaron. Inicie sesión nuevamente.');
         }
 
-        Auth::setUser($user);
+        Auth::setUser($usuario);
         // Las sesiones anteriores a esta mejora establecen su firma en el primer acceso válido.
-        $this->remember($request, $user);
+        $this->registrarFirmaSesion($solicitud, $usuario);
 
         return null;
     }

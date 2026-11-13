@@ -18,96 +18,96 @@ use Illuminate\Validation\ValidationException;
 class CatalogService
 {
     /** Coordina la validación y persistencia de esta operación; delega las reglas del dominio al servicio correspondiente. */
-    public function save(Model $record, array $data, ?User $actor = null): Model
+    public function guardar(Model $registro, array $datos, ?User $responsable = null): Model
     {
-        return DB::transaction(function () use ($record, $data, $actor) {
-            if ($record instanceof User) {
+        return DB::transaction(function () use ($registro, $datos, $responsable) {
+            if ($registro instanceof User) {
                 // Orden estable para impedir que cambios simultáneos eliminen todos los administradores.
                 User::orderBy('id')->lockForUpdate()->get();
-                $current = $actor?->fresh();
-                abort_unless($current?->status === 'Activo' && $current?->hasStaffRole('Administrador'), 403);
-                abort_if($record->exists && $record->fresh()->role === 'Paciente', 403);
-                abort_if($current->role !== 'Superadmin' && ($data['role'] === 'Superadmin' || ($record->exists && $record->fresh()->role === 'Superadmin')), 403);
-                if ($record->getKey() === $actor->id && ($data['status'] !== 'Activo' || $data['role'] !== $actor->role)) {
+                $actual = $responsable?->fresh();
+                abort_unless($actual?->status === 'Activo' && $actual?->hasStaffRole('Administrador'), 403);
+                abort_if($registro->exists && $registro->fresh()->role === 'Paciente', 403);
+                abort_if($actual->role !== 'Superadmin' && ($datos['role'] === 'Superadmin' || ($registro->exists && $registro->fresh()->role === 'Superadmin')), 403);
+                if ($registro->getKey() === $responsable->id && ($datos['status'] !== 'Activo' || $datos['role'] !== $responsable->role)) {
                     throw ValidationException::withMessages(['status' => 'No puede desactivar su propia cuenta ni cambiar su propio rol.']);
                 }
-                if ($record->exists && $record->fresh()->role === 'Administrador' && ($data['status'] !== 'Activo' || $data['role'] !== 'Administrador') && User::where('role', 'Administrador')->where('status', 'Activo')->count() <= 1) {
+                if ($registro->exists && $registro->fresh()->role === 'Administrador' && ($datos['status'] !== 'Activo' || $datos['role'] !== 'Administrador') && User::where('role', 'Administrador')->where('status', 'Activo')->count() <= 1) {
                     throw ValidationException::withMessages(['status' => 'Debe conservar al menos un administrador activo.']);
                 }
-                if ($record->exists && $record->fresh()->role === 'Superadmin' && ($data['status'] !== 'Activo' || $data['role'] !== 'Superadmin') && User::where('role', 'Superadmin')->where('status', 'Activo')->count() <= 1) {
+                if ($registro->exists && $registro->fresh()->role === 'Superadmin' && ($datos['status'] !== 'Activo' || $datos['role'] !== 'Superadmin') && User::where('role', 'Superadmin')->where('status', 'Activo')->count() <= 1) {
                     throw ValidationException::withMessages(['status' => 'Debe conservar al menos un Superadmin activo.']);
                 }
-                if (empty($data['password'])) {
-                    unset($data['password']);
+                if (empty($datos['password'])) {
+                    unset($datos['password']);
                 }
-                $data['doctor_id'] = $data['role'] === 'Médico' ? $data['doctor_id'] : null;
-            } elseif ($record->exists) {
-                $record = $record->newQuery()->whereKey($record->getKey())->lockForUpdate()->firstOrFail();
+                $datos['doctor_id'] = $datos['role'] === 'Médico' ? $datos['doctor_id'] : null;
+            } elseif ($registro->exists) {
+                $registro = $registro->newQuery()->whereKey($registro->getKey())->lockForUpdate()->firstOrFail();
             }
-            if ($record instanceof Specialty && isset($data['name']) && Specialty::whereRaw("lower(trim(regexp_replace(name, '[[:space:]]+', ' ', 'g'))) = ?", [SpecialtyName::key($data['name'])])->when($record->exists, fn ($q) => $q->whereKeyNot($record->id))->exists()) {
+            if ($registro instanceof Specialty && isset($datos['name']) && Specialty::whereRaw("lower(trim(regexp_replace(name, '[[:space:]]+', ' ', 'g'))) = ?", [SpecialtyName::key($datos['name'])])->when($registro->exists, fn ($consulta) => $consulta->whereKeyNot($registro->id))->exists()) {
                 throw ValidationException::withMessages(['name' => 'Ya existe una especialidad con ese nombre.']);
             }
-            if ($record instanceof Patient && array_key_exists('identity', $data) && empty($data['identity'])) {
-                $data['identity'] = null;
+            if ($registro instanceof Patient && array_key_exists('identity', $datos) && empty($datos['identity'])) {
+                $datos['identity'] = null;
                 // Sin CI no se fusionan personas automáticamente; recepción revisa coincidencias exactas.
-                $duplicate = Patient::whereRaw('lower(first_name) = ?', [mb_strtolower($data['first_name'])])
-                    ->whereRaw('lower(last_name) = ?', [mb_strtolower($data['last_name'])])
-                    ->where('birth_date', $data['birth_date'])->where('phone', $data['phone'])
-                    ->when($record->exists, fn ($q) => $q->whereKeyNot($record->id))->exists();
-                if ($duplicate) {
+                $duplicado = Patient::whereRaw('lower(first_name) = ?', [mb_strtolower($datos['first_name'])])
+                    ->whereRaw('lower(last_name) = ?', [mb_strtolower($datos['last_name'])])
+                    ->where('birth_date', $datos['birth_date'])->where('phone', $datos['phone'])
+                    ->when($registro->exists, fn ($consulta) => $consulta->whereKeyNot($registro->id))->exists();
+                if ($duplicado) {
                     throw ValidationException::withMessages(['identity' => 'Existe un paciente con los mismos datos. Revise el registro antes de continuar.']);
                 }
             }
-            $specialties = $data['specialty_ids'] ?? null;
-            if ($specialties !== null) {
-                $selected = Specialty::whereIn('id', $specialties)->orderBy('id')->lockForUpdate()->get();
-                if ($selected->count() !== count($specialties) || $selected->contains(fn ($specialty) => $specialty->status !== 'Activo')) {
+            $especialidades = $datos['specialty_ids'] ?? null;
+            if ($especialidades !== null) {
+                $seleccionados = Specialty::whereIn('id', $especialidades)->orderBy('id')->lockForUpdate()->get();
+                if ($seleccionados->count() !== count($especialidades) || $seleccionados->contains(fn ($especialidad) => $especialidad->status !== 'Activo')) {
                     throw ValidationException::withMessages(['specialty_ids' => 'Seleccione únicamente especialidades registradas y activas.']);
                 }
             }
-            unset($data['specialty_ids']);
-            $record->fill($data);
-            if ($record instanceof User && $record->isDirty('email')) {
-                $record->email_verified_at = null;
+            unset($datos['specialty_ids']);
+            $registro->fill($datos);
+            if ($registro instanceof User && $registro->isDirty('email')) {
+                $registro->email_verified_at = null;
             }
-            $record->save();
-            if ($record instanceof Doctor && $specialties !== null) {
-                $before = $record->specialties()->orderBy('specialties.id')->get(['specialties.id', 'specialties.name'])
-                    ->map(fn ($specialty) => ['id' => $specialty->id, 'name' => $specialty->name])->all();
-                $changes = $record->specialties()->sync($specialties);
-                if ($changes['attached'] || $changes['detached']) {
-                    $after = $record->specialties()->orderBy('specialties.id')->get(['specialties.id', 'specialties.name'])
-                        ->map(fn ($specialty) => ['id' => $specialty->id, 'name' => $specialty->name])->all();
-                    app(AuditLogger::class)->record('doctors', 'specialties_assigned', $record, details: [
-                        'specialty_ids' => array_map('intval', $specialties), 'fields' => ['specialties'],
-                        'changes' => ['specialties' => ['before' => $before, 'after' => $after]],
+            $registro->save();
+            if ($registro instanceof Doctor && $especialidades !== null) {
+                $antes = $registro->specialties()->orderBy('specialties.id')->get(['specialties.id', 'specialties.name'])
+                    ->map(fn ($especialidad) => ['id' => $especialidad->id, 'name' => $especialidad->name])->all();
+                $cambios = $registro->specialties()->sync($especialidades);
+                if ($cambios['attached'] || $cambios['detached']) {
+                    $despues = $registro->specialties()->orderBy('specialties.id')->get(['specialties.id', 'specialties.name'])
+                        ->map(fn ($especialidad) => ['id' => $especialidad->id, 'name' => $especialidad->name])->all();
+                    app(AuditLogger::class)->registrar('doctors', 'specialties_assigned', $registro, detalles: [
+                        'specialty_ids' => array_map('intval', $especialidades), 'fields' => ['specialties'],
+                        'changes' => ['specialties' => ['before' => $antes, 'after' => $despues]],
                     ]);
                 }
             }
 
-            $record = $record->fresh($record instanceof Doctor ? ['specialties'] : []);
-            if ($record instanceof Doctor || $record instanceof Specialty) {
-                $record->setAttribute('affected_appointments', app(CatalogImpact::class)->affected(
-                    $record instanceof Doctor ? $record->id : null,
-                    $record instanceof Specialty ? $record->id : null,
+            $registro = $registro->fresh($registro instanceof Doctor ? ['specialties'] : []);
+            if ($registro instanceof Doctor || $registro instanceof Specialty) {
+                $registro->setAttribute('affected_appointments', app(CatalogImpact::class)->citasAfectadas(
+                    $registro instanceof Doctor ? $registro->id : null,
+                    $registro instanceof Specialty ? $registro->id : null,
                 ));
             }
 
-            return $record;
+            return $registro;
         });
     }
 
     /** Cambia el estado conservando el registro y sus relaciones históricas. */
-    public function changeStatus(Model $record, string $status, User $actor): Model
+    public function cambiarEstado(Model $registro, string $estado, User $responsable): Model
     {
-        return DB::transaction(function () use ($record, $status, $actor) {
-            if ($record instanceof User) {
+        return DB::transaction(function () use ($registro, $estado, $responsable) {
+            if ($registro instanceof User) {
                 User::orderBy('id')->lockForUpdate()->get();
             }
-            $record = $record->newQuery()->whereKey($record->id)->lockForUpdate()->firstOrFail();
-            $data = $record instanceof User ? $record->only(['name', 'email', 'role', 'doctor_id', 'birth_date']) : [];
+            $registro = $registro->newQuery()->whereKey($registro->id)->lockForUpdate()->firstOrFail();
+            $datos = $registro instanceof User ? $registro->only(['name', 'email', 'role', 'doctor_id', 'birth_date']) : [];
 
-            return $this->save($record, $data + ['status' => $status], $actor);
+            return $this->guardar($registro, $datos + ['status' => $estado], $responsable);
         });
     }
 }

@@ -28,6 +28,7 @@ class CreateClinicAdmin extends Command
         $validation = validator(['birth_date' => $this->option('nacimiento')], ['birth_date' => 'required|date_format:Y-m-d|before_or_equal:'.today()->subYearsNoOverflow(18)->toDateString()]);
         if ($validation->fails()) {
             $this->error('Indique --nacimiento=AAAA-MM-DD, con al menos 18 años cumplidos.');
+
             return self::FAILURE;
         }
         $email = mb_strtolower(trim($this->argument('email')));
@@ -44,7 +45,7 @@ class CreateClinicAdmin extends Command
                 throw new \RuntimeException('No se pudo guardar el acceso privado; no se creó la cuenta.');
             }
             $this->info('Administrador creado. Acceso guardado en storage/app/private/acceso-inicial.txt (fuera de Git).');
-            DB::afterCommit(fn () => app(EmailActivation::class)->send($user));
+            DB::afterCommit(fn () => app(EmailActivation::class)->enviar($user));
             $this->info('Debe activar la cuenta con el código enviado a su correo antes de acceder.');
 
             return self::SUCCESS;
