@@ -5,7 +5,7 @@
 namespace App\Console\Commands;
 
 use App\Models\User;
-use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\EmailActivation;
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\ActivacionPorCorreo;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -45,7 +45,7 @@ class CreateClinicAdmin extends Command
                 throw new \RuntimeException('No se pudo guardar el acceso privado; no se creó la cuenta.');
             }
             $this->info('Administrador creado. Acceso guardado en storage/app/private/acceso-inicial.txt (fuera de Git).');
-            DB::afterCommit(fn () => app(EmailActivation::class)->enviar($user));
+            DB::afterCommit(fn () => app(ActivacionPorCorreo::class)->enviar($user));
             $this->info('Debe activar la cuenta con el código enviado a su correo antes de acceder.');
 
             return self::SUCCESS;

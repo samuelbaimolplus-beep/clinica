@@ -4,8 +4,8 @@
 
 namespace App\Observers;
 
-use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditDetails;
-use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\DetallesAuditoria;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
 use Illuminate\Database\Eloquent\Model;
 
 class ClinicAuditObserver
@@ -42,13 +42,13 @@ class ClinicAuditObserver
             default => 'appointments',
         };
         $changes = [];
-        foreach (AuditDetails::atributosPermitidos($attributes) as $field => $value) {
+        foreach (DetallesAuditoria::atributosPermitidos($attributes) as $field => $value) {
             $changes[$field] = [
                 'before' => $action === 'created' ? null : $model->getRawOriginal($field),
                 'after' => $action === 'deleted' ? null : $value,
             ];
         }
-        app(AuditLogger::class)->registrar($module, $action, $model, detalles: [
+        app(RegistroAuditoria::class)->registrar($module, $action, $model, detalles: [
             'fields' => array_keys($changes), 'changes' => $changes,
             'security_changed' => $action === 'updated' && array_key_exists('password', $attributes),
         ]);

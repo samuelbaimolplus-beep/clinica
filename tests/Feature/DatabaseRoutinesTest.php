@@ -11,8 +11,8 @@ use App\Models\DoctorQuota;
 use App\Models\Patient;
 use App\Models\Specialty;
 use App\Models\User;
-use App\Paquetes\P05_CitasMedicas\Compartido\Servicios\AppointmentService;
-use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
+use App\Paquetes\P05_CitasMedicas\Compartido\Servicios\ServicioCitas;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
@@ -115,7 +115,7 @@ class DatabaseRoutinesTest extends TestCase
         $this->reject(fn () => DB::statement("CALL public.registrar_auditoria(NULL, 'sql', '', NULL, NULL, 'success', '{}'::jsonb)"));
         try {
             DB::transaction(function () {
-                app(AuditLogger::class)->registrar('sql', 'revertido');
+                app(RegistroAuditoria::class)->registrar('sql', 'revertido');
                 throw new \RuntimeException('Revertir');
             });
         } catch (\RuntimeException $exception) {
@@ -127,7 +127,7 @@ class DatabaseRoutinesTest extends TestCase
     public function test_event_procedure_is_used_by_application_and_enforces_foreign_keys(): void
     {
         $a = Appointment::create($this->selection());
-        app(AppointmentService::class)->registrarEvento($a, $this->admin, 'Prueba del procedimiento', ['reason' => 'Evento SQL']);
+        app(ServicioCitas::class)->registrarEvento($a, $this->admin, 'Prueba del procedimiento', ['reason' => 'Evento SQL']);
         $this->assertSame(1, $a->events()->count());
         $this->assertSame(['reason' => 'Evento SQL'], $a->events()->firstOrFail()->details);
         $this->reject(fn () => DB::statement("CALL public.registrar_evento_cita(?, ?, 'Sin cita', '{}'::jsonb)", [-1, $this->admin->id]), '23503');

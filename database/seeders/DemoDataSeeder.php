@@ -11,7 +11,7 @@ use App\Models\Schedule;
 use App\Models\Specialty;
 use App\Models\Unavailability;
 use App\Models\User;
-use App\Paquetes\P05_CitasMedicas\Compartido\Servicios\AppointmentService;
+use App\Paquetes\P05_CitasMedicas\Compartido\Servicios\ServicioCitas;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -91,7 +91,7 @@ class DemoDataSeeder extends Seeder
                 }
             }
 
-            $service = app(AppointmentService::class);
+            $service = app(ServicioCitas::class);
             $future = today()->addDay();
             while ($future->isSunday()) {
                 $future->addDay();

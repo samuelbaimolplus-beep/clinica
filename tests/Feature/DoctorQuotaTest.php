@@ -10,7 +10,7 @@ use App\Models\Schedule;
 use App\Models\Specialty;
 use App\Models\Unavailability;
 use App\Models\User;
-use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -136,9 +136,9 @@ class DoctorQuotaTest extends TestCase
 
     public function test_audit_failure_rolls_back_the_quota_configuration(): void
     {
-        $logger = Mockery::mock(new AuditLogger);
+        $logger = Mockery::mock(new RegistroAuditoria);
         $logger->shouldReceive('registrar')->andThrow(new \RuntimeException('Fallo simulado de auditoría'));
-        $this->app->instance(AuditLogger::class, $logger);
+        $this->app->instance(RegistroAuditoria::class, $logger);
         $this->saveQuota('50', '50')->assertStatus(503);
         $this->assertDatabaseCount('doctor_quotas', 0);
     }

@@ -4,7 +4,7 @@
 
 namespace App\Http\Middleware;
 
-use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\SessionSecurity;
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\SeguridadSesion;
 use Closure;
 use Illuminate\Http\Request;
 
@@ -16,7 +16,7 @@ class ClinicSession
         if (! $request->user()) {
             return response()->json(['message' => 'Debe iniciar sesión.', 'csrf' => csrf_token()], 401);
         }
-        if ($message = app(SessionSecurity::class)->validarSesion($request)) {
+        if ($message = app(SeguridadSesion::class)->validarSesion($request)) {
             return response()->json(['message' => $message, 'csrf' => csrf_token()], 401);
         }
 

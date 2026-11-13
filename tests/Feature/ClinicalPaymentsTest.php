@@ -12,8 +12,8 @@ use App\Models\Payment;
 use App\Models\Schedule;
 use App\Models\Specialty;
 use App\Models\User;
-use App\Paquetes\P07_ReservasPagosYSeguimientos\Compartido\Integraciones\PayPalGateway;
-use App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Servicios\OnlineBookingService;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\Compartido\Integraciones\PasarelaPayPal;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Servicios\ServicioReservasOnline;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\Client\ConnectionException;
@@ -122,7 +122,7 @@ class ClinicalPaymentsTest extends TestCase
 
     private function paypalOrder(Payment $payment, string $state = 'APPROVED', ?string $captureState = null, bool $wrongAmount = false): array
     {
-        $gateway = app(PayPalGateway::class);
+        $gateway = app(PasarelaPayPal::class);
         $ref = $gateway->referencia($payment);
         $id = 'PP-'.$ref;
         $amount = ['currency_code' => 'USD', 'value' => $wrongAmount ? '0.01' : $gateway->importeUsd($payment)];
@@ -159,7 +159,7 @@ class ClinicalPaymentsTest extends TestCase
                 $created = $this->paypalOrder($payment, 'CREATED');
                 if ($race) {
                     $payment->update(['reference' => $created['id']]);
-                    app(OnlineBookingService::class)->conciliar(BookingRequest::findOrFail($payment->booking_request_id), true);
+                    app(ServicioReservasOnline::class)->conciliar(BookingRequest::findOrFail($payment->booking_request_id), true);
                 }
 
                 return Http::response($created, 201);

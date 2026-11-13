@@ -4,7 +4,7 @@
 
 namespace App\Http\Middleware;
 
-use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
 use Closure;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
@@ -33,6 +33,6 @@ class ClinicalAccessAudit
     /** Registra o comunica el acceso rechazado sin exponer datos del recurso. */
     private function denied(): void
     {
-        app(AuditLogger::class)->registrar('clinical_access', 'denied', resultado: 'denied', detalles: ['reason' => 'Acceso clínico denegado por permisos o titularidad.']);
+        app(RegistroAuditoria::class)->registrar('clinical_access', 'denied', resultado: 'denied', detalles: ['reason' => 'Acceso clínico denegado por permisos o titularidad.']);
     }
 }

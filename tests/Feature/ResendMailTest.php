@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\EmailActivation;
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\ActivacionPorCorreo;
 use GuzzleHttp\Client as HttpClient;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
@@ -65,7 +65,7 @@ class ResendMailTest extends TestCase
         $this->mockApi([new Response(200, ['Content-Type' => 'application/json'], '{"id":"activation-test"}'),
             new Response(200, ['Content-Type' => 'application/json'], '{"id":"recovery-test"}')], $history);
         $user = $this->account();
-        $this->assertTrue(app(EmailActivation::class)->enviar($user));
+        $this->assertTrue(app(ActivacionPorCorreo::class)->enviar($user));
         $this->assertCount(1, $history);
         $request = $history[0]['request'];
         $this->assertSame('https://api.resend.com/emails', (string) $request->getUri());
@@ -76,7 +76,7 @@ class ResendMailTest extends TestCase
         $this->assertStringContainsString('Verifique su correo', $message['subject']);
         $this->assertStringContainsString('https://clinica-y8yy.onrender.com', $message['html']);
         $this->assertSame(1, preg_match('/>\s*(\d{8})\s*</', $message['html'], $match));
-        app(EmailActivation::class)->confirmar($user->email, $match[1]);
+        app(ActivacionPorCorreo::class)->confirmar($user->email, $match[1]);
         $this->assertNotNull($user->fresh()->email_verified_at);
         $this->assertSame(Password::RESET_LINK_SENT, Password::sendResetLink(['email' => $user->email]));
         $this->assertCount(2, $history);
@@ -90,7 +90,7 @@ class ResendMailTest extends TestCase
         $history = [];
         $this->mockApi([new Response(403, ['Content-Type' => 'application/json'], '{"statusCode":403,"name":"validation_error","message":"Testing recipient is not permitted"}')], $history);
         $user = $this->account();
-        $this->assertFalse(app(EmailActivation::class)->enviar($user));
+        $this->assertFalse(app(ActivacionPorCorreo::class)->enviar($user));
         $this->assertCount(1, $history);
         $this->assertNull($user->fresh()->email_verified_at);
     }

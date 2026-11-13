@@ -7,7 +7,7 @@ use App\Models\Patient;
 use App\Models\Schedule;
 use App\Models\Specialty;
 use App\Models\User;
-use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\AccountEligibility;
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\RequisitosCuenta;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
@@ -47,7 +47,7 @@ class AccountEligibilityAndClinicalFlowTest extends TestCase
 
     public function test_age_boundary_is_eighteen_completed_years_not_a_birth_year_approximation(): void
     {
-        $rule = app(AccountEligibility::class);
+        $rule = app(RequisitosCuenta::class);
         $this->assertTrue($rule->esMayorDeEdad('2008-11-09'));
         foreach (['2008-11-10', '2020-01-01', '2027-01-01', '2000-02-31', null] as $date) {
             $this->assertFalse($rule->esMayorDeEdad($date));

@@ -7,7 +7,7 @@ use App\Models\Doctor;
 use App\Models\Patient;
 use App\Models\User;
 use App\Notifications\VerifyClinicEmail;
-use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\EmailActivation;
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\ActivacionPorCorreo;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -113,7 +113,7 @@ class EmailActivationTest extends TestCase
     public function test_expired_wrong_reused_and_over_attempt_codes_cannot_activate(): void
     {
         $user = $this->pending('Administrador', 'intentos');
-        app(EmailActivation::class)->enviar($user);
+        app(ActivacionPorCorreo::class)->enviar($user);
         $code = $this->code($user);
         for ($i = 0; $i < 5; $i++) {
             $this->postJson('/api/account/activate', ['email' => $user->email, 'code' => '00000000'])->assertUnprocessable();
@@ -122,7 +122,7 @@ class EmailActivationTest extends TestCase
         $this->assertNull($user->fresh()->email_verified_at);
         $this->travel(16)->minutes();
         $this->postJson('/api/account/activate', ['email' => $user->email, 'code' => $code])->assertUnprocessable();
-        app(EmailActivation::class)->enviar($user);
+        app(ActivacionPorCorreo::class)->enviar($user);
         $newCode = $this->code($user);
         $this->postJson('/api/account/activate', ['email' => $user->email, 'code' => $newCode])->assertOk();
         $this->postJson('/api/account/activate', ['email' => $user->email, 'code' => $newCode])->assertUnprocessable();
@@ -131,11 +131,11 @@ class EmailActivationTest extends TestCase
     public function test_resending_revokes_previous_code_and_stores_only_hashes(): void
     {
         $user = $this->pending('Recepcionista', 'reenvio');
-        app(EmailActivation::class)->enviar($user);
+        app(ActivacionPorCorreo::class)->enviar($user);
         $old = $this->code($user);
-        $this->assertFalse(app(EmailActivation::class)->enviar($user));
+        $this->assertFalse(app(ActivacionPorCorreo::class)->enviar($user));
         $this->travel(61)->seconds();
-        $this->assertTrue(app(EmailActivation::class)->enviar($user));
+        $this->assertTrue(app(ActivacionPorCorreo::class)->enviar($user));
         $new = $this->code($user);
         $this->assertNotSame($old, $new);
         $state = Cache::get('clinic:activation:'.$user->id);
@@ -148,7 +148,7 @@ class EmailActivationTest extends TestCase
     public function test_unknown_inactive_and_other_email_do_not_activate_or_create_accounts(): void
     {
         $user = $this->pending('Administrador', 'inactiva');
-        app(EmailActivation::class)->enviar($user);
+        app(ActivacionPorCorreo::class)->enviar($user);
         $code = $this->code($user);
         $before = User::count();
         $this->postJson('/api/account/activate', ['email' => 'nadie@activation.test', 'code' => $code])->assertUnprocessable();
@@ -194,7 +194,7 @@ class EmailActivationTest extends TestCase
     {
         Cache::setDefaultDriver('database');
         $user = $this->pending('Administrador', 'persistente');
-        $this->assertTrue(app(EmailActivation::class)->enviar($user));
+        $this->assertTrue(app(ActivacionPorCorreo::class)->enviar($user));
         $code = $this->code($user);
         $state = Cache::get('clinic:activation:'.$user->id);
         $this->assertSame(64, strlen($state['hash']));

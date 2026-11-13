@@ -10,7 +10,7 @@ use App\Models\Schedule;
 use App\Models\Specialty;
 use App\Models\Unavailability;
 use App\Models\User;
-use App\Paquetes\P05_CitasMedicas\Compartido\Servicios\AppointmentService;
+use App\Paquetes\P05_CitasMedicas\Compartido\Servicios\ServicioCitas;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
@@ -77,7 +77,7 @@ class MedicalAbsenceTest extends TestCase
             $this->assertSame('Confirmó que sí atenderá', $event->details['changes']['cancellation_reason']['after']);
         }
         $this->assertSame($before, $appointment->fresh()->getAttributes());
-        $slots = collect(app(AppointmentService::class)->franjasDisponibles($this->doctor->id, '2026-11-12'));
+        $slots = collect(app(ServicioCitas::class)->franjasDisponibles($this->doctor->id, '2026-11-12'));
         $this->assertSame('Ocupado', $slots->firstWhere('start', '08:00')['status']);
         $this->assertSame('Disponible', $slots->firstWhere('start', '08:30')['status']);
         $this->actingAs($this->reception)->getJson('/api/schedule-impacts')->assertOk()->assertJsonCount(0);

@@ -2,12 +2,12 @@
 
 namespace Tests\Feature;
 
-use App\Compartido\Catalogos\Servicios\CatalogService;
+use App\Compartido\Catalogos\Servicios\ServicioCatalogos;
 use App\Models\AuditEvent;
 use App\Models\Doctor;
 use App\Models\Schedule;
 use App\Models\Specialty;
-use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -59,7 +59,7 @@ class AuditDetailsTest extends TestCase
         $second = Specialty::create(['name' => 'Auditoría segunda', 'status' => 'Activo']);
         $doctor = Doctor::create(['registration' => 'AUD-02', 'first_name' => 'Daniel', 'last_name' => 'Prueba', 'email' => 'audit-doctor@example.test', 'phone' => '70000000', 'status' => 'Activo']);
         $doctor->specialties()->attach($first);
-        app(CatalogService::class)->guardar($doctor, ['specialty_ids' => [$second->id]], $admin);
+        app(ServicioCatalogos::class)->guardar($doctor, ['specialty_ids' => [$second->id]], $admin);
         $event = AuditEvent::where('action', 'specialties_assigned')->where('record_id', $doctor->id)->latest('id')->firstOrFail();
         $this->assertSame([['id' => $first->id, 'name' => $first->name]], $event->details['changes']['specialties']['before']);
         $this->assertSame([['id' => $second->id, 'name' => $second->name]], $event->details['changes']['specialties']['after']);
@@ -101,7 +101,7 @@ class AuditDetailsTest extends TestCase
             $this->assertStringNotContainsString($secret, $json);
         }
         $this->assertSame('Inactivo', $event->details['changes']['status']['after']);
-        app(AuditLogger::class)->registrar('sql', 'legacy', detalles: ['fields' => ['status'], 'reason' => 'Evento sin valores']);
+        app(RegistroAuditoria::class)->registrar('sql', 'legacy', detalles: ['fields' => ['status'], 'reason' => 'Evento sin valores']);
         $legacy = AuditEvent::where('action', 'legacy')->latest('id')->firstOrFail();
         $this->assertArrayNotHasKey('changes', $legacy->details);
     }

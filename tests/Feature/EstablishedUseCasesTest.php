@@ -7,7 +7,7 @@ use App\Models\Doctor;
 use App\Models\Patient;
 use App\Models\Specialty;
 use App\Models\User;
-use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -61,9 +61,9 @@ class EstablishedUseCasesTest extends TestCase
 
     private function failAudit(): void
     {
-        $logger = Mockery::mock(new AuditLogger);
+        $logger = Mockery::mock(new RegistroAuditoria);
         $logger->shouldReceive('registrar')->andThrow(new \RuntimeException('DETALLE_INTERNO_NO_PUBLICAR'));
-        $this->app->instance(AuditLogger::class, $logger);
+        $this->app->instance(RegistroAuditoria::class, $logger);
     }
 
     public function test_cu01_rejects_login_when_session_is_already_authenticated(): void

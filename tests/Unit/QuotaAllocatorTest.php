@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios\QuotaAllocator;
+use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios\DistribuidorCupos;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -31,12 +31,12 @@ class QuotaAllocatorTest extends TestCase
     public function test_largest_remainder_matches_the_agreed_examples(int $capacity, int $presential, int $online, int $expectedPresential, int $expectedOnline): void
     {
         $this->assertSame(['presential' => $expectedPresential, 'online' => $expectedOnline],
-            (new QuotaAllocator)->distribuir($capacity, $presential, $online));
+            (new DistribuidorCupos)->distribuir($capacity, $presential, $online));
     }
 
     public function test_distribution_never_exceeds_capacity_and_each_result_stays_within_one_quota(): void
     {
-        $allocator = new QuotaAllocator;
+        $allocator = new DistribuidorCupos;
         foreach ([0, 1, 2, 5, 17, 48] as $capacity) {
             foreach ([0, 1, 137, 2000, 3333, 3500, 5000, 6500, 7000, 9999, 10000] as $presential) {
                 $result = $allocator->distribuir($capacity, $presential, 10000 - $presential);
@@ -52,6 +52,6 @@ class QuotaAllocatorTest extends TestCase
     public function test_invalid_percentages_are_rejected_instead_of_allocating_extra_capacity(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        (new QuotaAllocator)->distribuir(5, 6000, 6000);
+        (new DistribuidorCupos)->distribuir(5, 6000, 6000);
     }
 }

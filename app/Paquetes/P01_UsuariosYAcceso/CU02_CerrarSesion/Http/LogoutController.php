@@ -5,7 +5,7 @@
 namespace App\Paquetes\P01_UsuariosYAcceso\CU02_CerrarSesion\Http;
 
 use App\Http\Controllers\Controller;
-use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -18,7 +18,7 @@ class LogoutController extends Controller
             return response()->json(['message' => 'La sesión ya finalizó. Debe iniciar sesión nuevamente.', 'csrf' => csrf_token()], 401);
         }
         try {
-            app(AuditLogger::class)->registrar('auth', 'logout', $solicitud->user());
+            app(RegistroAuditoria::class)->registrar('auth', 'logout', $solicitud->user());
             Auth::logout();
             $solicitud->session()->invalidate();
             $solicitud->session()->regenerateToken();

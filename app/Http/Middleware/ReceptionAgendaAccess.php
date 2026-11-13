@@ -4,7 +4,7 @@
 
 namespace App\Http\Middleware;
 
-use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
 use Closure;
 use Illuminate\Http\Request;
 
@@ -15,7 +15,7 @@ class ReceptionAgendaAccess
     public function handle(Request $request, Closure $next)
     {
         if (! $request->user()->hasStaffRole('Recepcionista')) {
-            app(AuditLogger::class)->registrar('schedules', 'access_denied', resultado: 'denied');
+            app(RegistroAuditoria::class)->registrar('schedules', 'access_denied', resultado: 'denied');
             abort(403);
         }
 

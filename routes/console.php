@@ -3,7 +3,7 @@
 /** Puntos de entrada de console: agrupan operaciones y sus controles de acceso antes de llegar al dominio. */
 
 use App\Models\BookingRequest;
-use App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Servicios\OnlineBookingService;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Servicios\ServicioReservasOnline;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -16,7 +16,7 @@ Artisan::command('clinica:conciliar-pagos', function () {
     $count = 0;
     BookingRequest::whereIn('status', ['held', 'processing'])->where('modality', 'online')->orderBy('id')->chunkById(50, function ($bookings) use (&$count) {
         foreach ($bookings as $booking) {
-            app(OnlineBookingService::class)->conciliar($booking);
+            app(ServicioReservasOnline::class)->conciliar($booking);
             $count++;
         }
     });

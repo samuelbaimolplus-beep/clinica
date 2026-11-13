@@ -5,7 +5,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
-use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\AccountEligibility;
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\RequisitosCuenta;
 use App\Support\Username;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -28,14 +28,14 @@ class User extends Authenticatable
     {
         static::updating(function (User $user) {
             if ($user->isDirty(['birth_date', 'patient_id', 'role'])) {
-                app(AccountEligibility::class)->exigirMayoriaDeEdad(app(AccountEligibility::class)->fechaNacimiento($user));
+                app(RequisitosCuenta::class)->exigirMayoriaDeEdad(app(RequisitosCuenta::class)->fechaNacimiento($user));
             }
             if ($user->isDirty('email')) {
                 $user->email_verified_at = null;
             }
         });
         static::creating(function (User $user) {
-            $eligibility = app(AccountEligibility::class);
+            $eligibility = app(RequisitosCuenta::class);
             $eligibility->exigirMayoriaDeEdad($eligibility->fechaNacimiento($user));
             if ($eligibility->requiereConsentimiento($user)) {
                 throw ValidationException::withMessages(['terms_accepted' => 'El paciente debe aceptar los términos vigentes para tener una cuenta.']);

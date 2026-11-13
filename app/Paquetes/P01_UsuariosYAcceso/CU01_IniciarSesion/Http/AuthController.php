@@ -6,10 +6,10 @@ namespace App\Paquetes\P01_UsuariosYAcceso\CU01_IniciarSesion\Http;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\AccountEligibility;
-use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\EmailActivation;
-use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\SessionSecurity;
-use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\ActivacionPorCorreo;
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\RequisitosCuenta;
+use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\SeguridadSesion;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
 use App\Support\ClinicAccess;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -27,16 +27,16 @@ class AuthController extends Controller
         $columna = str_contains($identificador, '@') ? 'email' : 'username';
         $usuario = User::whereRaw('lower('.$columna.') = ?', [$identificador])->first();
         if (! $usuario || ! Hash::check($datos['password'], $usuario->password)) {
-            app(AuditLogger::class)->registrar('auth', 'login', resultado: 'failure', detalles: [
+            app(RegistroAuditoria::class)->registrar('auth', 'login', resultado: 'failure', detalles: [
                 'reason' => 'invalid_credentials', 'record' => [$columna => $identificador],
             ]);
             throw ValidationException::withMessages(['email' => 'FA02: Credenciales incorrectas. Verifique sus datos.']);
         }
         if (! ClinicAccess::isActive($usuario)) {
-            app(AuditLogger::class)->registrar('auth', 'login', $usuario, 'failure', ['reason' => 'inactive_account']);
+            app(RegistroAuditoria::class)->registrar('auth', 'login', $usuario, 'failure', ['reason' => 'inactive_account']);
             throw ValidationException::withMessages(['email' => 'FA03: La cuenta está inactiva. Contacte al administrador.']);
         }
-        $requisitosAcceso = app(AccountEligibility::class);
+        $requisitosAcceso = app(RequisitosCuenta::class);
         $fechaNacimiento = $requisitosAcceso->fechaNacimiento($usuario);
         if ($fechaNacimiento && ! $requisitosAcceso->esMayorDeEdad($fechaNacimiento)) {
             return response()->json(['message' => 'El acceso personal requiere 18 años cumplidos. Recepción puede gestionar su atención con su ficha de paciente.'], 403)->header('Cache-Control', 'no-store');
@@ -64,7 +64,7 @@ class AuthController extends Controller
             $usuario->save();
         }
         if (! $usuario->email_verified_at) {
-            app(EmailActivation::class)->enviar($usuario);
+            app(ActivacionPorCorreo::class)->enviar($usuario);
 
             return response()->json(['message' => 'Debe activar su cuenta con el código enviado a su correo.',
                 'activation_required' => true, 'email' => $usuario->email], 403)->header('Cache-Control', 'no-store');
@@ -72,8 +72,8 @@ class AuthController extends Controller
         try {
             Auth::login($usuario);
             $solicitud->session()->regenerate();
-            app(SessionSecurity::class)->registrarFirmaSesion($solicitud, $usuario);
-            app(AuditLogger::class)->registrar('auth', 'login', $usuario);
+            app(SeguridadSesion::class)->registrarFirmaSesion($solicitud, $usuario);
+            app(RegistroAuditoria::class)->registrar('auth', 'login', $usuario);
         } catch (\Throwable $excepcion) {
             // CU01 FA04: incluso un fallo posterior al login debe dejar al visitante sin autenticar.
             $solicitud->session()->forget([Auth::guard()->getName(), 'clinic']);
@@ -89,7 +89,7 @@ class AuthController extends Controller
     /** Devuelve identidad, permisos y CSRF vigentes; revoca primero una sesión que dejó de ser válida. */
     public function consultarSesion(Request $solicitud)
     {
-        $mensaje = app(SessionSecurity::class)->validarSesion($solicitud);
+        $mensaje = app(SeguridadSesion::class)->validarSesion($solicitud);
         $usuario = $solicitud->user();
 
         return response()->json(['user' => $usuario, 'csrf' => csrf_token(), 'today' => now()->toDateString(),

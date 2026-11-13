@@ -8,7 +8,7 @@ use App\Models\Patient;
 use App\Models\Specialty;
 use App\Models\User;
 use App\Notifications\VerifyClinicEmail;
-use App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Servicios\CreatePatientAccount;
+use App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Servicios\CrearCuentaPaciente;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
@@ -117,7 +117,7 @@ class FoundationModulesTest extends TestCase
         $existing = $this->staff();
         $auditCount = AuditEvent::count();
         try {
-            app(CreatePatientAccount::class)->registrar($this->registration(['email' => $existing->email]), $existing);
+            app(CrearCuentaPaciente::class)->registrar($this->registration(['email' => $existing->email]), $existing);
             $this->fail('La unicidad del correo debió impedir la cuenta.');
         } catch (QueryException $exception) {
             $this->assertSame('23505', $exception->errorInfo[0]);

@@ -5,7 +5,7 @@
 namespace App\Jobs;
 
 use App\Models\BookingRequest;
-use App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Servicios\OnlineBookingService;
+use App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Servicios\ServicioReservasOnline;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
@@ -19,7 +19,7 @@ class ReconcilePayPalPayment implements ShouldQueue
     public function __construct(public int $bookingId) {}
 
     /** Ejecuta la responsabilidad de este middleware, comando o trabajo; sus controles se explican en el encabezado de la clase. */
-    public function handle(OnlineBookingService $service): void
+    public function handle(ServicioReservasOnline $service): void
     {
         $booking = BookingRequest::find($this->bookingId);
         if ($booking) {

@@ -10,7 +10,7 @@ use App\Models\Schedule;
 use App\Models\Specialty;
 use App\Models\Unavailability;
 use App\Models\User;
-use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\AuditLogger;
+use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -222,9 +222,9 @@ class V3WorkflowTest extends TestCase
         $this->actingAs($this->reception)->postJson('/api/agenda-adjustments', ['kind' => 'presential_block', 'specialty_id' => $this->specialty->id, 'blocks' => [$this->block()]])->assertCreated();
         $this->actingAs($this->admin)->putJson('/api/schedules/'.$this->shift->id, $this->shiftData(['start_time' => '09:00']))->assertUnprocessable();
         $this->assertSame('08:00:00', $this->shift->fresh()->start_time);
-        $logger = Mockery::mock(new AuditLogger);
+        $logger = Mockery::mock(new RegistroAuditoria);
         $logger->shouldReceive('registrar')->andThrow(new \RuntimeException('Fallo simulado'));
-        $this->app->instance(AuditLogger::class, $logger);
+        $this->app->instance(RegistroAuditoria::class, $logger);
         $this->actingAs($this->reception)->postJson('/api/agenda-adjustments', ['kind' => 'online_opening', 'blocks' => [$this->block('08:30', '09:00')]])->assertStatus(503);
         $this->assertDatabaseCount('agenda_adjustments', 1);
     }
