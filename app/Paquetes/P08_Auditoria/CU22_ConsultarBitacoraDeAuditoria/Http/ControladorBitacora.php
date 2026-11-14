@@ -5,8 +5,8 @@
 namespace App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\AuditEvent;
-use App\Models\User;
+use App\Models\EventoAuditoria;
+use App\Models\Usuario;
 use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\DetallesAuditoria;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -24,7 +24,7 @@ class ControladorBitacora extends Controller
             'ip_address' => 'nullable|ip',
             'page' => 'nullable|integer|min:1',
         ]);
-        $consultaDatos = AuditEvent::query()
+        $consultaDatos = EventoAuditoria::query()
             ->when($datos['from'] ?? null, fn ($consulta, $valor) => $consulta->where('occurred_at', '>=', CarbonImmutable::parse($valor)->startOfDay()->toIso8601String()))
             ->when($datos['to'] ?? null, fn ($consulta, $valor) => $consulta->where('occurred_at', '<', CarbonImmutable::parse($valor)->addDay()->startOfDay()->toIso8601String()));
         foreach (['user_id', 'module', 'action', 'result', 'ip_address'] as $campo) {
@@ -52,7 +52,7 @@ class ControladorBitacora extends Controller
     /** Recupera el detalle autorizado del registro sin modificar su persistencia. */
     public function consultarDetalle(int $id)
     {
-        $evento = AuditEvent::findOrFail($id);
+        $evento = EventoAuditoria::findOrFail($id);
         // Lista permitida para que una integración futura no publique detalles secretos por accidente.
         $evento->details = DetallesAuditoria::sanear($evento->details ?? []);
 
@@ -62,9 +62,9 @@ class ControladorBitacora extends Controller
     /** Devuelve las opciones permitidas de consulta del módulo. */
     public function filtros()
     {
-        return ['users' => User::orderBy('name')->get(['id', 'name', 'role']),
-            'modules' => AuditEvent::distinct()->orderBy('module')->pluck('module'),
-            'actions' => AuditEvent::distinct()->orderBy('action')->pluck('action'),
-            'results' => AuditEvent::distinct()->orderBy('result')->pluck('result')];
+        return ['users' => Usuario::orderBy('name')->get(['id', 'name', 'role']),
+            'modules' => EventoAuditoria::distinct()->orderBy('module')->pluck('module'),
+            'actions' => EventoAuditoria::distinct()->orderBy('action')->pluck('action'),
+            'results' => EventoAuditoria::distinct()->orderBy('result')->pluck('result')];
     }
 }

@@ -5,7 +5,7 @@
 namespace App\Paquetes\P05_CitasMedicas\Compartido\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\Appointment;
+use App\Models\Cita;
 use App\Paquetes\P05_CitasMedicas\Compartido\Servicios\ServicioCitas;
 use App\Paquetes\P07_ReservasPagosYSeguimientos\CU19_VerificarPagoOExencion\Servicios\VerificadorPago;
 use Illuminate\Http\Request;
@@ -16,7 +16,7 @@ class ControladorAccionesCita extends Controller
     public function ejecutarAccion(Request $peticion, int $id, string $accion, ServicioCitas $servicio)
     {
         abort_unless(in_array($accion, ['cancel', 'attendance', 'absent', 'attend', 'missed-call']), 404);
-        abort_unless(in_array($accion, ['attend', 'missed-call']) ? in_array($peticion->user()->role, ['Médico', 'Superadmin'], true) : $peticion->user()->hasStaffRole('Recepcionista'), 403);
+        abort_unless(in_array($accion, ['attend', 'missed-call']) ? in_array($peticion->user()->role, ['Médico', 'Superadmin'], true) : $peticion->user()->tieneRolPersonal('Recepcionista'), 403);
         $criterios = $peticion->validate(['reason' => [in_array($accion, ['cancel', 'absent']) ? 'required' : 'nullable', 'string', 'max:3000'], 'cause' => 'nullable|in:patient,clinic', 'definitive' => 'nullable|boolean', 'consultation_finished' => 'nullable|boolean', 'followup_suggested_at' => 'nullable|date|after:now', 'followup_note' => 'nullable|string|max:3000'] + VerificadorPago::INPUT);
 
         $cita = $servicio->cambiarEstado($id, $accion, $peticion->user(), $criterios['reason'] ?? null, $criterios);
@@ -28,7 +28,7 @@ class ControladorAccionesCita extends Controller
     }
 
     /** Retira datos de contacto y de pago que no necesita la atención médica. */
-    private function limitarDatosMedico(Appointment $cita): void
+    private function limitarDatosMedico(Cita $cita): void
     {
         $cita->unsetRelation('payment');
         $cita->makeHidden(['payment_id', 'booking_request_id', 'created_by', 'clinical_slot_id', 'modality']);

@@ -5,8 +5,8 @@
 namespace App\Paquetes\P07_ReservasPagosYSeguimientos\Compartido\Integraciones;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\ReconcilePayPalPayment;
-use App\Models\Payment;
+use App\Jobs\ConciliarPagoPayPal;
+use App\Models\Pago;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -37,16 +37,16 @@ class ControladorNotificacionesPayPal extends Controller
         }
         $referenciaDato = $orden['purchase_units'][0]['custom_id'] ?? '';
         abort_unless(preg_match('/^CVS-(\d+)-(\d+)$/D', $referenciaDato, $coincide), 422);
-        $pago = Payment::where('method', 'paypal')->where('booking_request_id', $coincide[1])->where('attempt', $coincide[2])->first();
+        $pago = Pago::where('method', 'paypal')->where('booking_request_id', $coincide[1])->where('attempt', $coincide[2])->first();
         // Una notificación antigua/ajena no puede asignarse a otra cuenta o importe.
         abort_unless($pago && $pasarela->coincideConPago($orden, $pago), 422);
         DB::transaction(function () use ($pago, $ordenId, $pasarela, $orden) {
-            $elementoActual = Payment::whereKey($pago->id)->lockForUpdate()->firstOrFail();
+            $elementoActual = Pago::whereKey($pago->id)->lockForUpdate()->firstOrFail();
             abort_unless($elementoActual->reference === null || $elementoActual->reference === $ordenId, 422);
             if ($elementoActual->reference === null) {
                 $elementoActual->update(['reference' => $ordenId, 'approval_url' => $pasarela->urlAprobacion($orden)]);
             }
-            ReconcilePayPalPayment::dispatch($elementoActual->booking_request_id)->afterCommit();
+            ConciliarPagoPayPal::dispatch($elementoActual->booking_request_id)->afterCommit();
         });
 
         return ['received' => true];

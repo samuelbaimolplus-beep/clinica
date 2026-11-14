@@ -5,7 +5,7 @@
 namespace App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Models\Usuario;
 use Illuminate\Http\Request;
 
 class ControladorCuentasPacientes extends Controller
@@ -15,7 +15,7 @@ class ControladorCuentasPacientes extends Controller
     {
         abort_unless($solicitud->user()->role === 'Superadmin', 403);
 
-        return User::where('role', 'Paciente')->with('patient:id,first_name,last_name,status')
+        return Usuario::where('role', 'Paciente')->with('patient:id,first_name,last_name,status')
             ->orderByDesc('id')->get(['id', 'name', 'username', 'email', 'status', 'patient_id', 'email_verified_at', 'terms_accepted_at', 'terms_version']);
     }
 }

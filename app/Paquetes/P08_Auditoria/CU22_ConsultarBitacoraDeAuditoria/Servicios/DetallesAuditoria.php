@@ -2,11 +2,11 @@
 
 namespace App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios;
 
-use App\Models\Appointment;
-use App\Models\BookingRequest;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\Specialty;
+use App\Models\Cita;
+use App\Models\Especialidad;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\SolicitudReserva;
 use Illuminate\Database\Eloquent\Model;
 
 /** Valores de negocio permitidos; nunca credenciales, sesiones ni respuestas del proveedor. */
@@ -79,12 +79,12 @@ final class DetallesAuditoria
         $origen = $modelo;
         if (! $modelo->getAttribute('doctor_id')) {
             if ($modelo->getAttribute('appointment_id')) {
-                $origen = (new Appointment)->setConnection($modelo->getConnectionName())->find($modelo->getAttribute('appointment_id')) ?? $modelo;
+                $origen = (new Cita)->setConnection($modelo->getConnectionName())->find($modelo->getAttribute('appointment_id')) ?? $modelo;
             } elseif ($modelo->getAttribute('booking_request_id')) {
-                $origen = (new BookingRequest)->setConnection($modelo->getConnectionName())->find($modelo->getAttribute('booking_request_id')) ?? $modelo;
+                $origen = (new SolicitudReserva)->setConnection($modelo->getConnectionName())->find($modelo->getAttribute('booking_request_id')) ?? $modelo;
             }
         }
-        foreach (['doctor_id' => Doctor::class, 'patient_id' => Patient::class, 'specialty_id' => Specialty::class] as $campo => $clase) {
+        foreach (['doctor_id' => Medico::class, 'patient_id' => Paciente::class, 'specialty_id' => Especialidad::class] as $campo => $clase) {
             if (! $origen->getAttribute($campo)) {
                 continue;
             }

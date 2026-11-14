@@ -2,13 +2,13 @@
 
 namespace Tests\Feature;
 
-use App\Models\Appointment;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\Schedule;
-use App\Models\Specialty;
-use App\Models\Unavailability;
-use App\Models\User;
+use App\Models\AusenciaMedica;
+use App\Models\Cita;
+use App\Models\Especialidad;
+use App\Models\Horario;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\Usuario;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Hash;
@@ -19,21 +19,21 @@ class ClinicTest extends TestCase
 {
     use DatabaseTransactions;
 
-    private User $admin;
+    private Usuario $admin;
 
-    private User $reception;
+    private Usuario $reception;
 
-    private User $physician;
+    private Usuario $physician;
 
-    private Doctor $doctor;
+    private Medico $doctor;
 
-    private Doctor $otherDoctor;
+    private Medico $otherDoctor;
 
-    private Specialty $specialty;
+    private Especialidad $specialty;
 
-    private Patient $patient;
+    private Paciente $patient;
 
-    private Patient $otherPatient;
+    private Paciente $otherPatient;
 
     protected function setUp(): void
     {
@@ -43,14 +43,14 @@ class ClinicTest extends TestCase
         $this->assertSame('pgsql', config('database.default'));
         $this->assertSame('clinica_vida_salud_test', config('database.connections.pgsql.database'), 'Estas pruebas requieren la base de datos aislada.');
         $this->travelTo(Carbon::parse('2026-10-26 07:00:00', 'America/La_Paz'));
-        $this->specialty = Specialty::create(['name' => 'Medicina General', 'status' => 'Activo', 'fee_minor' => 10000]);
+        $this->specialty = Especialidad::create(['name' => 'Medicina General', 'status' => 'Activo', 'fee_minor' => 10000]);
         foreach (['doctor', 'otherDoctor'] as $i => $property) {
-            $this->$property = Doctor::create(['registration' => 'RP-'.$i, 'first_name' => 'Médico', 'last_name' => 'Prueba '.$i, 'phone' => '7000000'.$i, 'email' => 'doctor'.$i.'@test.local', 'status' => 'Activo']);
+            $this->$property = Medico::create(['registration' => 'RP-'.$i, 'first_name' => 'Médico', 'last_name' => 'Prueba '.$i, 'phone' => '7000000'.$i, 'email' => 'doctor'.$i.'@test.local', 'status' => 'Activo']);
             $this->$property->specialties()->attach($this->specialty);
-            Schedule::create(['doctor_id' => $this->$property->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30]);
+            Horario::create(['doctor_id' => $this->$property->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30]);
         }
         foreach (['patient', 'otherPatient'] as $i => $property) {
-            $this->$property = Patient::create(['identity' => 'TEST-'.$i, 'first_name' => 'Paciente', 'last_name' => 'Prueba '.$i, 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '71111111', 'status' => 'Activo']);
+            $this->$property = Paciente::create(['identity' => 'TEST-'.$i, 'first_name' => 'Paciente', 'last_name' => 'Prueba '.$i, 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '71111111', 'status' => 'Activo']);
         }
         $this->admin = $this->verifiedAccount(['name' => 'Administración', 'email' => 'admin@test.local', 'password' => 'ClavePrueba2026', 'role' => 'Administrador', 'status' => 'Activo']);
         $this->reception = $this->verifiedAccount(['name' => 'Recepción', 'email' => 'recepcion@test.local', 'password' => 'ClavePrueba2026', 'role' => 'Recepcionista', 'status' => 'Activo']);
@@ -62,11 +62,11 @@ class ClinicTest extends TestCase
         return array_replace(['patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id, 'specialty_id' => $this->specialty->id, 'date' => '2026-10-26', 'start_time' => '08:00', 'reason' => 'Control general', 'idempotency_key' => (string) Str::uuid(), 'payment_method' => 'cash', 'payment_amount_minor' => 10000, 'payment_confirmed' => true], $overrides);
     }
 
-    private function book(array $overrides = []): Appointment
+    private function book(array $overrides = []): Cita
     {
         $response = $this->actingAs($this->reception)->postJson('/api/appointments', $this->booking($overrides))->assertCreated();
 
-        return Appointment::findOrFail($response->json('id'));
+        return Cita::findOrFail($response->json('id'));
     }
 
     public function test_authentication_rejects_empty_invalid_and_inactive_accounts_and_logs_out(): void
@@ -99,7 +99,7 @@ class ClinicTest extends TestCase
         $data = ['birth_date' => '1990-01-01', 'name' => 'Nueva cuenta', 'email' => 'NEW@test.local', 'password' => 'UnaClaveSegura2026', 'role' => 'Médico', 'status' => 'Activo'];
         $this->actingAs($this->admin)->postJson('/api/entities/users', $data)->assertUnprocessable()->assertJsonValidationErrors('doctor_id');
         $response = $this->postJson('/api/entities/users', $data + ['doctor_id' => $this->otherDoctor->id])->assertCreated()->assertJsonMissingPath('password');
-        $user = User::find($response->json('id'));
+        $user = Usuario::find($response->json('id'));
         $this->assertTrue(Hash::check($data['password'], $user->password));
         $this->assertSame('new@test.local', $user->email);
         $this->putJson('/api/entities/users/'.$this->admin->id, ['name' => $this->admin->name, 'email' => $this->admin->email, 'role' => 'Recepcionista', 'status' => 'Activo'])->assertUnprocessable();
@@ -119,8 +119,8 @@ class ClinicTest extends TestCase
 
     public function test_availability_uses_duration_and_full_block_overlap(): void
     {
-        Schedule::where('doctor_id', $this->doctor->id)->update(['duration' => 45]);
-        Unavailability::create(['doctor_id' => $this->doctor->id, 'starts_at' => '2026-10-26 08:20', 'ends_at' => '2026-10-26 08:30', 'reason' => 'Permiso']);
+        Horario::where('doctor_id', $this->doctor->id)->update(['duration' => 45]);
+        AusenciaMedica::create(['doctor_id' => $this->doctor->id, 'starts_at' => '2026-10-26 08:20', 'ends_at' => '2026-10-26 08:30', 'reason' => 'Permiso']);
         $rows = $this->actingAs($this->reception)->getJson('/api/availability?doctor_id='.$this->doctor->id.'&date=2026-10-26')->assertOk()->json();
         $this->assertCount(4, $rows);
         $this->assertSame('08:45', $rows[0]['start']);
@@ -145,7 +145,7 @@ class ClinicTest extends TestCase
         $this->patient->update(['status' => 'Inactivo']);
         $this->actingAs($this->reception)->postJson('/api/appointments', $this->booking())->assertUnprocessable();
         $this->patient->update(['status' => 'Activo']);
-        $s = Specialty::create(['name' => 'Otra', 'status' => 'Activo']);
+        $s = Especialidad::create(['name' => 'Otra', 'status' => 'Activo']);
         $this->postJson('/api/appointments', $this->booking(['specialty_id' => $s->id]))->assertUnprocessable();
         $this->doctor->update(['status' => 'Inactivo']);
         $this->postJson('/api/appointments', $this->booking())->assertUnprocessable();
@@ -181,7 +181,7 @@ class ClinicTest extends TestCase
         $this->assertNotNull($a->fresh()->attendance_at);
         $this->travelTo(Carbon::parse('2026-10-26 10:00:00', 'America/La_Paz'));
         $this->postJson('/api/appointments/'.$a->id.'/absent', [])->assertUnprocessable();
-        $b = Appointment::create(['patient_id' => $this->otherPatient->id, 'doctor_id' => $this->doctor->id, 'specialty_id' => $this->specialty->id, 'date' => '2026-10-26', 'start_time' => '09:00', 'end_time' => '09:30', 'status' => 'Programada', 'created_by' => $this->reception->id]);
+        $b = Cita::create(['patient_id' => $this->otherPatient->id, 'doctor_id' => $this->doctor->id, 'specialty_id' => $this->specialty->id, 'date' => '2026-10-26', 'start_time' => '09:00', 'end_time' => '09:30', 'status' => 'Programada', 'created_by' => $this->reception->id]);
         $this->postJson('/api/appointments/'.$b->id.'/absent', ['definitive' => true, 'reason' => 'Paciente confirma que no acudirá ni reprogramará'])->assertOk()->assertJsonPath('status', 'Inasistencia');
     }
 
@@ -215,7 +215,7 @@ class ClinicTest extends TestCase
         $d = ['doctor_id' => $this->doctor->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30];
         $this->actingAs($this->admin)->postJson('/api/schedules', array_replace($d, ['end_time' => '07:00']))->assertUnprocessable();
         $this->postJson('/api/schedules', array_replace($d, ['start_time' => '09:00']))->assertUnprocessable();
-        $shift = Schedule::where('doctor_id', $this->doctor->id)->firstOrFail();
+        $shift = Horario::where('doctor_id', $this->doctor->id)->firstOrFail();
         $this->putJson('/api/schedules/'.$shift->id, array_replace($d, ['start_time' => '09:00']))->assertOk()->assertJsonCount(1, 'affected_appointments');
         $this->putJson('/api/schedules/'.$shift->id, $d)->assertOk()->assertJsonCount(0, 'affected_appointments');
         $this->postJson('/api/schedules', array_replace($d, ['weekday' => 0]))->assertCreated();

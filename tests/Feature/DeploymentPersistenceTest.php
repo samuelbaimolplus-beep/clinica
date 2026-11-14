@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\ReconcilePayPalPayment;
+use App\Jobs\ConciliarPagoPayPal;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -34,10 +34,10 @@ class DeploymentPersistenceTest extends TestCase
         $this->assertSame('persisted', Cache::get($key));
         Cache::forget($key);
 
-        $id = Queue::push(new ReconcilePayPalPayment(0));
+        $id = Queue::push(new ConciliarPagoPayPal(0));
         $job = DB::table('jobs')->where('id', $id)->first();
         $this->assertNotNull($job);
         $payload = json_decode($job->payload, true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame(ReconcilePayPalPayment::class, $payload['data']['commandName']);
+        $this->assertSame(ConciliarPagoPayPal::class, $payload['data']['commandName']);
     }
 }

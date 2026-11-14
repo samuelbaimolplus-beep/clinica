@@ -2,7 +2,7 @@
 
 /** Evolución versionada del esquema. Ejecute migraciones sobre la conexión elegida; nunca use migrate:fresh en la base principal. */
 
-use App\Support\Username;
+use App\Support\NombreUsuario;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +16,7 @@ return new class extends Migration
         Schema::table('users', fn (Blueprint $table) => $table->string('username', 50)->nullable());
         DB::table('users')->orderBy('id')->chunkById(200, function ($users) {
             foreach ($users as $user) {
-                $base = Username::base($user->email);
+                $base = NombreUsuario::base($user->email);
                 $username = $base;
                 $suffix = 1;
                 while (DB::table('users')->where('username', $username)->exists()) {

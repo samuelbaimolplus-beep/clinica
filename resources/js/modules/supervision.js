@@ -1,34 +1,34 @@
 /** Consultas globales de pagos, exenciones y cuentas para Superadmin. */
-export function installSupervisionViews(ui) {
-    const {views, api, panel, notice, table, esc, full, badge, button, on, navigate} = ui;
-    const money = amount => `Bs ${(Number(amount) / 100).toFixed(2)}`;
-    views.CU23 = async () => {
-        const accounts = await api('supervision/patient-accounts');
-        return {html: notice('Las cuentas se crean presencialmente en la clínica desde Pacientes. Recepción, Administrador y Superadmin pueden registrar al paciente y habilitar su acceso.')
-            + panel('Cuentas de pacientes', table(['Paciente', 'Usuario', 'Correo', 'Estado de cuenta', 'Estado del paciente', 'Verificación', 'Términos aceptados'], accounts.map(a => [
-                esc(full(a.patient)), esc(a.username), esc(a.email), badge(a.status), badge(a.patient?.status), a.email_verified_at ? 'Correo verificado' : 'Verificación pendiente', esc(a.terms_accepted_at ? a.terms_version : 'Sin aceptación registrada'),
+export function instalarVistasSupervision(interfaz) {
+    const {vistas: vistas, clienteApi: clienteApi, panel, aviso: aviso, tabla: tabla, escapar: escapar, nombreCompleto: nombreCompleto, distintivo: distintivo, boton: boton, enlazarEvento: enlazarEvento, navegar: navegar} = interfaz;
+    const importeMonetario = importe => `Bs ${(Number(importe) / 100).toFixed(2)}`;
+    vistas.CU23 = async () => {
+        const cuentas = await clienteApi('supervision/patient-accounts');
+        return {html: aviso('Las cuentas se crean presencialmente en la clínica desde Pacientes. Recepción, Administrador y Superadmin pueden registrar al paciente y habilitar su acceso.')
+            + panel('Cuentas de pacientes', tabla(['Paciente', 'Usuario', 'Correo', 'Estado de cuenta', 'Estado del paciente', 'Verificación', 'Términos aceptados'], cuentas.map(a => [
+                escapar(nombreCompleto(a.patient)), escapar(a.username), escapar(a.email), distintivo(a.status), distintivo(a.patient?.status), a.email_verified_at ? 'Correo verificado' : 'Verificación pendiente', escapar(a.terms_accepted_at ? a.terms_version : 'Sin aceptación registrada'),
             ])))};
     };
-    views.CU19 = async () => {
-        let page = 1;
-        async function render() {
-            const result = await api(`supervision/payments?page=${page}`);
-            return {html: notice('Los cobros se registran al programar una cita presencial, reservar por internet o registrar un seguimiento. Aquí puede consultar su estado y referencia. Los pagos online se confirman automáticamente con el proveedor.')
-                + panel('Pagos registrados', table(['Pago', 'Paciente', 'Medio', 'Importe', 'Estado', 'Referencia'], result.data.map(p => [
-                    esc(p.id), esc(full(p.booking_request?.patient || p.appointments?.[0]?.patient)), esc(({cash:'Efectivo',qr:'QR presencial',transfer:'Transferencia',paypal:'PayPal Sandbox'})[p.method] || p.method), esc(money(p.amount_minor)), badge(({confirmed:'Confirmado',pending:'Pendiente',initializing:'Preparando',unknown:'En verificación',failed:'No completado'})[p.status] || p.status), esc(p.reference || p.bank_reference || '—'),
-                ])) + `<div class="actions">${button('Anterior', `id="payments-prev" ${page <= 1 ? 'disabled' : ''}`)}${button('Siguiente', `id="payments-next" ${page >= result.last_page ? 'disabled' : ''}`)}</div>`)
-                + panel('Seguimientos con exención (últimos 50)', table(['Cita', 'Consulta original', 'Paciente', 'Fecha', 'Estado'], (result.exemptions || []).map(a => [esc(a.id), esc(a.parent_appointment_id), esc(full(a.patient)), esc(a.date), badge(a.status)]))),
+    vistas.CU19 = async () => {
+        let pagina = 1;
+        async function representar() {
+            const resultado = await clienteApi(`supervision/payments?page=${pagina}`);
+            return {html: aviso('Los cobros se registran al programar una cita presencial, reservar por internet o registrar un seguimiento. Aquí puede consultar su estado y referencia. Los pagos online se confirman automáticamente con el proveedor.')
+                + panel('Pagos registrados', tabla(['Pago', 'Paciente', 'Medio', 'Importe', 'Estado', 'Referencia'], resultado.data.map(p => [
+                    escapar(p.id), escapar(nombreCompleto(p.booking_request?.patient || p.appointments?.[0]?.patient)), escapar(({cash:'Efectivo',qr:'QR presencial',transfer:'Transferencia',paypal:'PayPal Sandbox'})[p.method] || p.method), escapar(importeMonetario(p.amount_minor)), distintivo(({confirmed:'Confirmado',pending:'Pendiente',initializing:'Preparando',unknown:'En verificación',failed:'No completado'})[p.status] || p.status), escapar(p.reference || p.bank_reference || '—'),
+                ])) + `<div class="actions">${boton('Anterior', `id="payments-prev" ${pagina <= 1 ? 'disabled' : ''}`)}${boton('Siguiente', `id="payments-next" ${pagina >= resultado.last_page ? 'disabled' : ''}`)}</div>`)
+                + panel('Seguimientos con exención (últimos 50)', tabla(['Cita', 'Consulta original', 'Paciente', 'Fecha', 'Estado'], (resultado.exemptions || []).map(a => [escapar(a.id), escapar(a.parent_appointment_id), escapar(nombreCompleto(a.patient)), escapar(a.date), distintivo(a.status)]))),
                 bind: () => {
-                    on('#payments-prev', 'click', async () => { page--; await refresh(); });
-                    on('#payments-next', 'click', async () => { page++; await refresh(); });
+                    enlazarEvento('#payments-prev', 'click', async () => { pagina--; await actualizar(); });
+                    enlazarEvento('#payments-next', 'click', async () => { pagina++; await actualizar(); });
                 }};
         }
-        async function refresh() {
-            const content = await render();
-            const container = document.querySelector('#supervision-payments');
-            if (container) { container.innerHTML = content.html; content.bind(); }
+        async function actualizar() {
+            const contenidoTexto = await representar();
+            const contenedor = document.querySelector('#supervision-payments');
+            if (contenedor) { contenedor.innerHTML = contenidoTexto.html; contenidoTexto.bind(); }
         }
-        const content = await render();
-        return {html: `<div id="supervision-payments">${content.html}</div>`, bind: content.bind};
+        const contenidoTexto = await representar();
+        return {html: `<div id="supervision-payments">${contenidoTexto.html}</div>`, bind: contenidoTexto.bind};
     };
 }

@@ -5,17 +5,17 @@
 use App\Compartido\Catalogos\Http\ControladorEstadoCatalogos;
 use App\Compartido\Catalogos\Http\ControladorImpactoCatalogos;
 use App\Compartido\Http\ControladorReferencias;
-use App\Http\Middleware\ClinicalAccessAudit;
-use App\Http\Middleware\ClinicSession;
-use App\Http\Middleware\ReceptionAgendaAccess;
-use App\Http\Middleware\RequireAppointments;
+use App\Http\Middleware\AccesoAgendaRecepcion;
+use App\Http\Middleware\AuditoriaAccesoClinico;
+use App\Http\Middleware\ExigirModuloCitas;
+use App\Http\Middleware\SesionClinica;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Http\ControladorActivacionCuenta;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Http\ControladorClaveCuenta;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Http\ControladorNombreUsuario;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Http\ControladorPerfilCuenta;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Http\ControladorRecuperacionCuenta;
-use App\Paquetes\P01_UsuariosYAcceso\CU01_IniciarSesion\Http\AuthController;
-use App\Paquetes\P01_UsuariosYAcceso\CU02_CerrarSesion\Http\LogoutController;
+use App\Paquetes\P01_UsuariosYAcceso\CU01_IniciarSesion\Http\ControladorAutenticacion;
+use App\Paquetes\P01_UsuariosYAcceso\CU02_CerrarSesion\Http\ControladorCerrarSesion;
 use App\Paquetes\P01_UsuariosYAcceso\CU03_GestionarUsuariosYRoles\Http\ControladorGestionCuentas;
 use App\Paquetes\P01_UsuariosYAcceso\CU03_GestionarUsuariosYRoles\Http\ControladorUsuarios;
 use App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Http\ControladorAltaCuentaPaciente;
@@ -59,13 +59,13 @@ Route::get('/pagos/paypal/{result}', function (Request $request) {
 Route::get('/password/reset/{token}', fn (string $token) => view('auth.reset-password', ['token' => $token]));
 
 Route::prefix('api')->group(function () {
-    Route::get('session', [AuthController::class, 'consultarSesion']);
-    Route::post('login', [AuthController::class, 'iniciarSesion'])->middleware('throttle:6,1');
+    Route::get('session', [ControladorAutenticacion::class, 'consultarSesion']);
+    Route::post('login', [ControladorAutenticacion::class, 'iniciarSesion'])->middleware('throttle:6,1');
     Route::post('account/email', [ControladorRecuperacionCuenta::class, 'enviar'])->middleware('throttle:6,1');
     Route::post('account/activate', ControladorActivacionCuenta::class)->middleware('throttle:6,1');
     Route::post('account/reset', [ControladorRecuperacionCuenta::class, 'restablecer'])->middleware('throttle:6,1');
-    Route::post('logout', [LogoutController::class, 'cerrarSesion']);
-    Route::middleware(ClinicSession::class)->group(function () {
+    Route::post('logout', [ControladorCerrarSesion::class, 'cerrarSesion']);
+    Route::middleware(SesionClinica::class)->group(function () {
         Route::patch('account/username', ControladorNombreUsuario::class)->middleware('throttle:6,1');
         Route::patch('account/password', ControladorClaveCuenta::class)->middleware('throttle:6,1');
         Route::get('account/profile', [ControladorPerfilCuenta::class, 'consultarDetalle']);
@@ -77,7 +77,7 @@ Route::prefix('api')->group(function () {
         Route::get('schedule-impacts', ControladorCitasAfectadas::class);
         Route::get('medical-availability/options', [ControladorDisponibilidadMedica::class, 'opciones']);
         Route::get('medical-availability', [ControladorDisponibilidadMedica::class, 'listar']);
-        Route::middleware(ReceptionAgendaAccess::class)->group(function () {
+        Route::middleware(AccesoAgendaRecepcion::class)->group(function () {
             Route::get('agenda-adjustments', [ControladorBloqueosProvisionales::class, 'listar']);
             Route::post('agenda-adjustments/proposal', [ControladorBloqueosProvisionales::class, 'proponer']);
             Route::get('agenda-adjustments/protected', [ControladorHabilitarCuposOnline::class, 'franjasProtegidas']);
@@ -137,7 +137,7 @@ Route::prefix('api')->group(function () {
         });
 
         // Los coordinadores clínicos verifican permisos, cupos y pago antes de emitir ficha.
-        Route::middleware([RequireAppointments::class, ClinicalAccessAudit::class])->group(function () {
+        Route::middleware([ExigirModuloCitas::class, AuditoriaAccesoClinico::class])->group(function () {
             Route::get('workspace', ControladorPanelInicio::class);
             Route::get('reception-inbox', [ControladorBandejaRecepcion::class, 'bandejaRecepcion']);
             Route::get('supervision/patient-accounts', [ControladorCuentasPacientes::class, 'cuentasPacientes']);

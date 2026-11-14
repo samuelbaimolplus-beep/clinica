@@ -4,7 +4,7 @@
 
 namespace App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Validacion;
 
-use App\Support\Username;
+use App\Support\NombreUsuario;
 use Illuminate\Validation\Rule;
 
 trait ReglasCuentaPaciente
@@ -23,7 +23,7 @@ trait ReglasCuentaPaciente
     {
         return [
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
-            'username' => ['required', 'string', 'min:3', 'max:50', 'regex:'.Username::PATTERN, Rule::unique('users', 'username')],
+            'username' => ['required', 'string', 'min:3', 'max:50', 'regex:'.NombreUsuario::PATTERN, Rule::unique('users', 'username')],
             'password' => 'required|string|min:10|max:128|confirmed',
             'identity_verified' => 'required|accepted',
             'terms_accepted' => 'required|accepted',

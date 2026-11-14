@@ -4,7 +4,7 @@
 
 namespace App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios;
 
-use App\Models\Schedule;
+use App\Models\Horario;
 use Carbon\CarbonImmutable;
 
 class FranjasHorario
@@ -13,7 +13,7 @@ class FranjasHorario
     public function franjasParaFecha(int $medicoId, string $fecha): array
     {
         $dia = CarbonImmutable::parse($fecha);
-        $intervalos = Schedule::where('doctor_id', $medicoId)->where('weekday', $dia->dayOfWeek)->orderBy('start_time')->get();
+        $intervalos = Horario::where('doctor_id', $medicoId)->where('weekday', $dia->dayOfWeek)->orderBy('start_time')->get();
         $bloques = [];
         foreach ($intervalos as $intervalo) {
             $fin = CarbonImmutable::parse($fecha.' '.$intervalo->end_time);

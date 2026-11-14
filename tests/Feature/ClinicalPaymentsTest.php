@@ -2,16 +2,16 @@
 
 namespace Tests\Feature;
 
-use App\Models\AgendaAdjustment;
-use App\Models\Appointment;
-use App\Models\AuditEvent;
-use App\Models\BookingRequest;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\Payment;
-use App\Models\Schedule;
-use App\Models\Specialty;
-use App\Models\User;
+use App\Models\AjusteAgenda;
+use App\Models\Cita;
+use App\Models\Especialidad;
+use App\Models\EventoAuditoria;
+use App\Models\Horario;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\Pago;
+use App\Models\SolicitudReserva;
+use App\Models\Usuario;
 use App\Paquetes\P07_ReservasPagosYSeguimientos\Compartido\Integraciones\PasarelaPayPal;
 use App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Servicios\ServicioReservasOnline;
 use Carbon\Carbon;
@@ -25,19 +25,19 @@ class ClinicalPaymentsTest extends TestCase
 {
     use DatabaseTransactions;
 
-    private User $reception;
+    private Usuario $reception;
 
-    private User $admin;
+    private Usuario $admin;
 
-    private User $patientUser;
+    private Usuario $patientUser;
 
-    private User $physician;
+    private Usuario $physician;
 
-    private Patient $patient;
+    private Paciente $patient;
 
-    private Doctor $doctor;
+    private Medico $doctor;
 
-    private Specialty $specialty;
+    private Especialidad $specialty;
 
     protected function setUp(): void
     {
@@ -46,11 +46,11 @@ class ClinicalPaymentsTest extends TestCase
         config(['clinic.appointments_enabled' => true, 'paypal.enabled' => true, 'paypal.client_id' => 'client-test', 'paypal.secret' => 'secret-test', 'paypal.bob_per_usd' => '10']);
         Http::preventStrayRequests();
         $this->travelTo(Carbon::parse('2026-11-09 07:00', 'America/La_Paz'));
-        $this->specialty = Specialty::create(['name' => 'Especialidad pagos', 'status' => 'Activo', 'fee_minor' => 12550]);
-        $this->doctor = Doctor::create(['registration' => 'PAY-01', 'first_name' => 'Ana', 'last_name' => 'Médica', 'email' => 'doctor-pay@test.local', 'phone' => '70000000', 'status' => 'Activo']);
+        $this->specialty = Especialidad::create(['name' => 'Especialidad pagos', 'status' => 'Activo', 'fee_minor' => 12550]);
+        $this->doctor = Medico::create(['registration' => 'PAY-01', 'first_name' => 'Ana', 'last_name' => 'Médica', 'email' => 'doctor-pay@test.local', 'phone' => '70000000', 'status' => 'Activo']);
         $this->doctor->specialties()->attach($this->specialty);
-        Schedule::create(['doctor_id' => $this->doctor->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30]);
-        $this->patient = Patient::create(['identity' => 'PAY-001', 'first_name' => 'María', 'last_name' => 'Paciente', 'phone' => '70000001', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'status' => 'Activo']);
+        Horario::create(['doctor_id' => $this->doctor->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30]);
+        $this->patient = Paciente::create(['identity' => 'PAY-001', 'first_name' => 'María', 'last_name' => 'Paciente', 'phone' => '70000001', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'status' => 'Activo']);
         foreach (['reception' => 'Recepcionista', 'admin' => 'Administrador', 'patientUser' => 'Paciente', 'physician' => 'Médico'] as $key => $role) {
             $this->$key = $this->verifiedAccount(['name' => $key, 'email' => $key.'@payments.test', 'password' => 'PruebaSegura2026', 'role' => $role, 'status' => 'Activo',
                 'patient_id' => $role === 'Paciente' ? $this->patient->id : null, 'doctor_id' => $role === 'Médico' ? $this->doctor->id : null]);
@@ -66,11 +66,11 @@ class ClinicalPaymentsTest extends TestCase
             'payment_method' => 'cash', 'payment_amount_minor' => 12550, 'payment_confirmed' => true], $changes);
     }
 
-    private function book(array $changes = []): Appointment
+    private function book(array $changes = []): Cita
     {
         $r = $this->actingAs($this->reception)->postJson('/api/appointments', $this->data($changes))->assertCreated();
 
-        return Appointment::findOrFail($r->json('id'));
+        return Cita::findOrFail($r->json('id'));
     }
 
     public function test_physician_appointment_responses_exclude_patient_contact_and_payment_data(): void
@@ -120,7 +120,7 @@ class ClinicalPaymentsTest extends TestCase
             ->assertJsonMissingPath('0.resolved_by');
     }
 
-    private function paypalOrder(Payment $payment, string $state = 'APPROVED', ?string $captureState = null, bool $wrongAmount = false): array
+    private function paypalOrder(Pago $payment, string $state = 'APPROVED', ?string $captureState = null, bool $wrongAmount = false): array
     {
         $gateway = app(PasarelaPayPal::class);
         $ref = $gateway->referencia($payment);
@@ -152,21 +152,21 @@ class ClinicalPaymentsTest extends TestCase
             }
             if ($request->method() === 'POST' && str_ends_with($request->url(), '/v2/checkout/orders')) {
                 preg_match('/^CVS-(\d+)-(\d+)$/', $request['purchase_units'][0]['custom_id'], $m);
-                $payment = Payment::where('booking_request_id', $m[1])->where('attempt', $m[2])->firstOrFail();
+                $payment = Pago::where('booking_request_id', $m[1])->where('attempt', $m[2])->firstOrFail();
                 if ($loseGenerationResponse) {
                     throw new ConnectionException('Tiempo de espera de prueba');
                 }
                 $created = $this->paypalOrder($payment, 'CREATED');
                 if ($race) {
                     $payment->update(['reference' => $created['id']]);
-                    app(ServicioReservasOnline::class)->conciliar(BookingRequest::findOrFail($payment->booking_request_id), true);
+                    app(ServicioReservasOnline::class)->conciliar(SolicitudReserva::findOrFail($payment->booking_request_id), true);
                 }
 
                 return Http::response($created, 201);
             }
             $id = str_ends_with($request->url(), '/capture') ? basename(dirname($request->url())) : basename($request->url());
             preg_match('/^PP-CVS-(\d+)-(\d+)$/', $id, $m);
-            $payment = Payment::where('booking_request_id', $m[1])->where('attempt', $m[2])->firstOrFail();
+            $payment = Pago::where('booking_request_id', $m[1])->where('attempt', $m[2])->firstOrFail();
             $current = $payment->attempt === 2 ? ($secondState ?? $state) : $state;
             $capture = match ($current) {
                 'PENDIENTE' => 'PENDING', 'RECHAZADO' => 'DECLINED', default => null
@@ -213,7 +213,7 @@ class ClinicalPaymentsTest extends TestCase
         $data = ['kind' => 'presential_block', 'specialty_id' => $this->specialty->id, 'quantity' => 1,
             'blocks' => [['doctor_id' => $this->doctor->id, 'date' => '2026-11-09', 'start_time' => '08:00', 'end_time' => '08:30']]];
         $id = $this->postJson('/api/agenda-adjustments', $data)->assertCreated()->json('0.id');
-        $created = AuditEvent::where('record_type', 'AgendaAdjustment')->where('record_id', $id)->where('action', 'created')->firstOrFail();
+        $created = EventoAuditoria::where('record_type', 'AgendaAdjustment')->where('record_id', $id)->where('action', 'created')->firstOrFail();
         $this->assertSame('active', $created->details['record']['status']);
         $this->assertSame('08:00:00', $created->details['record']['start_time']);
         $this->getJson('/api/agenda-adjustments?date=2026-11-09&specialty_id='.$this->specialty->id)
@@ -223,7 +223,7 @@ class ClinicalPaymentsTest extends TestCase
         $this->getJson($query.'&include_demand=1')->assertOk()
             ->assertJsonPath('blocks.0.start_time', '08:00')->assertJsonPath('blocks.0.demand_blocked', true);
 
-        $other = Specialty::create(['name' => 'Otra especialidad de bloqueo', 'status' => 'Activo', 'fee_minor' => 10000]);
+        $other = Especialidad::create(['name' => 'Otra especialidad de bloqueo', 'status' => 'Activo', 'fee_minor' => 10000]);
         $this->doctor->specialties()->attach($other);
         $this->getJson('/api/medical-availability?date=2026-11-09&specialty_id='.$other->id.'&include_demand=1')
             ->assertOk()->assertJsonMissing(['start_time' => '08:00']);
@@ -240,7 +240,7 @@ class ClinicalPaymentsTest extends TestCase
 
     public function test_compatible_demand_block_is_consumed_only_after_payment(): void
     {
-        $block = AgendaAdjustment::create(['doctor_id' => $this->doctor->id, 'specialty_id' => $this->specialty->id, 'date' => '2026-11-09', 'start_time' => '08:00', 'end_time' => '08:30', 'kind' => 'presential_block', 'status' => 'active', 'created_by' => $this->reception->id]);
+        $block = AjusteAgenda::create(['doctor_id' => $this->doctor->id, 'specialty_id' => $this->specialty->id, 'date' => '2026-11-09', 'start_time' => '08:00', 'end_time' => '08:30', 'kind' => 'presential_block', 'status' => 'active', 'created_by' => $this->reception->id]);
         $this->postJson('/api/appointments', $this->data(['payment_confirmed' => false]))->assertUnprocessable();
         $this->assertSame('active', $block->fresh()->status);
         $a = $this->book();
@@ -259,7 +259,7 @@ class ClinicalPaymentsTest extends TestCase
         $this->postJson('/api/online-bookings/'.$id.'/status')->assertOk();
         $this->assertDatabaseCount('appointments', 1);
         $this->assertDatabaseCount('payments', 1);
-        $this->assertSame('confirmed', Payment::first()->status);
+        $this->assertSame('confirmed', Pago::first()->status);
     }
 
     public function test_pending_payment_keeps_hold_after_deadline_and_blocks_second_charge(): void
@@ -312,7 +312,7 @@ class ClinicalPaymentsTest extends TestCase
         $this->actingAs($this->reception)->putJson('/api/appointments/'.$a->id.'/reschedule', ['doctor_id' => $this->doctor->id, 'date' => '2026-11-09', 'start_time' => '09:00', 'cause' => 'patient', 'patient_accepted' => true, 'change_reason' => 'Acepta por WhatsApp'])->assertOk()->assertJsonPath('payment_id', $a->payment_id);
         $this->assertDatabaseHas('reschedule_requests', ['appointment_id' => $a->id, 'status' => 'accepted']);
         $this->assertDatabaseCount('payments', 1);
-        $event = AuditEvent::where('action', 'rescheduled')->where('record_id', $a->id)->latest('id')->firstOrFail();
+        $event = EventoAuditoria::where('action', 'rescheduled')->where('record_id', $a->id)->latest('id')->firstOrFail();
         $this->assertSame('Acepta por WhatsApp', $event->details['reason']);
         $this->assertSame('08:00:00', $event->details['changes']['start_time']['before']);
         $this->assertSame('09:00', $event->details['changes']['start_time']['after']);
@@ -375,7 +375,7 @@ class ClinicalPaymentsTest extends TestCase
         $id = $this->postJson('/api/appointments', $data)->assertCreated()->assertJsonPath('complimentary', true)->json('id');
         $this->travelTo(Carbon::parse('2026-11-16 08:01', 'America/La_Paz'));
         $this->postJson('/api/appointments/'.$id.'/attendance')->assertUnprocessable();
-        $this->assertNull(Appointment::findOrFail($id)->attendance_at);
+        $this->assertNull(Cita::findOrFail($id)->attendance_at);
         $payment = ['payment_method' => 'cash', 'payment_amount_minor' => 12550, 'payment_confirmed' => true];
         $this->postJson('/api/appointments/'.$id.'/attendance', $payment)->assertOk()->assertJsonPath('complimentary', false)->assertJsonPath('status', 'Confirmada');
         $this->postJson('/api/appointments/'.$id.'/attendance', $payment)->assertUnprocessable();
@@ -398,7 +398,7 @@ class ClinicalPaymentsTest extends TestCase
     public function test_patient_cannot_read_or_change_another_patients_clinical_records(): void
     {
         $a = $this->book();
-        $other = Patient::create(['identity' => 'PAY-OTHER', 'first_name' => 'Otro', 'last_name' => 'Paciente', 'phone' => '70000005', 'birth_date' => '2000-01-01', 'sex' => 'Masculino', 'status' => 'Activo']);
+        $other = Paciente::create(['identity' => 'PAY-OTHER', 'first_name' => 'Otro', 'last_name' => 'Paciente', 'phone' => '70000005', 'birth_date' => '2000-01-01', 'sex' => 'Masculino', 'status' => 'Activo']);
         $this->patientUser->forceFill(['patient_id' => $other->id])->save();
         $this->actingAs($this->patientUser)->getJson('/api/appointments?mode=history')->assertOk()->assertJsonCount(0);
         $this->postJson('/api/appointments/'.$a->id.'/reschedule-request', ['reason' => 'Intento ajeno'])->assertForbidden();
@@ -411,7 +411,7 @@ class ClinicalPaymentsTest extends TestCase
         $this->fakeGateway('PENDIENTE');
         $this->startOnline();
         $this->actingAs($this->admin)->postJson('/api/unavailabilities', ['doctor_id' => $this->doctor->id, 'starts_at' => '2026-11-09 10:00', 'ends_at' => '2026-11-09 12:00', 'reason' => 'Cambio'])->assertUnprocessable();
-        $shift = Schedule::where('doctor_id', $this->doctor->id)->firstOrFail();
+        $shift = Horario::where('doctor_id', $this->doctor->id)->firstOrFail();
         $this->putJson('/api/schedules/'.$shift->id, ['doctor_id' => $this->doctor->id, 'weekday' => 1, 'start_time' => '09:00', 'end_time' => '13:00', 'duration' => 30])->assertUnprocessable();
         $this->assertDatabaseCount('unavailabilities', 0);
         $this->assertSame('08:00:00', $shift->fresh()->start_time);
@@ -422,14 +422,14 @@ class ClinicalPaymentsTest extends TestCase
         config(['paypal.webhook_id' => 'WH-TEST']);
         $this->fakeGateway();
         $id = $this->startOnline();
-        $payment = Payment::where('booking_request_id', $id)->firstOrFail();
+        $payment = Pago::where('booking_request_id', $id)->firstOrFail();
         $payload = ['id' => 'EV-TEST', 'event_type' => 'CHECKOUT.ORDER.APPROVED', 'resource' => ['id' => $payment->reference]];
         $this->postJson('/pagos/paypal/webhook', $payload)->assertUnauthorized();
         $this->withHeaders($this->paypalHeaders())->postJson('/pagos/paypal/webhook', array_replace($payload, ['resource' => ['other' => 'missing-order-id']]))->assertUnprocessable();
         $this->postJson('/pagos/paypal/webhook', $payload)->assertOk();
         $this->postJson('/pagos/paypal/webhook', $payload)->assertOk();
         $this->assertDatabaseCount('appointments', 1);
-        $this->assertSame('completed', BookingRequest::findOrFail($id)->status);
+        $this->assertSame('completed', SolicitudReserva::findOrFail($id)->status);
     }
 
     public function test_paypal_webhook_without_configuration_rejects_events_without_contacting_paypal(): void
@@ -493,13 +493,13 @@ class ClinicalPaymentsTest extends TestCase
         config(['paypal.webhook_id' => 'WH-TEST']);
         $this->fakeGateway('PENDIENTE');
         $id = $this->startOnline();
-        $payment = Payment::where('booking_request_id', $id)->firstOrFail();
+        $payment = Pago::where('booking_request_id', $id)->firstOrFail();
         $this->withHeaders($this->paypalHeaders())->postJson('/pagos/paypal/webhook', [
             'id' => 'EV-CAPTURE-PENDING', 'event_type' => 'PAYMENT.CAPTURE.COMPLETED',
             'resource' => ['id' => 'CAP-TEST', 'status' => 'COMPLETED', 'supplementary_data' => ['related_ids' => ['order_id' => $payment->reference]]],
         ])->assertOk();
         $this->assertSame('pending', $payment->fresh()->status);
-        $this->assertSame('processing', BookingRequest::findOrFail($id)->status);
+        $this->assertSame('processing', SolicitudReserva::findOrFail($id)->status);
         $this->assertDatabaseCount('appointments', 0);
     }
 
@@ -508,7 +508,7 @@ class ClinicalPaymentsTest extends TestCase
         config(['paypal.webhook_id' => 'WH-TEST']);
         $this->fakeGateway();
         $id = $this->startOnline();
-        $payment = Payment::where('booking_request_id', $id)->firstOrFail();
+        $payment = Pago::where('booking_request_id', $id)->firstOrFail();
         $payload = ['id' => 'EV-CAPTURE-COMPLETE', 'event_type' => 'PAYMENT.CAPTURE.COMPLETED',
             'resource' => ['id' => 'CAP-TEST', 'supplementary_data' => ['related_ids' => ['order_id' => $payment->reference]]]];
         $this->withHeaders($this->paypalHeaders())->postJson('/pagos/paypal/webhook', $payload)->assertOk();
@@ -516,7 +516,7 @@ class ClinicalPaymentsTest extends TestCase
         $this->assertSame('confirmed', $payment->fresh()->status);
         $this->assertNotNull($payment->fresh()->capture_id);
         $this->assertDatabaseCount('appointments', 1);
-        $this->assertSame('completed', BookingRequest::findOrFail($id)->status);
+        $this->assertSame('completed', SolicitudReserva::findOrFail($id)->status);
         $captures = Http::recorded(fn ($request) => str_ends_with($request->url(), '/capture'));
         $this->assertCount(1, $captures);
     }
@@ -526,7 +526,7 @@ class ClinicalPaymentsTest extends TestCase
         config(['paypal.webhook_id' => 'WH-TEST']);
         $this->fakeGateway('APROBADO', true);
         $id = $this->startOnline();
-        $payment = Payment::where('booking_request_id', $id)->firstOrFail();
+        $payment = Pago::where('booking_request_id', $id)->firstOrFail();
         $this->withHeaders($this->paypalHeaders())->postJson('/pagos/paypal/webhook', ['id' => 'EV-WRONG-AMOUNT',
             'event_type' => 'CHECKOUT.ORDER.APPROVED', 'resource' => ['id' => $payment->reference]])->assertUnprocessable();
         $this->assertSame('pending', $payment->fresh()->status);
@@ -558,7 +558,7 @@ class ClinicalPaymentsTest extends TestCase
 
     public function test_legacy_unverified_payment_is_not_invented_and_must_be_checked_before_attention(): void
     {
-        $a = Appointment::create(['patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id, 'specialty_id' => $this->specialty->id,
+        $a = Cita::create(['patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id, 'specialty_id' => $this->specialty->id,
             'date' => '2026-11-09', 'start_time' => '08:00', 'end_time' => '08:30', 'status' => 'Confirmada',
             'attendance_at' => now(), 'created_by' => $this->reception->id]);
         $arrival = $a->fresh()->attendance_at;
@@ -588,7 +588,7 @@ class ClinicalPaymentsTest extends TestCase
         config(['paypal.webhook_id' => 'WH-TEST']);
         $this->fakeGateway('APROBADO', false, true);
         $id = $this->startOnline();
-        $payment = Payment::where('booking_request_id', $id)->firstOrFail();
+        $payment = Pago::where('booking_request_id', $id)->firstOrFail();
         $this->assertSame('unknown', $payment->status);
         $this->assertNull($payment->reference);
         $this->postJson('/api/online-bookings/'.$id.'/retry')->assertUnprocessable();
@@ -596,15 +596,15 @@ class ClinicalPaymentsTest extends TestCase
             'resource' => ['id' => 'PP-CVS-'.$id.'-1']])->assertOk();
         $this->assertDatabaseCount('payments', 1);
         $this->assertDatabaseCount('appointments', 1);
-        $this->assertSame('completed', BookingRequest::findOrFail($id)->status);
+        $this->assertSame('completed', SolicitudReserva::findOrFail($id)->status);
     }
 
     public function test_confirmation_arriving_before_creation_response_cannot_be_overwritten_as_pending(): void
     {
         $this->fakeGateway('APROBADO', false, false, null, true);
         $id = $this->startOnline();
-        $this->assertSame('confirmed', Payment::where('booking_request_id', $id)->firstOrFail()->status);
-        $this->assertSame('completed', BookingRequest::findOrFail($id)->status);
+        $this->assertSame('confirmed', Pago::where('booking_request_id', $id)->firstOrFail()->status);
+        $this->assertSame('completed', SolicitudReserva::findOrFail($id)->status);
         $this->assertDatabaseCount('appointments', 1);
     }
 
@@ -666,10 +666,10 @@ class ClinicalPaymentsTest extends TestCase
         $this->fakeGateway('PENDIENTE');
         $id = $this->startOnline();
         $this->postJson('/api/online-bookings/'.$id.'/cancel')->assertUnprocessable();
-        $this->assertSame('processing', BookingRequest::findOrFail($id)->status);
+        $this->assertSame('processing', SolicitudReserva::findOrFail($id)->status);
         Http::fake(fn () => throw new ConnectionException('Proveedor sin respuesta'));
         $this->postJson('/api/online-bookings/'.$id.'/cancel')->assertUnprocessable();
-        $this->assertSame('processing', BookingRequest::findOrFail($id)->status);
+        $this->assertSame('processing', SolicitudReserva::findOrFail($id)->status);
         $this->assertDatabaseCount('appointments', 0);
     }
 
@@ -679,7 +679,7 @@ class ClinicalPaymentsTest extends TestCase
         $id = $this->startOnline();
         $this->actingAs($this->reception)->postJson('/api/online-bookings/'.$id.'/cancel')->assertForbidden();
         $this->actingAs($this->patientUser)->postJson('/api/online-bookings/'.$id.'/cancel')->assertUnprocessable();
-        $this->assertSame('completed', BookingRequest::findOrFail($id)->status);
-        $this->assertSame('Programada', Appointment::where('booking_request_id', $id)->firstOrFail()->status);
+        $this->assertSame('completed', SolicitudReserva::findOrFail($id)->status);
+        $this->assertSame('Programada', Cita::where('booking_request_id', $id)->firstOrFail()->status);
     }
 }

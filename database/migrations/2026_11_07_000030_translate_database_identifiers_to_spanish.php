@@ -2,7 +2,7 @@
 
 /** Evolución versionada del esquema. Ejecute migraciones sobre la conexión elegida; nunca use migrate:fresh en la base principal. */
 
-use App\Database\SpanishPostgresConnection;
+use App\Database\ConexionPostgresEspanol;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
@@ -24,7 +24,7 @@ return new class extends Migration
     private function renameSchema(bool $reverse): void
     {
         $connection = DB::connection();
-        if (! $connection instanceof SpanishPostgresConnection) {
+        if (! $connection instanceof ConexionPostgresEspanol) {
             throw new RuntimeException('Se requiere la conexión PostgreSQL del proyecto.');
         }
         $tables = config('database_names.tables');
@@ -72,6 +72,6 @@ return new class extends Migration
         foreach ($tables as $old => $new) {
             $pdo->exec('ALTER TABLE public.'.$quote($old).' RENAME TO '.$quote($new));
         }
-        $connection->useSpanishSchema(! $reverse);
+        $connection->usarEsquemaEspanol(! $reverse);
     }
 };

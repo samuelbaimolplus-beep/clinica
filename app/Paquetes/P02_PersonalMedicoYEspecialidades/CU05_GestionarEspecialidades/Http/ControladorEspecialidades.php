@@ -7,7 +7,7 @@ namespace App\Paquetes\P02_PersonalMedicoYEspecialidades\CU05_GestionarEspeciali
 use App\Compartido\Catalogos\Servicios\ImpactoCatalogos;
 use App\Compartido\Catalogos\Servicios\ServicioCatalogos;
 use App\Http\Controllers\Controller;
-use App\Models\Specialty;
+use App\Models\Especialidad;
 use App\Paquetes\P02_PersonalMedicoYEspecialidades\CU05_GestionarEspecialidades\Validacion\SolicitudGuardarEspecialidad;
 use Illuminate\Http\Request;
 
@@ -19,19 +19,19 @@ class ControladorEspecialidades extends Controller
         $datos = $solicitud->validate(['search' => 'nullable|string|max:150']);
         $busqueda = mb_strtolower(trim($datos['search'] ?? ''));
 
-        return Specialty::when($busqueda !== '', fn ($consultaDatos) => $consultaDatos->whereRaw('strpos(lower(name), ?) > 0', [$busqueda]))->orderBy('id')->get();
+        return Especialidad::when($busqueda !== '', fn ($consultaDatos) => $consultaDatos->whereRaw('strpos(lower(name), ?) > 0', [$busqueda]))->orderBy('id')->get();
     }
 
     /** Recupera el detalle autorizado del registro sin modificar su persistencia. */
     public function consultarDetalle(int $id, ImpactoCatalogos $impacto)
     {
-        return Specialty::findOrFail($id)->setAttribute('affected_appointments', $impacto->citasAfectadas(especialidadId: $id));
+        return Especialidad::findOrFail($id)->setAttribute('affected_appointments', $impacto->citasAfectadas(especialidadId: $id));
     }
 
     /** Coordina la validación y persistencia de esta operación; delega las reglas del dominio al servicio correspondiente. */
     public function guardar(SolicitudGuardarEspecialidad $solicitud, ServicioCatalogos $servicio, ?int $id = null)
     {
-        $registro = $id ? Specialty::findOrFail($id) : new Specialty;
+        $registro = $id ? Especialidad::findOrFail($id) : new Especialidad;
 
         $datos = $solicitud->validated();
         if (array_key_exists('fee_amount', $datos)) {

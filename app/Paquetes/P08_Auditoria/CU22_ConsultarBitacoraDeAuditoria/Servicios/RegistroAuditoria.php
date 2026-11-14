@@ -4,9 +4,10 @@
 
 namespace App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios;
 
-use App\Models\User;
+use App\Models\Usuario;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 final class RegistroAuditoria
 {
@@ -23,7 +24,7 @@ final class RegistroAuditoria
     public function registrar(string $modulo, string $accion, ?Model $registro = null, string $resultado = 'success', array $detalles = [], ?int $responsableId = null): void
     {
         $responsableId ??= auth()->id();
-        $responsable = $responsableId ? User::find($responsableId) : null;
+        $responsable = $responsableId ? Usuario::find($responsableId) : null;
         $contexto = ['actor' => $responsable?->only(['id', 'name', 'username', 'role']) ?? ['name' => 'Sistema / sin sesión']];
         if ($registro) {
             $contexto['record'] = DetallesAuditoria::atributosPermitidos($registro->getAttributes());
@@ -35,7 +36,7 @@ final class RegistroAuditoria
         $permitidos = DetallesAuditoria::sanear($detalles + $contexto);
         DB::statement('CALL public.registrar_auditoria(?, ?, ?, ?, ?, ?, ?::jsonb, ?::inet)', [
             $responsableId, $modulo, $accion,
-            $registro ? class_basename($registro) : null, $registro?->getKey(), $resultado,
+            $registro ? Str::studly(Str::singular($registro->getTable())) : null, $registro?->getKey(), $resultado,
             json_encode((object) $permitidos, JSON_THROW_ON_ERROR),
             $this->ipCliente(),
         ]);

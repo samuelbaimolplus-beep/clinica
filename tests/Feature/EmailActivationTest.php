@@ -2,11 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Models\AuditEvent;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\User;
-use App\Notifications\VerifyClinicEmail;
+use App\Models\EventoAuditoria;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\Usuario;
+use App\Notifications\VerificarCorreoClinica;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\ActivacionPorCorreo;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
@@ -19,20 +19,20 @@ class EmailActivationTest extends TestCase
 {
     use DatabaseTransactions;
 
-    private function pending(string $role, string $suffix): User
+    private function pending(string $role, string $suffix): Usuario
     {
-        $patient = $role === 'Paciente' ? Patient::create(['first_name' => 'Ana', 'last_name' => $suffix,
+        $patient = $role === 'Paciente' ? Paciente::create(['first_name' => 'Ana', 'last_name' => $suffix,
             'identity' => $suffix, 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000000']) : null;
-        $doctor = $role === 'Médico' ? Doctor::create(['registration' => $suffix, 'first_name' => 'Ana',
+        $doctor = $role === 'Médico' ? Medico::create(['registration' => $suffix, 'first_name' => 'Ana',
             'last_name' => $suffix, 'email' => 'medico.'.$suffix.'@activation.test', 'phone' => '70000000']) : null;
 
-        return User::create(['birth_date' => '1990-01-01', 'terms_accepted_at' => now(), 'terms_version' => config('clinic.terms_version'), 'name' => $role, 'email' => $suffix.'@activation.test', 'username' => 'cuenta.'.$suffix,
+        return Usuario::create(['birth_date' => '1990-01-01', 'terms_accepted_at' => now(), 'terms_version' => config('clinic.terms_version'), 'name' => $role, 'email' => $suffix.'@activation.test', 'username' => 'cuenta.'.$suffix,
             'password' => 'ClaveInicial2026', 'role' => $role, 'patient_id' => $patient?->id, 'doctor_id' => $doctor?->id]);
     }
 
-    private function code(User $user): string
+    private function code(Usuario $user): string
     {
-        $codes = Notification::sent($user, VerifyClinicEmail::class);
+        $codes = Notification::sent($user, VerificarCorreoClinica::class);
         $this->assertNotEmpty($codes);
 
         return $codes->last()->code;
@@ -77,7 +77,7 @@ class EmailActivationTest extends TestCase
             $data = $this->data('alta'.$i) + ['role' => 'Superadmin', 'email_verified_at' => now()->toISOString(), 'patient_id' => 999];
             $response = $this->actingAs($actor)->postJson('/api/patients/with-account', $data)->assertCreated()
                 ->assertJsonPath('account.email_verified_at', null)->assertJsonPath('activation_email_sent', true);
-            $user = User::findOrFail($response->json('account.id'));
+            $user = Usuario::findOrFail($response->json('account.id'));
             $this->assertSame('Paciente', $user->role);
             $this->assertNotNull($user->terms_accepted_at);
             $this->assertStringNotContainsString($this->code($user), $response->getContent());
@@ -101,11 +101,11 @@ class EmailActivationTest extends TestCase
         $superadmin = $this->verifiedAccount(['name' => 'Superadmin', 'email' => 'super@activation.test', 'password' => 'ClaveInicial2026', 'role' => 'Superadmin']);
         $this->actingAs($superadmin);
         foreach (['Superadmin', 'Administrador', 'Recepcionista', 'Médico'] as $i => $role) {
-            $doctor = $role === 'Médico' ? Doctor::create(['registration' => 'ALTA-MEDICO', 'first_name' => 'Ana', 'last_name' => 'Médica', 'email' => 'doctor.alta@activation.test', 'phone' => '70000000']) : null;
+            $doctor = $role === 'Médico' ? Medico::create(['registration' => 'ALTA-MEDICO', 'first_name' => 'Ana', 'last_name' => 'Médica', 'email' => 'doctor.alta@activation.test', 'phone' => '70000000']) : null;
             $response = $this->postJson('/api/entities/users', ['birth_date' => '1990-01-01', 'name' => $role, 'email' => 'alta.staff'.$i.'@activation.test',
                 'username' => 'personal'.$i, 'password' => 'ClaveInicial2026', 'role' => $role, 'status' => 'Activo',
                 'doctor_id' => $doctor?->id, 'email_verified_at' => now()->toISOString()])->assertCreated()->assertJsonPath('email_verified_at', null);
-            $user = User::findOrFail($response->json('id'));
+            $user = Usuario::findOrFail($response->json('id'));
             $this->assertMatchesRegularExpression('/^[0-9]{8}$/', $this->code($user));
         }
     }
@@ -140,7 +140,7 @@ class EmailActivationTest extends TestCase
         $this->assertNotSame($old, $new);
         $state = Cache::get('clinic:activation:'.$user->id);
         $this->assertStringNotContainsString($new, json_encode($state));
-        $this->assertStringNotContainsString($new, AuditEvent::all()->toJson());
+        $this->assertStringNotContainsString($new, EventoAuditoria::all()->toJson());
         $this->postJson('/api/account/activate', ['email' => $user->email, 'code' => $old])->assertUnprocessable();
         $this->postJson('/api/account/activate', ['email' => $user->email, 'code' => $new])->assertOk();
     }
@@ -150,12 +150,12 @@ class EmailActivationTest extends TestCase
         $user = $this->pending('Administrador', 'inactiva');
         app(ActivacionPorCorreo::class)->enviar($user);
         $code = $this->code($user);
-        $before = User::count();
+        $before = Usuario::count();
         $this->postJson('/api/account/activate', ['email' => 'nadie@activation.test', 'code' => $code])->assertUnprocessable();
         $user->update(['status' => 'Inactivo']);
         $this->postJson('/api/account/activate', ['email' => $user->email, 'code' => $code])->assertUnprocessable();
         $this->assertNull($user->fresh()->email_verified_at);
-        $this->assertSame($before, User::count());
+        $this->assertSame($before, Usuario::count());
     }
 
     public function test_patient_can_manage_own_credentials_and_contact_after_activation_without_escalating_privileges(): void

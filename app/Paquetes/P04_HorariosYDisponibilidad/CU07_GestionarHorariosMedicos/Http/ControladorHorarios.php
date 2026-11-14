@@ -5,9 +5,9 @@
 namespace App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\DoctorQuota;
-use App\Models\Schedule;
-use App\Models\Unavailability;
+use App\Models\AusenciaMedica;
+use App\Models\CupoMedico;
+use App\Models\Horario;
 use App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios\ImpactoHorario;
 use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios\ServicioCuposMedico;
 use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios\ServicioHorarios;
@@ -21,12 +21,12 @@ class ControladorHorarios extends Controller
     /** Consulta el listado y sus filtros; la ruta aplica los permisos del módulo. */
     public function listar(Request $peticion)
     {
-        abort_unless($peticion->user()->hasStaffRole('Administrador'), 403);
+        abort_unless($peticion->user()->tieneRolPersonal('Administrador'), 403);
         $criterios = $peticion->validate(['doctor_id' => 'required|integer|exists:doctors,id']);
 
-        return ['schedules' => Schedule::where('doctor_id', $criterios['doctor_id'])->orderBy('weekday')->orderBy('start_time')->get(),
-            'unavailabilities' => Unavailability::where('doctor_id', $criterios['doctor_id'])->orderByDesc('starts_at')->get(),
-            'quota' => DoctorQuota::where('doctor_id', $criterios['doctor_id'])->first() ?? ['presential_percent' => 50, 'online_percent' => 50]];
+        return ['schedules' => Horario::where('doctor_id', $criterios['doctor_id'])->orderBy('weekday')->orderBy('start_time')->get(),
+            'unavailabilities' => AusenciaMedica::where('doctor_id', $criterios['doctor_id'])->orderByDesc('starts_at')->get(),
+            'quota' => CupoMedico::where('doctor_id', $criterios['doctor_id'])->first() ?? ['presential_percent' => 50, 'online_percent' => 50]];
     }
 
     /** Coordina la validación y persistencia de esta operación; delega las reglas del dominio al servicio correspondiente. */
@@ -52,7 +52,7 @@ class ControladorHorarios extends Controller
     public function consultarImpactoAusencia(Request $solicitud, ImpactoHorario $servicio, int $id)
     {
         abort_unless($solicitud->user()->can('manage-schedules'), 403);
-        $ausencia = Unavailability::findOrFail($id);
+        $ausencia = AusenciaMedica::findOrFail($id);
 
         return ['unavailability' => $ausencia, 'affected' => $ausencia->cancelled_at ? []
             : $servicio->citasSuperpuestas($ausencia->doctor_id, $ausencia->starts_at, $ausencia->ends_at)];

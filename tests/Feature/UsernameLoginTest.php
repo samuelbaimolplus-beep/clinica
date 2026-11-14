@@ -2,9 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
-use App\Notifications\VerifyClinicEmail;
-use App\Support\Username;
+use App\Models\Usuario;
+use App\Notifications\VerificarCorreoClinica;
+use App\Support\NombreUsuario;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +15,7 @@ class UsernameLoginTest extends TestCase
 {
     use DatabaseTransactions;
 
-    private function account(array $changes = []): User
+    private function account(array $changes = []): Usuario
     {
         return $this->verifiedAccount(array_replace(['name' => 'Samuel de prueba', 'username' => 'samuel', 'email' => 'samuel@username.test',
             'password' => 'PruebaSegura2026', 'role' => 'Administrador', 'status' => 'Activo'], $changes));
@@ -58,7 +58,7 @@ class UsernameLoginTest extends TestCase
         $id = $response->json('id');
         $this->postJson('/api/entities/users', array_replace($data, ['email' => 'otro@username.test']))->assertUnprocessable()->assertJsonValidationErrors('username');
         $this->putJson('/api/entities/users/'.$id, array_replace($data, ['username' => 'recepcion.dos']))->assertOk()->assertJsonPath('username', 'recepcion.dos');
-        $this->assertSame('Recepcionista', User::findOrFail($id)->role);
+        $this->assertSame('Recepcionista', Usuario::findOrFail($id)->role);
     }
 
     public function test_invalid_usernames_cannot_overlap_the_email_login_namespace(): void
@@ -77,9 +77,9 @@ class UsernameLoginTest extends TestCase
             'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000000', 'email' => 'ana@username.test',
             'password' => 'PruebaSegura2026', 'password_confirmation' => 'PruebaSegura2026', 'identity_verified' => true, 'terms_accepted' => true, 'terms_version' => config('clinic.terms_version')];
         $response = $this->postJson('/api/patients/with-account', $data)->assertCreated()->assertJsonPath('account.username', 'ana.paciente');
-        $user = User::findOrFail($response->json('account.id'));
+        $user = Usuario::findOrFail($response->json('account.id'));
         $code = null;
-        Notification::assertSentTo($user, VerifyClinicEmail::class, function ($notification) use (&$code) {
+        Notification::assertSentTo($user, VerificarCorreoClinica::class, function ($notification) use (&$code) {
             $code = $notification->code;
 
             return true;
@@ -106,8 +106,8 @@ class UsernameLoginTest extends TestCase
         $first = $this->account(['username' => null, 'email' => 'mismo@uno.test']);
         $second = $this->account(['username' => null, 'email' => 'mismo@dos.test']);
         $this->assertNotSame($first->username, $second->username);
-        $this->assertMatchesRegularExpression(Username::PATTERN, $first->username);
-        $this->assertMatchesRegularExpression(Username::PATTERN, $second->username);
+        $this->assertMatchesRegularExpression(NombreUsuario::PATTERN, $first->username);
+        $this->assertMatchesRegularExpression(NombreUsuario::PATTERN, $second->username);
     }
 
     public function test_postgresql_enforces_username_uniqueness_and_canonical_format(): void

@@ -7,4 +7,4 @@
         ? theme : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
 })();
 </script>
-@vite('resources/js/lib/theme.js')
+@vite('resources/js/lib/tema.js')

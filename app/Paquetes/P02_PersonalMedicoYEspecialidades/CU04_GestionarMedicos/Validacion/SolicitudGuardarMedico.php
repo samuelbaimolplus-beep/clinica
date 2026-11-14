@@ -5,7 +5,7 @@
 namespace App\Paquetes\P02_PersonalMedicoYEspecialidades\CU04_GestionarMedicos\Validacion;
 
 use App\Compartido\Catalogos\Validacion\ReglasPersona;
-use App\Models\Doctor;
+use App\Models\Medico;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -24,7 +24,7 @@ class SolicitudGuardarMedico extends FormRequest
     {
         $id = $this->route('id');
         if ($id) {
-            Doctor::findOrFail($id);
+            Medico::findOrFail($id);
         }
 
         return $this->reglasPersona() + [

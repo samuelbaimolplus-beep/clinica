@@ -2,11 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Models\Appointment;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\Specialty;
-use App\Models\User;
+use App\Models\Cita;
+use App\Models\Especialidad;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\Usuario;
 use Carbon\Carbon;
 use Database\Seeders\DemoDataSeeder;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -33,21 +33,21 @@ class DemoDataSeederTest extends TestCase
         $this->assertDatabaseCount('appointments', 16);
         $this->assertDatabaseCount('users', 7);
         $this->assertDatabaseCount('unavailabilities', 1);
-        foreach (array_diff(Appointment::STATES, ['Confirmada']) as $state) {
-            $this->assertTrue(Appointment::where('status', $state)->exists());
+        foreach (array_diff(Cita::STATES, ['Confirmada']) as $state) {
+            $this->assertTrue(Cita::where('status', $state)->exists());
         }
         Storage::disk('local')->assertExists('accesos-demo.txt');
         $privateFile = Storage::disk('local')->get('accesos-demo.txt');
-        $receptionPassword = User::where('email', 'recepcion@demo.example')->firstOrFail()->password;
+        $receptionPassword = Usuario::where('email', 'recepcion@demo.example')->firstOrFail()->password;
 
         $this->seed(DemoDataSeeder::class);
-        $this->assertSame(4, Specialty::count());
-        $this->assertSame(5, Doctor::count());
-        $this->assertSame(10, Patient::count());
-        $this->assertSame(16, Appointment::count());
-        $this->assertSame(7, User::count());
+        $this->assertSame(4, Especialidad::count());
+        $this->assertSame(5, Medico::count());
+        $this->assertSame(10, Paciente::count());
+        $this->assertSame(16, Cita::count());
+        $this->assertSame(7, Usuario::count());
         $this->assertSame($password, $admin->fresh()->password);
-        $this->assertSame($receptionPassword, User::where('email', 'recepcion@demo.example')->firstOrFail()->password);
+        $this->assertSame($receptionPassword, Usuario::where('email', 'recepcion@demo.example')->firstOrFail()->password);
         $this->assertSame($privateFile, Storage::disk('local')->get('accesos-demo.txt'));
     }
 }

@@ -2,10 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Models\AuditEvent;
-use App\Models\Patient;
-use App\Models\User;
-use App\Notifications\VerifyClinicEmail;
+use App\Models\EventoAuditoria;
+use App\Models\Paciente;
+use App\Models\Usuario;
+use App\Notifications\VerificarCorreoClinica;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Hash;
@@ -24,11 +24,11 @@ class AccountSecurityTest extends TestCase
         Notification::fake();
     }
 
-    private function account(bool $verified = true, bool $patient = false): User
+    private function account(bool $verified = true, bool $patient = false): Usuario
     {
-        $patientId = $patient ? Patient::create(['identity' => 'ACCOUNT-V6', 'first_name' => 'Ana', 'last_name' => 'Prueba',
+        $patientId = $patient ? Paciente::create(['identity' => 'ACCOUNT-V6', 'first_name' => 'Ana', 'last_name' => 'Prueba',
             'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000000', 'status' => 'Activo'])->id : null;
-        $user = User::create(['birth_date' => '1990-01-01', 'terms_accepted_at' => now(), 'terms_version' => config('clinic.terms_version'), 'name' => 'Cuenta de prueba', 'email' => 'cuenta@example.test', 'password' => 'AnteriorSegura2026',
+        $user = Usuario::create(['birth_date' => '1990-01-01', 'terms_accepted_at' => now(), 'terms_version' => config('clinic.terms_version'), 'name' => 'Cuenta de prueba', 'email' => 'cuenta@example.test', 'password' => 'AnteriorSegura2026',
             'role' => $patient ? 'Paciente' : 'Recepcionista', 'patient_id' => $patientId, 'status' => 'Activo']);
         if ($verified) {
             $user->forceFill(['email_verified_at' => now()])->save();
@@ -43,7 +43,7 @@ class AccountSecurityTest extends TestCase
         $this->postJson('/api/login', ['email' => $user->email, 'password' => 'AnteriorSegura2026'])->assertForbidden();
         $this->postJson('/api/account/email', ['email' => $user->email, 'purpose' => 'verify'])->assertOk();
         $code = null;
-        Notification::assertSentTo($user, VerifyClinicEmail::class, function ($notification) use (&$code) {
+        Notification::assertSentTo($user, VerificarCorreoClinica::class, function ($notification) use (&$code) {
             $code = $notification->code;
 
             return true;
@@ -60,7 +60,7 @@ class AccountSecurityTest extends TestCase
         $user = $this->account(false);
         $body = $this->postJson('/api/account/email', ['email' => 'unknown@example.test', 'purpose' => 'recover'])->assertOk()->json();
         $this->postJson('/api/account/email', ['email' => $user->email, 'purpose' => 'recover'])->assertExactJson($body);
-        Notification::assertSentTo($user, VerifyClinicEmail::class);
+        Notification::assertSentTo($user, VerificarCorreoClinica::class);
         Notification::assertNotSentTo($user, ResetPassword::class);
         $user->update(['status' => 'Inactivo']);
         Notification::fake();
@@ -87,7 +87,7 @@ class AccountSecurityTest extends TestCase
         $this->assertTrue(Hash::check('NuevaSegura2026', $user->fresh()->password));
         $this->postJson('/api/account/reset', $data)->assertUnprocessable();
         $this->actingAs($user->fresh())->withSession($oldSession)->getJson('/api/references')->assertUnauthorized();
-        $this->assertStringNotContainsString($token, AuditEvent::all()->toJson());
+        $this->assertStringNotContainsString($token, EventoAuditoria::all()->toJson());
         $this->assertDatabaseHas('audit_events', ['action' => 'password_recovered', 'user_id' => $user->id]);
     }
 

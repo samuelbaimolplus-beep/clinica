@@ -5,8 +5,8 @@
 namespace App\Paquetes\P01_UsuariosYAcceso\Compartido\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\Patient;
-use App\Models\User;
+use App\Models\Paciente;
+use App\Models\Usuario;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\ActivacionPorCorreo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -39,8 +39,8 @@ class ControladorPerfilCuenta extends Controller
         ]);
         [$usuario, $cambioCorreo] = DB::transaction(function () use ($solicitud, $datos, $esPaciente) {
             // Mismo orden que el alta de cuenta: paciente, luego usuario.
-            $paciente = $esPaciente ? Patient::whereKey($solicitud->user()->patient_id)->lockForUpdate()->firstOrFail() : null;
-            $usuario = User::whereKey($solicitud->user()->id)->lockForUpdate()->firstOrFail();
+            $paciente = $esPaciente ? Paciente::whereKey($solicitud->user()->patient_id)->lockForUpdate()->firstOrFail() : null;
+            $usuario = Usuario::whereKey($solicitud->user()->id)->lockForUpdate()->firstOrFail();
             if (! Hash::check($datos['current_password'], $usuario->password)) {
                 throw ValidationException::withMessages(['current_password' => 'La contraseña actual no es correcta.']);
             }

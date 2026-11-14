@@ -5,10 +5,10 @@
 namespace App\Paquetes\P01_UsuariosYAcceso\Compartido\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Models\Usuario;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\ActivacionPorCorreo;
 use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
-use App\Support\ClinicAccess;
+use App\Support\AccesoClinica;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Password;
@@ -23,8 +23,8 @@ class ControladorRecuperacionCuenta extends Controller
     {
         abort_if($solicitud->user(), 409, 'Cierre la sesión antes de recuperar su cuenta.');
         $datos = $solicitud->validate(['email' => 'required|email|max:255', 'purpose' => 'required|in:verify,recover']);
-        $usuario = User::whereRaw('lower(email) = ?', [mb_strtolower(trim($datos['email']))])->first();
-        if ($usuario && ClinicAccess::isActive($usuario)) {
+        $usuario = Usuario::whereRaw('lower(email) = ?', [mb_strtolower(trim($datos['email']))])->first();
+        if ($usuario && AccesoClinica::estaActivo($usuario)) {
             if (! $usuario->email_verified_at) {
                 app(ActivacionPorCorreo::class)->enviar($usuario);
             } elseif ($datos['purpose'] === 'recover') {
@@ -45,9 +45,9 @@ class ControladorRecuperacionCuenta extends Controller
         $estado = DB::transaction(function () use ($datos) {
             DB::table('password_reset_tokens')->where('email', $datos['email'])->lockForUpdate()->first();
 
-            return Password::reset($datos, function (User $usuario, string $contrasena) {
-                $usuario = User::whereKey($usuario->id)->lockForUpdate()->firstOrFail();
-                if (! ClinicAccess::isActive($usuario) || ! $usuario->email_verified_at) {
+            return Password::reset($datos, function (Usuario $usuario, string $contrasena) {
+                $usuario = Usuario::whereKey($usuario->id)->lockForUpdate()->firstOrFail();
+                if (! AccesoClinica::estaActivo($usuario) || ! $usuario->email_verified_at) {
                     throw ValidationException::withMessages(['email' => 'No se puede recuperar esta cuenta. Verifique el correo o contacte a Recepción.']);
                 }
                 $usuario->forceFill(['password' => $contrasena, 'remember_token' => Str::random(60)])->save();

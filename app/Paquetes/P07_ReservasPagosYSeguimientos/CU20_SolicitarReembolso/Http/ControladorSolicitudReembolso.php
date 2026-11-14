@@ -5,7 +5,7 @@
 namespace App\Paquetes\P07_ReservasPagosYSeguimientos\CU20_SolicitarReembolso\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\RefundRequest;
+use App\Models\SolicitudReembolso;
 use App\Paquetes\P07_ReservasPagosYSeguimientos\Compartido\Servicios\ServicioReembolsos;
 use Illuminate\Http\Request;
 
@@ -16,7 +16,7 @@ class ControladorSolicitudReembolso extends Controller
     {
         abort_unless(in_array($peticion->user()->role, ['Superadmin', 'Administrador', 'Recepcionista', 'Paciente']), 403);
 
-        return RefundRequest::query()->select([
+        return SolicitudReembolso::query()->select([
             'id', 'appointment_id', 'status', 'amount_minor', 'reason', 'decision_reason',
             'executor', 'method', 'reference', 'completed_at',
         ])

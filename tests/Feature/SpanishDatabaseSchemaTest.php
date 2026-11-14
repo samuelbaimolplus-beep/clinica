@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Database\SpanishPostgresConnection;
-use App\Models\User;
+use App\Database\ConexionPostgresEspanol;
+use App\Models\Usuario;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -39,8 +39,8 @@ class SpanishDatabaseSchemaTest extends TestCase
         $stmt = DB::connection()->getPdo()->prepare('SELECT nombre, correo FROM public.usuarios WHERE id = ?');
         $stmt->execute([$user->id]);
         $this->assertSame(['nombre' => 'date status users', 'correo' => 'esquema@spanish.test'], $stmt->fetch(\PDO::FETCH_ASSOC));
-        $this->assertSame('date status users', User::findOrFail($user->id)->name);
-        $this->assertSame($user->id, User::where('email', $user->email)->cursor()->first()->id);
+        $this->assertSame('date status users', Usuario::findOrFail($user->id)->name);
+        $this->assertSame($user->id, Usuario::where('email', $user->email)->cursor()->first()->id);
     }
 
     public function test_sql_translation_preserves_literals_comments_types_and_parameter_values(): void
@@ -55,27 +55,27 @@ SELECT usuarios.correo, "estado", fecha::date, 'users email status', $$users ema
 FROM usuarios -- users email
 WHERE nombre = ? /* status */
 SQL;
-        $this->assertSame($expected, SpanishPostgresConnection::translateSql($sql));
+        $this->assertSame($expected, ConexionPostgresEspanol::traducirSql($sql));
         $this->assertSame('users email status', DB::selectOne("SELECT 'users email status' AS name")->name);
         $this->assertSame('users', DB::selectOne('SELECT ?::text AS name', ['users'])->name);
-        $this->assertStringContainsString('primary key', SpanishPostgresConnection::translateSql('create table "users" ("id" serial primary key, "date" date)'));
+        $this->assertStringContainsString('primary key', ConexionPostgresEspanol::traducirSql('create table "users" ("id" serial primary key, "date" date)'));
     }
 
     public function test_renaming_is_reversible_and_preserves_accounts_and_foreign_keys(): void
     {
         $connection = DB::connection();
-        $before = User::count();
+        $before = Usuario::count();
         $migration = require database_path('migrations/2026_11_07_000030_translate_database_identifiers_to_spanish.php');
         try {
             $migration->down();
-            $this->assertSame($before, User::count());
+            $this->assertSame($before, Usuario::count());
             $this->assertTrue(Schema::hasColumn('users', 'email'));
             $migration->up();
-            $this->assertSame($before, User::count());
+            $this->assertSame($before, Usuario::count());
             $this->assertTrue(Schema::hasColumn('usuarios', 'correo'));
             $this->assertCount(2, Schema::getForeignKeys('users'));
         } finally {
-            $connection->useSpanishSchema(true);
+            $connection->usarEsquemaEspanol(true);
         }
     }
 }

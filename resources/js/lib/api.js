@@ -1,69 +1,69 @@
 /** Cliente HTTP: CSRF, sesión y errores. Nunca reenvía automáticamente una escritura fallida. */
 /** Cliente de la API de sesión. Una operación fallida nunca se reenvía automáticamente. */
-export function createApiClient({getToken, setToken, onUnauthorized, fetchImpl = (...args) => fetch(...args), timeoutMs = 20000}) {
+export function crearClienteApi({getToken: obtenerToken, setToken: establecerToken, onUnauthorized: alDenegarAcceso, fetchImpl: ejecutarPeticion = (...argumentos) => fetch(...argumentos), timeoutMs: tiempoLimiteMs = 20000}) {
     /** Interpreta JSON y ofrece un error legible si la respuesta no tiene el formato esperado. */
-    async function readResponse(response) {
-        return response.json().catch(error => {
-            if (error.name === 'AbortError') throw error;
+    async function leerRespuesta(respuesta) {
+        return respuesta.json().catch(fallo => {
+            if (fallo.name === 'AbortError') throw fallo;
             return {message: 'No se pudo interpretar la respuesta del servidor.'};
         });
     }
 
-    async function request(url, options) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
+    async function peticion(url, opciones) {
+        const controlador = new AbortController();
+        const temporizador = setTimeout(() => controlador.abort(), tiempoLimiteMs);
         try {
-            const response = await fetchImpl(url, {...options, signal: controller.signal});
-            return {response, data: await readResponse(response)};
-        } catch (error) {
-            if (controller.signal.aborted) {
-                throw new Error(options.method && options.method !== 'GET'
+            const respuesta = await ejecutarPeticion(url, {...opciones, signal: controlador.signal});
+            return {response: respuesta, data: await leerRespuesta(respuesta)};
+        } catch (fallo) {
+            if (controlador.signal.aborted) {
+                throw new Error(opciones.method && opciones.method !== 'GET'
                     ? 'El servidor tardó demasiado en responder. Compruebe si el cambio se guardó antes de intentarlo nuevamente.'
                     : 'El servidor tardó demasiado en responder. Compruebe que PostgreSQL esté disponible e intente nuevamente.');
             }
-            throw error;
-        } finally { clearTimeout(timer); }
+            throw fallo;
+        } finally { clearTimeout(temporizador); }
     }
 
     /** Adopta el CSRF renovado por el servidor para las próximas solicitudes. */
-    function updateToken(data) {
-        if (data.csrf) setToken(data.csrf);
+    function actualizarToken(datos) {
+        if (datos.csrf) establecerToken(datos.csrf);
     }
 
     /** Renueva CSRF y comprueba si la sesión sigue activa, sin repetir la operación original. */
-    async function renewSession() {
-        const {response, data: session} = await request('/api/session', {
+    async function renovarSesion() {
+        const {response: respuesta, data: sesion} = await peticion('/api/session', {
             credentials: 'same-origin', cache: 'no-store', headers: {Accept: 'application/json'},
         });
-        if (!response.ok || !session.csrf) {
+        if (!respuesta.ok || !sesion.csrf) {
             throw new Error('No se pudo renovar la sesión. Recargue la página.');
         }
-        updateToken(session);
-        if (!session.user) await onUnauthorized(session.message || 'La sesión caducó. Inicie sesión nuevamente.');
-        return session;
+        actualizarToken(sesion);
+        if (!sesion.user) await alDenegarAcceso(sesion.message || 'La sesión caducó. Inicie sesión nuevamente.');
+        return sesion;
     }
 
-    return async function api(path, method = 'GET', body) {
-        const {response, data} = await request(`/api/${path}`, {
-            method, credentials: 'same-origin', cache: 'no-store',
-            headers: {Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': getToken()},
-            ...(body !== undefined ? {body: JSON.stringify(body)} : {}),
+    return async function clienteApi(ruta, metodo = 'GET', contenido) {
+        const {response: respuesta, data: datos} = await peticion(`/api/${ruta}`, {
+            method: metodo, credentials: 'same-origin', cache: 'no-store',
+            headers: {Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': obtenerToken()},
+            ...(contenido !== undefined ? {body: JSON.stringify(contenido)} : {}),
         });
-        updateToken(data);
-        if (response.status === 419) {
-            const session = await renewSession();
-            throw new Error(session.user
+        actualizarToken(datos);
+        if (respuesta.status === 419) {
+            const sesion = await renovarSesion();
+            throw new Error(sesion.user
                 ? 'La protección de la sesión se renovó. Revise los datos e intente nuevamente.'
                 : 'La sesión caducó. Inicie sesión nuevamente.');
         }
-        if (response.status === 401) await onUnauthorized(data.message || 'Debe iniciar sesión.');
-        if (!response.ok) {
-            const error = new Error(data.message || 'No se pudo completar la operación.');
-            error.status = response.status;
-            error.errors = data.errors;
-            error.data = data;
-            throw error;
+        if (respuesta.status === 401) await alDenegarAcceso(datos.message || 'Debe iniciar sesión.');
+        if (!respuesta.ok) {
+            const fallo = new Error(datos.message || 'No se pudo completar la operación.');
+            fallo.status = respuesta.status;
+            fallo.errors = datos.errors;
+            fallo.data = datos;
+            throw fallo;
         }
-        return data;
+        return datos;
     };
 }

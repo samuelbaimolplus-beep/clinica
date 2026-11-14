@@ -2,17 +2,17 @@
 
 namespace Tests\Feature;
 
-use App\Models\Appointment;
-use App\Models\BookingRequest;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\Payment;
-use App\Models\RefundRequest;
-use App\Models\RescheduleRequest;
-use App\Models\Schedule;
-use App\Models\Specialty;
-use App\Models\User;
-use App\Support\ClinicAccess;
+use App\Models\Cita;
+use App\Models\Especialidad;
+use App\Models\Horario;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\Pago;
+use App\Models\SolicitudReembolso;
+use App\Models\SolicitudReprogramacion;
+use App\Models\SolicitudReserva;
+use App\Models\Usuario;
+use App\Support\AccesoClinica;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -21,19 +21,19 @@ class SuperadminAccessTest extends TestCase
 {
     use DatabaseTransactions;
 
-    private User $superadmin;
+    private Usuario $superadmin;
 
-    private User $admin;
+    private Usuario $admin;
 
-    private User $reception;
+    private Usuario $reception;
 
-    private User $patientUser;
+    private Usuario $patientUser;
 
-    private Doctor $doctor;
+    private Medico $doctor;
 
-    private Patient $patient;
+    private Paciente $patient;
 
-    private Specialty $specialty;
+    private Especialidad $specialty;
 
     protected function setUp(): void
     {
@@ -44,18 +44,18 @@ class SuperadminAccessTest extends TestCase
         foreach (['superadmin' => 'Superadmin', 'admin' => 'Administrador', 'reception' => 'Recepcionista'] as $property => $role) {
             $this->$property = $this->verifiedAccount(['name' => $role, 'email' => $property.'@supervision.test', 'password' => 'PruebaSegura2026', 'role' => $role, 'status' => 'Activo']);
         }
-        $this->specialty = Specialty::create(['name' => 'Especialidad supervisión', 'status' => 'Activo', 'fee_minor' => 10000]);
-        $this->doctor = Doctor::create(['registration' => 'SUP-01', 'first_name' => 'Médica', 'last_name' => 'Supervisión', 'email' => 'doctor@supervision.test', 'phone' => '70000000', 'status' => 'Activo']);
+        $this->specialty = Especialidad::create(['name' => 'Especialidad supervisión', 'status' => 'Activo', 'fee_minor' => 10000]);
+        $this->doctor = Medico::create(['registration' => 'SUP-01', 'first_name' => 'Médica', 'last_name' => 'Supervisión', 'email' => 'doctor@supervision.test', 'phone' => '70000000', 'status' => 'Activo']);
         $this->doctor->specialties()->attach($this->specialty);
-        Schedule::create(['doctor_id' => $this->doctor->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30]);
-        $this->patient = Patient::create(['first_name' => 'Paciente', 'last_name' => 'Sin documento', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000001', 'status' => 'Activo']);
+        Horario::create(['doctor_id' => $this->doctor->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30]);
+        $this->patient = Paciente::create(['first_name' => 'Paciente', 'last_name' => 'Sin documento', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000001', 'status' => 'Activo']);
         $this->patientUser = $this->verifiedAccount(['name' => 'Paciente', 'email' => 'patient@supervision.test', 'password' => 'PruebaSegura2026', 'role' => 'Paciente', 'patient_id' => $this->patient->id, 'status' => 'Activo']);
         $this->patientUser->forceFill(['email_verified_at' => now()])->save();
     }
 
-    private function appointment(): Appointment
+    private function appointment(): Cita
     {
-        return Appointment::create(['patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id, 'specialty_id' => $this->specialty->id,
+        return Cita::create(['patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id, 'specialty_id' => $this->specialty->id,
             'created_by' => $this->reception->id, 'date' => '2026-11-09', 'start_time' => '08:00', 'end_time' => '08:30', 'status' => 'Programada']);
     }
 
@@ -66,10 +66,10 @@ class SuperadminAccessTest extends TestCase
         foreach (range(1, 26) as $number) {
             $this->assertContains('CU'.str_pad($number, 2, '0', STR_PAD_LEFT), $session->json('access.Superadmin'));
         }
-        $this->assertContains('CU18', ClinicAccess::views('Paciente'));
-        $this->assertNotContains('CU18', ClinicAccess::views('Administrador'));
-        $this->assertNotContains('CU03', ClinicAccess::views('Recepcionista'));
-        $this->assertSame(['CU01', 'CU02', 'CU12', 'CU14'], ClinicAccess::views('Médico'));
+        $this->assertContains('CU18', AccesoClinica::vistasPermitidas('Paciente'));
+        $this->assertNotContains('CU18', AccesoClinica::vistasPermitidas('Administrador'));
+        $this->assertNotContains('CU03', AccesoClinica::vistasPermitidas('Recepcionista'));
+        $this->assertSame(['CU01', 'CU02', 'CU12', 'CU14'], AccesoClinica::vistasPermitidas('Médico'));
     }
 
     public function test_superadmin_can_read_all_modules_and_both_modalities(): void
@@ -105,7 +105,7 @@ class SuperadminAccessTest extends TestCase
     {
         $this->actingAs($this->superadmin);
         $response = $this->postJson('/api/entities/users', ['birth_date' => '1990-01-01', 'name' => 'Equipo', 'email' => 'equipo@supervision.test', 'password' => 'PruebaSegura2026', 'role' => 'Superadmin', 'status' => 'Activo'])->assertCreated();
-        $this->assertTrue(Hash::check('PruebaSegura2026', User::findOrFail($response->json('id'))->password));
+        $this->assertTrue(Hash::check('PruebaSegura2026', Usuario::findOrFail($response->json('id'))->password));
         $this->patchJson('/api/entities/users/'.$this->superadmin->id.'/status', ['status' => 'Inactivo'])->assertUnprocessable();
         $this->patchJson('/api/entities/users/'.$response->json('id').'/status', ['status' => 'Inactivo'])->assertOk();
     }
@@ -125,8 +125,8 @@ class SuperadminAccessTest extends TestCase
         $a = $this->appointment();
         $this->actingAs($this->superadmin);
         $this->postJson('/api/appointments/'.$a->id.'/attend', ['consultation_finished' => true])->assertUnprocessable();
-        $payment=Payment::create(['method'=>'cash','amount_minor'=>10000,'status'=>'confirmed','confirmed_at'=>now()]);
-        $a->update(['status'=>'Confirmada','attendance_at'=>now(),'payment_id'=>$payment->id]);
+        $payment = Pago::create(['method' => 'cash', 'amount_minor' => 10000, 'status' => 'confirmed', 'confirmed_at' => now()]);
+        $a->update(['status' => 'Confirmada', 'attendance_at' => now(), 'payment_id' => $payment->id]);
         $this->postJson('/api/appointments/'.$a->id.'/attend', ['consultation_finished' => true])->assertOk();
         $this->postJson('/api/online-bookings', [])->assertForbidden();
         $this->postJson('/api/appointments/'.$a->id.'/reschedule-request', ['reason' => 'Cambio'])->assertForbidden();
@@ -143,12 +143,12 @@ class SuperadminAccessTest extends TestCase
         $this->actingAs($this->reception)->getJson('/api/reception-inbox')->assertOk()->assertJsonPath('pending', 1)->assertJsonPath('latest_id', $request->json('id'));
         $this->actingAs($this->superadmin)->postJson('/api/reschedule-requests/'.$request->json('id').'/reject', ['response' => 'Se coordinó otra alternativa'])->assertOk();
         $this->getJson('/api/reception-inbox')->assertOk()->assertJsonPath('pending', 0);
-        $this->assertSame('rejected', RescheduleRequest::findOrFail($request->json('id'))->status);
+        $this->assertSame('rejected', SolicitudReprogramacion::findOrFail($request->json('id'))->status);
     }
 
     public function test_online_supervision_is_read_only_and_cannot_retry_someone_elses_payment(): void
     {
-        $booking = BookingRequest::create(['idempotency_key' => fake()->uuid(), 'patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id,
+        $booking = SolicitudReserva::create(['idempotency_key' => fake()->uuid(), 'patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id,
             'specialty_id' => $this->specialty->id, 'created_by' => $this->patientUser->id, 'date' => '2026-11-09', 'start_time' => '10:30', 'end_time' => '11:00',
             'modality' => 'online', 'amount_minor' => 10000, 'status' => 'held', 'expires_at' => now()->addMinutes(5), 'deadline_at' => now()->addMinutes(10)]);
         $this->actingAs($this->superadmin)->getJson('/api/online-bookings')->assertOk()->assertJsonPath('0.id', $booking->id);
@@ -162,11 +162,11 @@ class SuperadminAccessTest extends TestCase
     public function test_superadmin_cannot_resolve_own_refund_and_can_inspect_real_payment_relations(): void
     {
         $a = $this->appointment();
-        $payment = Payment::create(['method' => 'cash', 'amount_minor' => 10000, 'status' => 'confirmed', 'confirmed_by' => $this->reception->id, 'confirmed_at' => now()]);
+        $payment = Pago::create(['method' => 'cash', 'amount_minor' => 10000, 'status' => 'confirmed', 'confirmed_by' => $this->reception->id, 'confirmed_at' => now()]);
         $a->update(['payment_id' => $payment->id, 'status' => 'Cancelada', 'cancelled_at' => now(), 'cancellation_cause' => 'clinic']);
         $request = $this->actingAs($this->superadmin)->postJson('/api/appointments/'.$a->id.'/refund', ['reason' => 'La clínica no puede atender'])->assertCreated();
         $this->postJson('/api/refunds/'.$request->json('id').'/decision', ['decision' => 'approve'])->assertForbidden();
-        $this->assertSame('pending', RefundRequest::findOrFail($request->json('id'))->status);
+        $this->assertSame('pending', SolicitudReembolso::findOrFail($request->json('id'))->status);
         $this->getJson('/api/supervision/payments')->assertOk()->assertJsonPath('data.0.id', $payment->id)->assertJsonPath('data.0.appointments.0.patient.id', $this->patient->id)->assertJsonMissingPath('data.0.qr_image');
         $this->actingAs($this->admin)->postJson('/api/refunds/'.$request->json('id').'/decision', ['decision' => 'approve'])->assertOk();
     }

@@ -2,11 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Models\Appointment;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\Specialty;
-use App\Models\User;
+use App\Models\Cita;
+use App\Models\Especialidad;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\Usuario;
 use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
@@ -20,15 +20,15 @@ class EstablishedUseCasesTest extends TestCase
 {
     use DatabaseTransactions;
 
-    private User $admin;
+    private Usuario $admin;
 
-    private Doctor $doctor;
+    private Medico $doctor;
 
-    private Specialty $general;
+    private Especialidad $general;
 
-    private Specialty $pediatrics;
+    private Especialidad $pediatrics;
 
-    private Patient $patient;
+    private Paciente $patient;
 
     protected function setUp(): void
     {
@@ -38,11 +38,11 @@ class EstablishedUseCasesTest extends TestCase
         config(['clinic.appointments_enabled' => false]);
         $this->admin = $this->verifiedAccount(['name' => 'Administración', 'email' => 'admin@acceptance.test',
             'password' => 'ClaveSegura2026', 'role' => 'Administrador', 'status' => 'Activo']);
-        $this->general = Specialty::create(['name' => 'Medicina General', 'status' => 'Activo']);
-        $this->pediatrics = Specialty::create(['name' => 'Pediatría', 'status' => 'Activo']);
-        $this->doctor = Doctor::create($this->doctorData());
+        $this->general = Especialidad::create(['name' => 'Medicina General', 'status' => 'Activo']);
+        $this->pediatrics = Especialidad::create(['name' => 'Pediatría', 'status' => 'Activo']);
+        $this->doctor = Medico::create($this->doctorData());
         $this->doctor->specialties()->attach([$this->general->id, $this->pediatrics->id]);
-        $this->patient = Patient::create(['identity' => 'ACCEPT-1', 'first_name' => 'Paciente', 'last_name' => 'Prueba',
+        $this->patient = Paciente::create(['identity' => 'ACCEPT-1', 'first_name' => 'Paciente', 'last_name' => 'Prueba',
             'phone' => '70000000', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'status' => 'Activo']);
     }
 
@@ -52,9 +52,9 @@ class EstablishedUseCasesTest extends TestCase
             'phone' => '70000000', 'email' => 'ana@acceptance.test', 'status' => 'Activo'], $overrides);
     }
 
-    private function appointment(array $overrides = []): Appointment
+    private function appointment(array $overrides = []): Cita
     {
-        return Appointment::create(array_replace(['patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id,
+        return Cita::create(array_replace(['patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id,
             'specialty_id' => $this->general->id, 'date' => '2026-11-05', 'start_time' => '08:00', 'end_time' => '08:30',
             'status' => 'Programada', 'created_by' => $this->admin->id], $overrides));
     }
@@ -167,7 +167,7 @@ class EstablishedUseCasesTest extends TestCase
         $this->getJson('/api/entities/specialties?search=GENERAL')->assertOk()->assertJsonCount(2);
         $this->getJson('/api/entities/specialties?search=%25')->assertOk()->assertJsonCount(0);
         try {
-            DB::transaction(fn () => Specialty::create(['name' => 'MEDICINA   GENERAL', 'status' => 'Activo']));
+            DB::transaction(fn () => Especialidad::create(['name' => 'MEDICINA   GENERAL', 'status' => 'Activo']));
             $this->fail('PostgreSQL permitió un nombre normalizado duplicado.');
         } catch (QueryException $exception) {
             $this->assertSame('23505', $exception->errorInfo[0]);

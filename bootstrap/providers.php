@@ -2,8 +2,8 @@
 
 /** Inicialización de Laravel: configura dependencias, rutas, middleware o respuestas de la aplicación. */
 
-use App\Providers\AppServiceProvider;
+use App\Providers\ProveedorServiciosAplicacion;
 
 return [
-    AppServiceProvider::class,
+    ProveedorServiciosAplicacion::class,
 ];

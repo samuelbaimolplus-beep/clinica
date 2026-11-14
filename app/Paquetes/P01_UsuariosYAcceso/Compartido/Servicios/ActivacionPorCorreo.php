@@ -4,10 +4,10 @@
 
 namespace App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios;
 
-use App\Models\User;
-use App\Notifications\VerifyClinicEmail;
+use App\Models\Usuario;
+use App\Notifications\VerificarCorreoClinica;
 use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
-use App\Support\ClinicAccess;
+use App\Support\AccesoClinica;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -17,24 +17,24 @@ use Illuminate\Validation\ValidationException;
 class ActivacionPorCorreo
 {
     /** Construye la clave interna del estado de verificación, separada por cuenta. */
-    private function clave(User $usuario): string
+    private function clave(Usuario $usuario): string
     {
         return 'clinic:activation:'.$usuario->id;
     }
 
     /** Genera el HMAC de un código vinculado al usuario y correo correspondientes. */
-    private function calcularHuella(User $usuario, string $codigo): string
+    private function calcularHuella(Usuario $usuario, string $codigo): string
     {
         return hash_hmac('sha256', $usuario->id.'|'.$usuario->email.'|'.$codigo, config('app.key'));
     }
 
     /** Envía las instrucciones o el desafío de correo respetando los límites del servicio. */
-    public function enviar(User $usuario): bool
+    public function enviar(Usuario $usuario): bool
     {
         // El bloqueo serializa reenvíos concurrentes; nunca se almacena el código en claro.
         $desafio = DB::transaction(function () use ($usuario) {
-            $usuario = User::whereKey($usuario->id)->lockForUpdate()->firstOrFail();
-            if ($usuario->email_verified_at || ! ClinicAccess::isActive($usuario) || ! app(RequisitosCuenta::class)->cumpleRequisitos($usuario)) {
+            $usuario = Usuario::whereKey($usuario->id)->lockForUpdate()->firstOrFail();
+            if ($usuario->email_verified_at || ! AccesoClinica::estaActivo($usuario) || ! app(RequisitosCuenta::class)->cumpleRequisitos($usuario)) {
                 return null;
             }
             $estadoPago = Cache::get($this->clave($usuario));
@@ -61,7 +61,7 @@ class ActivacionPorCorreo
         }
         [$usuario, $codigo] = $desafio;
         try {
-            $usuario->notify(new VerifyClinicEmail($codigo));
+            $usuario->notify(new VerificarCorreoClinica($codigo));
         } catch (\Throwable $excepcion) {
             // No registrar la excepción SMTP: podría contener el cuerpo con el código.
             Log::warning('No se pudo enviar el correo de activación.', ['user_id' => $usuario->id]);
@@ -76,8 +76,8 @@ class ActivacionPorCorreo
     public function confirmar(string $correo, string $codigo): void
     {
         $esValido = DB::transaction(function () use ($correo, $codigo) {
-            $usuario = User::whereRaw('lower(email) = ?', [mb_strtolower(trim($correo))])->lockForUpdate()->first();
-            if (! $usuario || $usuario->email_verified_at || ! ClinicAccess::isActive($usuario) || ! app(RequisitosCuenta::class)->cumpleRequisitos($usuario)) {
+            $usuario = Usuario::whereRaw('lower(email) = ?', [mb_strtolower(trim($correo))])->lockForUpdate()->first();
+            if (! $usuario || $usuario->email_verified_at || ! AccesoClinica::estaActivo($usuario) || ! app(RequisitosCuenta::class)->cumpleRequisitos($usuario)) {
                 return false;
             }
             $estadoPago = Cache::get($this->clave($usuario));

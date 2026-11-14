@@ -5,7 +5,7 @@
 namespace App\Paquetes\P04_HorariosYDisponibilidad\CU24_GestionarBloqueosProvisionales\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\AgendaAdjustment;
+use App\Models\AjusteAgenda;
 use App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios\AjustesAgenda;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -17,7 +17,7 @@ class ControladorBloqueosProvisionales extends Controller
     {
         $datos = $solicitud->validate(['date' => 'required|date_format:Y-m-d', 'specialty_id' => 'nullable|integer|exists:specialties,id']);
 
-        return AgendaAdjustment::where('date', $datos['date'])->when($datos['specialty_id'] ?? null, fn ($consulta, $id) => $consulta->where('specialty_id', $id))->orderBy('start_time')->get();
+        return AjusteAgenda::where('date', $datos['date'])->when($datos['specialty_id'] ?? null, fn ($consulta, $id) => $consulta->where('specialty_id', $id))->orderBy('start_time')->get();
     }
 
     /** Calcula una propuesta de franjas; todavía no confirma bloqueos ni crea citas. */

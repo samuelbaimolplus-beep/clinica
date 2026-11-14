@@ -3,10 +3,10 @@
 namespace Tests\Feature;
 
 use App\Compartido\Catalogos\Servicios\ServicioCatalogos;
-use App\Models\AuditEvent;
-use App\Models\Doctor;
-use App\Models\Schedule;
-use App\Models\Specialty;
+use App\Models\Especialidad;
+use App\Models\EventoAuditoria;
+use App\Models\Horario;
+use App\Models\Medico;
 use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
@@ -43,12 +43,12 @@ class AuditDetailsTest extends TestCase
         $admin = $this->verifiedAccount(['name' => 'Ana Administradora', 'username' => 'audit.admin', 'email' => 'audit-admin@example.test', 'password' => 'ClavePrivada2026!', 'role' => 'Administrador', 'status' => 'Activo']);
         $this->actingAs($admin);
         $id = $this->postJson('/api/entities/specialties', ['name' => 'Medicina de auditoría', 'fee_amount' => '120.00', 'status' => 'Activo'])->assertCreated()->json('id');
-        $created = AuditEvent::where('record_type', 'Specialty')->where('record_id', $id)->where('action', 'created')->firstOrFail();
+        $created = EventoAuditoria::where('record_type', 'Specialty')->where('record_id', $id)->where('action', 'created')->firstOrFail();
         $this->assertNull($created->details['changes']['name']['before']);
         $this->assertSame('Medicina de auditoría', $created->details['changes']['name']['after']);
         $this->putJson('/api/entities/specialties/'.$id.'?token=DO_NOT_RECORD', ['name' => 'Medicina renombrada', 'fee_amount' => '180.00', 'status' => 'Inactivo'])
             ->assertOk();
-        $event = AuditEvent::where('record_type', 'Specialty')->where('record_id', $id)->where('action', 'updated')->latest('id')->firstOrFail();
+        $event = EventoAuditoria::where('record_type', 'Specialty')->where('record_id', $id)->where('action', 'updated')->latest('id')->firstOrFail();
         $this->assertEquals(['before' => 'Medicina de auditoría', 'after' => 'Medicina renombrada'], $event->details['changes']['name']);
         $this->assertEquals(['before' => 12000, 'after' => 18000], $event->details['changes']['fee_minor']);
         $this->assertEquals(['before' => 'Activo', 'after' => 'Inactivo'], $event->details['changes']['status']);
@@ -61,7 +61,7 @@ class AuditDetailsTest extends TestCase
         $this->getJson('/api/audit?module=specialties')->assertOk()->assertJsonPath('data.0.details.record.name', 'Medicina renombrada');
         $this->postJson('/api/logout')->assertOk();
         $this->postJson('/api/login', ['email' => 'audit.admin', 'password' => 'RejectedSecret2026!'])->assertUnprocessable();
-        $failure = AuditEvent::where('module', 'auth')->where('action', 'login')->where('result', 'failure')->latest('id')->firstOrFail();
+        $failure = EventoAuditoria::where('module', 'auth')->where('action', 'login')->where('result', 'failure')->latest('id')->firstOrFail();
         $this->assertSame('audit.admin', $failure->details['record']['username']);
         $this->assertNull($failure->user_id);
         $this->assertStringNotContainsString('RejectedSecret2026!', json_encode($failure->details));
@@ -71,19 +71,19 @@ class AuditDetailsTest extends TestCase
     {
         $admin = $this->verifiedAccount(['name' => 'Admin', 'email' => 'audit-assign@example.test', 'password' => 'ClavePrivada2026!', 'role' => 'Administrador', 'status' => 'Activo']);
         $this->actingAs($admin);
-        $first = Specialty::create(['name' => 'Auditoría primera', 'status' => 'Activo']);
-        $second = Specialty::create(['name' => 'Auditoría segunda', 'status' => 'Activo']);
-        $doctor = Doctor::create(['registration' => 'AUD-02', 'first_name' => 'Daniel', 'last_name' => 'Prueba', 'email' => 'audit-doctor@example.test', 'phone' => '70000000', 'status' => 'Activo']);
+        $first = Especialidad::create(['name' => 'Auditoría primera', 'status' => 'Activo']);
+        $second = Especialidad::create(['name' => 'Auditoría segunda', 'status' => 'Activo']);
+        $doctor = Medico::create(['registration' => 'AUD-02', 'first_name' => 'Daniel', 'last_name' => 'Prueba', 'email' => 'audit-doctor@example.test', 'phone' => '70000000', 'status' => 'Activo']);
         $doctor->specialties()->attach($first);
         app(ServicioCatalogos::class)->guardar($doctor, ['specialty_ids' => [$second->id]], $admin);
-        $event = AuditEvent::where('action', 'specialties_assigned')->where('record_id', $doctor->id)->latest('id')->firstOrFail();
+        $event = EventoAuditoria::where('action', 'specialties_assigned')->where('record_id', $doctor->id)->latest('id')->firstOrFail();
         $this->assertSame([['id' => $first->id, 'name' => $first->name]], $event->details['changes']['specialties']['before']);
         $this->assertSame([['id' => $second->id, 'name' => $second->name]], $event->details['changes']['specialties']['after']);
-        $schedule = Schedule::create(['doctor_id' => $doctor->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30]);
-        $event = AuditEvent::where('record_type', 'Schedule')->where('record_id', $schedule->id)->latest('id')->firstOrFail();
+        $schedule = Horario::create(['doctor_id' => $doctor->id, 'weekday' => 1, 'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30]);
+        $event = EventoAuditoria::where('record_type', 'Schedule')->where('record_id', $schedule->id)->latest('id')->firstOrFail();
         $this->assertSame('Daniel Prueba', $event->details['related']['doctor_id']['label']);
         $schedule->delete();
-        $deleted = AuditEvent::where('record_type', 'Schedule')->where('record_id', $schedule->id)->where('action', 'deleted')->firstOrFail();
+        $deleted = EventoAuditoria::where('record_type', 'Schedule')->where('record_id', $schedule->id)->where('action', 'deleted')->firstOrFail();
         $this->assertSame('08:00', $deleted->details['changes']['start_time']['before']);
         $this->assertNull($deleted->details['changes']['start_time']['after']);
     }
@@ -94,7 +94,7 @@ class AuditDetailsTest extends TestCase
         $hash = $admin->password;
         $this->actingAs($admin);
         $admin->update(['password' => 'AfterPrivate2026!']);
-        $event = AuditEvent::where('record_type', 'User')->where('record_id', $admin->id)->where('action', 'updated')->latest('id')->firstOrFail();
+        $event = EventoAuditoria::where('record_type', 'User')->where('record_id', $admin->id)->where('action', 'updated')->latest('id')->firstOrFail();
         $this->assertTrue($event->details['security_changed']);
         $json = json_encode($event->details);
         foreach (['BeforePrivate2026!', 'AfterPrivate2026!', $hash, $admin->password, 'password', 'remember_token'] as $secret) {
@@ -111,14 +111,14 @@ class AuditDetailsTest extends TestCase
             'record' => ['name' => 'Registro', 'remember_token' => 'TOKEN_SECRET'],
             'actor' => ['name' => 'Sistema', 'secret' => 'ACTOR_SECRET'], 'not_allowed' => 'UNEXPECTED',
         ])]);
-        $event = AuditEvent::where('module', 'sql')->where('action', 'test')->latest('id')->firstOrFail();
+        $event = EventoAuditoria::where('module', 'sql')->where('action', 'test')->latest('id')->firstOrFail();
         $json = json_encode($event->details);
         foreach (['SQL_SECRET', 'TOKEN_SECRET', 'ACTOR_SECRET', 'UNEXPECTED'] as $secret) {
             $this->assertStringNotContainsString($secret, $json);
         }
         $this->assertSame('Inactivo', $event->details['changes']['status']['after']);
         app(RegistroAuditoria::class)->registrar('sql', 'legacy', detalles: ['fields' => ['status'], 'reason' => 'Evento sin valores']);
-        $legacy = AuditEvent::where('action', 'legacy')->latest('id')->firstOrFail();
+        $legacy = EventoAuditoria::where('action', 'legacy')->latest('id')->firstOrFail();
         $this->assertArrayNotHasKey('changes', $legacy->details);
     }
 }

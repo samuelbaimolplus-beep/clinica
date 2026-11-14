@@ -5,8 +5,8 @@
 namespace App\Paquetes\P07_ReservasPagosYSeguimientos\CU19_VerificarPagoOExencion\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\Appointment;
-use App\Models\Payment;
+use App\Models\Cita;
+use App\Models\Pago;
 use Illuminate\Http\Request;
 
 class ControladorPagos extends Controller
@@ -16,8 +16,8 @@ class ControladorPagos extends Controller
     {
         abort_unless($solicitud->user()->role === 'Superadmin', 403);
 
-        $pagos = Payment::with('bookingRequest.patient:id,first_name,last_name', 'appointments.patient:id,first_name,last_name')->orderByDesc('id')->paginate(50)->toArray();
-        $pagos['exemptions'] = Appointment::where('complimentary', true)->with('patient:id,first_name,last_name')
+        $pagos = Pago::with('bookingRequest.patient:id,first_name,last_name', 'appointments.patient:id,first_name,last_name')->orderByDesc('id')->paginate(50)->toArray();
+        $pagos['exemptions'] = Cita::where('complimentary', true)->with('patient:id,first_name,last_name')
             ->orderByDesc('id')->limit(50)->get(['id', 'patient_id', 'parent_appointment_id', 'date', 'start_time', 'status']);
 
         return $pagos;

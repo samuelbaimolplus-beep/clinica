@@ -4,7 +4,7 @@
 
 namespace App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios;
 
-use App\Models\DoctorQuota;
+use App\Models\CupoMedico;
 use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios\DistribuidorCupos;
 
 /** RN35–RN36: proteger cada turno y alternar el resto hasta agotar sus cuotas. */
@@ -13,7 +13,7 @@ class ModalidadesTurno
     /** Construye las franjas aplicables al día solicitado a partir del horario semanal. */
     public function franjasParaFecha(int $medicoId, string $fecha): array
     {
-        $distribucion = DoctorQuota::where('doctor_id', $medicoId)->first();
+        $distribucion = CupoMedico::where('doctor_id', $medicoId)->first();
         $presencial = (int) round((float) ($distribucion?->presential_percent ?? 50) * 100);
         $resultado = [];
         foreach (collect(app(FranjasHorario::class)->franjasParaFecha($medicoId, $fecha))->groupBy('schedule_id') as $turno) {

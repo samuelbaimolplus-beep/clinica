@@ -5,7 +5,7 @@
 namespace App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\Patient;
+use App\Models\Paciente;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\ActivacionPorCorreo;
 use App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Servicios\CrearCuentaPaciente;
 use App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Validacion\SolicitudCrearCuentaPaciente;
@@ -26,7 +26,7 @@ class ControladorAltaCuentaPaciente extends Controller
     /** Crea y vincula una cuenta al paciente existente después de validar entradas y permisos. */
     public function crearCuentaParaPaciente(SolicitudCrearCuentaPaciente $solicitud, CrearCuentaPaciente $servicio, int $id)
     {
-        $usuario = $servicio->vincular(Patient::findOrFail($id), $solicitud->validated(), $solicitud->user());
+        $usuario = $servicio->vincular(Paciente::findOrFail($id), $solicitud->validated(), $solicitud->user());
 
         $enviado = app(ActivacionPorCorreo::class)->enviar($usuario);
 

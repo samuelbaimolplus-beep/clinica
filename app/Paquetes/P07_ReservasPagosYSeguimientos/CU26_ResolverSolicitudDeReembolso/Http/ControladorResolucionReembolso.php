@@ -13,7 +13,7 @@ class ControladorResolucionReembolso extends Controller
     /** Valida los datos de decisión antes de delegar la resolución del reembolso. */
     public function resolverReembolso(Request $peticion, int $id, ServicioReembolsos $servicio)
     {
-        abort_unless($peticion->user()->hasStaffRole('Administrador'), 403);
+        abort_unless($peticion->user()->tieneRolPersonal('Administrador'), 403);
         $datos = $peticion->validate(['decision' => 'required|in:approve,reject', 'reason' => 'required_if:decision,reject|nullable|string|max:3000']);
 
         return $servicio->resolver($id, $datos, $peticion->user());
@@ -22,7 +22,7 @@ class ControladorResolucionReembolso extends Controller
     /** Valida fecha, medio, responsable e importe de la devolución ya realizada. */
     public function registrarEntregaReembolso(Request $peticion, int $id, ServicioReembolsos $servicio)
     {
-        abort_unless($peticion->user()->hasStaffRole('Administrador'), 403);
+        abort_unless($peticion->user()->tieneRolPersonal('Administrador'), 403);
         $datos = $peticion->validate(['executor' => 'required|string|max:255', 'method' => 'required|string|max:80', 'reference' => 'nullable|string|max:255',
             'amount_minor' => 'required|integer|min:1', 'completed_at' => 'required|date|before_or_equal:now']);
 

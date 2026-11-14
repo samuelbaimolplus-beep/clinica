@@ -4,12 +4,12 @@
 
 namespace App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios;
 
-use App\Models\AgendaAdjustment;
-use App\Models\BookingRequest;
-use App\Models\Doctor;
-use App\Models\Schedule;
-use App\Models\Unavailability;
-use App\Models\User;
+use App\Models\AjusteAgenda;
+use App\Models\AusenciaMedica;
+use App\Models\Horario;
+use App\Models\Medico;
+use App\Models\SolicitudReserva;
+use App\Models\Usuario;
 use App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios\FranjasHorario;
 use App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios\ImpactoHorario;
 use Carbon\CarbonImmutable;
@@ -20,7 +20,7 @@ use Illuminate\Validation\ValidationException;
 class ServicioHorarios
 {
     /** Coordina la validación y persistencia de esta operación; delega las reglas del dominio al servicio correspondiente. */
-    public function guardar(array $datos, ?int $id = null): Schedule
+    public function guardar(array $datos, ?int $id = null): Horario
     {
         $minutos = (int) CarbonImmutable::parse($datos['start_time'])->diffInMinutes(CarbonImmutable::parse($datos['end_time']));
         if ($minutos < $datos['duration']) {
@@ -29,11 +29,11 @@ class ServicioHorarios
 
         return DB::transaction(function () use ($datos, $id) {
             $this->bloquearMedicoActivo($datos['doctor_id']);
-            if (BookingRequest::where('doctor_id', $datos['doctor_id'])->whereIn('status', ['held', 'processing'])->exists()) {
+            if (SolicitudReserva::where('doctor_id', $datos['doctor_id'])->whereIn('status', ['held', 'processing'])->exists()) {
                 throw ValidationException::withMessages(['schedule' => 'Hay pagos online retenidos. Concilie esas operaciones antes de cambiar el turno.']);
             }
-            $horario = $id ? Schedule::whereKey($id)->where('doctor_id', $datos['doctor_id'])->lockForUpdate()->firstOrFail() : new Schedule;
-            $conflicto = Schedule::where('doctor_id', $datos['doctor_id'])->where('weekday', $datos['weekday'])
+            $horario = $id ? Horario::whereKey($id)->where('doctor_id', $datos['doctor_id'])->lockForUpdate()->firstOrFail() : new Horario;
+            $conflicto = Horario::where('doctor_id', $datos['doctor_id'])->where('weekday', $datos['weekday'])
                 ->when($id, fn ($consulta) => $consulta->whereKeyNot($id))
                 ->where('start_time', '<', $datos['end_time'])->where('end_time', '>', $datos['start_time'])->orderBy('start_time')->first();
             if ($conflicto) {
@@ -43,7 +43,7 @@ class ServicioHorarios
                 throw ValidationException::withMessages(['schedule' => "El médico ya tiene un turno el {$dia} de {$inicio} a {$fin}. Modifique ese turno desde la semana de atención o elija una franja que no se cruce."]);
             }
             $horario->fill($datos)->save();
-            foreach (AgendaAdjustment::where('doctor_id', $datos['doctor_id'])->where('date', '>=', today()->toDateString())->where('status', 'active')
+            foreach (AjusteAgenda::where('doctor_id', $datos['doctor_id'])->where('date', '>=', today()->toDateString())->where('status', 'active')
                 ->where(fn ($consultaDatos) => $consultaDatos->where('kind', 'online_opening')->orWhere('date', today()->toDateString()))->get() as $ajuste) {
                 if (! collect(app(FranjasHorario::class)->franjasParaFecha($datos['doctor_id'], $ajuste->date))
                     ->contains(fn ($bloque) => $bloque['start']->format('H:i:s') === $ajuste->start_time && $bloque['end']->format('H:i:s') === $ajuste->end_time)) {
@@ -63,23 +63,23 @@ class ServicioHorarios
     {
         return DB::transaction(function () use ($datos, $soloVistaPrevia) {
             $this->bloquearMedicoActivo($datos['doctor_id']);
-            if (! $soloVistaPrevia && BookingRequest::where('doctor_id', $datos['doctor_id'])->whereIn('status', ['held', 'processing'])
+            if (! $soloVistaPrevia && SolicitudReserva::where('doctor_id', $datos['doctor_id'])->whereIn('status', ['held', 'processing'])
                 ->whereRaw('(date + start_time) < ?::timestamp AND (date + end_time) > ?::timestamp', [$datos['ends_at'], $datos['starts_at']])->exists()) {
                 throw ValidationException::withMessages(['schedule' => 'El período contiene un pago online pendiente de conciliación.']);
             }
             $afectadas = app(ImpactoHorario::class)->citasSuperpuestas($datos['doctor_id'], $datos['starts_at'], $datos['ends_at']);
 
-            return ['unavailability' => $soloVistaPrevia ? null : Unavailability::create($datos), 'affected' => $afectadas];
+            return ['unavailability' => $soloVistaPrevia ? null : AusenciaMedica::create($datos), 'affected' => $afectadas];
         });
     }
 
     /** Retira el bloqueo, conservando fechas, motivo original, actor e historial. */
-    public function retirarAusencia(int $id, string $motivo, User $responsable): array
+    public function retirarAusencia(int $id, string $motivo, Usuario $responsable): array
     {
         return DB::transaction(function () use ($id, $motivo, $responsable) {
-            $ausencia = Unavailability::findOrFail($id);
-            Doctor::whereKey($ausencia->doctor_id)->lockForUpdate()->firstOrFail();
-            $ausencia = Unavailability::whereKey($id)->lockForUpdate()->firstOrFail();
+            $ausencia = AusenciaMedica::findOrFail($id);
+            Medico::whereKey($ausencia->doctor_id)->lockForUpdate()->firstOrFail();
+            $ausencia = AusenciaMedica::whereKey($id)->lockForUpdate()->firstOrFail();
             abort_if($ausencia->cancelled_at, 409, 'Esta ausencia ya fue retirada. Actualice la consulta.');
             $ausencia->fill(['cancelled_at' => now(), 'cancelled_by' => $responsable->id, 'cancellation_reason' => $motivo])->save();
 
@@ -90,7 +90,7 @@ class ServicioHorarios
     /** Bloquea la fila del médico activo para serializar cambios concurrentes de disponibilidad. */
     private function bloquearMedicoActivo(int $id): void
     {
-        $medico = Doctor::whereKey($id)->lockForUpdate()->firstOrFail();
+        $medico = Medico::whereKey($id)->lockForUpdate()->firstOrFail();
         if ($medico->status !== 'Activo') {
             throw ValidationException::withMessages(['doctor_id' => 'El médico debe estar activo.']);
         }

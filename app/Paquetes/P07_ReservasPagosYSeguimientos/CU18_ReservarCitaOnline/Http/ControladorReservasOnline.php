@@ -5,7 +5,7 @@
 namespace App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\BookingRequest;
+use App\Models\SolicitudReserva;
 use App\Paquetes\P07_ReservasPagosYSeguimientos\CU18_ReservarCitaOnline\Servicios\ServicioReservasOnline;
 use Illuminate\Http\Request;
 
@@ -30,7 +30,7 @@ class ControladorReservasOnline extends Controller
     /** Muestra una operación online autorizada sin suplantar al titular. */
     public function consultarReservaOnline(Request $peticion, int $id)
     {
-        $reserva = BookingRequest::findOrFail($id);
+        $reserva = SolicitudReserva::findOrFail($id);
         abort_unless($peticion->user()->role === 'Superadmin' || ($peticion->user()->role === 'Paciente' && $reserva->created_by === $peticion->user()->id), 403);
 
         return $this->respuestaReservaOnline($reserva);
@@ -51,16 +51,16 @@ class ControladorReservasOnline extends Controller
     }
 
     /** Resuelve una reserva dentro del ámbito del titular autenticado. */
-    private function reservaPropia(Request $peticion, int $id): BookingRequest
+    private function reservaPropia(Request $peticion, int $id): SolicitudReserva
     {
-        $reserva = BookingRequest::findOrFail($id);
+        $reserva = SolicitudReserva::findOrFail($id);
         abort_unless($peticion->user()->role === 'Paciente' && $reserva->created_by === $peticion->user()->id, 403);
 
         return $reserva;
     }
 
     /** Compone el resultado de reserva, pago y cita confirmada cuando existe. */
-    private function respuestaReservaOnline(BookingRequest $reserva): array
+    private function respuestaReservaOnline(SolicitudReserva $reserva): array
     {
         $pago = $reserva->payments()->latest('attempt')->first();
 
@@ -74,7 +74,7 @@ class ControladorReservasOnline extends Controller
     {
         abort_unless(in_array($peticion->user()->role, ['Superadmin', 'Paciente'], true), 403);
 
-        return BookingRequest::when($peticion->user()->role === 'Paciente', fn ($consulta) => $consulta->where('created_by', $peticion->user()->id))
+        return SolicitudReserva::when($peticion->user()->role === 'Paciente', fn ($consulta) => $consulta->where('created_by', $peticion->user()->id))
             ->where('modality', 'online')->with('payments', 'patient:id,first_name,last_name', 'doctor:id,first_name,last_name', 'specialty:id,name')->latest()
             ->when($peticion->user()->role === 'Paciente', fn ($consulta) => $consulta->limit(50))->get();
     }

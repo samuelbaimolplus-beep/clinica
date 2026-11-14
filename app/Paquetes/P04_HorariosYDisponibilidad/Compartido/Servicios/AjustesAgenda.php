@@ -4,12 +4,12 @@
 
 namespace App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios;
 
-use App\Models\AgendaAdjustment;
-use App\Models\Appointment;
-use App\Models\BookingRequest;
-use App\Models\Doctor;
-use App\Models\Specialty;
-use App\Models\User;
+use App\Models\AjusteAgenda;
+use App\Models\Cita;
+use App\Models\Especialidad;
+use App\Models\Medico;
+use App\Models\SolicitudReserva;
+use App\Models\Usuario;
 use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios\ServicioCuposMedico;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -23,8 +23,8 @@ class AjustesAgenda
     public function franjasLibres(int $medicoId, string $fecha): array
     {
         $capacidad = app(ServicioCuposMedico::class)->calcularCapacidad($medicoId, $fecha);
-        $ocupadas = Appointment::where('doctor_id', $medicoId)->where('date', $fecha)->whereIn('status', Appointment::ACTIVE)->get();
-        $retenciones = BookingRequest::where('doctor_id', $medicoId)->where('date', $fecha)->whereIn('status', ['held', 'processing'])->get();
+        $ocupadas = Cita::where('doctor_id', $medicoId)->where('date', $fecha)->whereIn('status', Cita::ACTIVE)->get();
+        $retenciones = SolicitudReserva::where('doctor_id', $medicoId)->where('date', $fecha)->whereIn('status', ['held', 'processing'])->get();
 
         return array_values(array_filter($capacidad['blocks'], fn ($bloque) => ! $bloque['demand_blocked']
             && ! $retenciones->contains(fn ($retencion) => $retencion->start_time < $bloque['end_time'].':00' && $retencion->end_time > $bloque['start_time'].':00')
@@ -37,8 +37,8 @@ class AjustesAgenda
     {
         $this->exigirJornadaActual($fecha);
         $candidatas = [];
-        if (Specialty::whereKey($especialidadId)->where('status', 'Activo')->exists()) {
-            $medicos = Doctor::where('status', 'Activo')->whereHas('specialties', fn ($consulta) => $consulta->whereKey($especialidadId))->orderBy('id')->get();
+        if (Especialidad::whereKey($especialidadId)->where('status', 'Activo')->exists()) {
+            $medicos = Medico::where('status', 'Activo')->whereHas('specialties', fn ($consulta) => $consulta->whereKey($especialidadId))->orderBy('id')->get();
             foreach ($medicos as $medico) {
                 foreach ($this->franjasLibres($medico->id, $fecha) as $bloque) {
                     if ($bloque['modality'] === 'presential') {
@@ -55,12 +55,12 @@ class AjustesAgenda
     }
 
     /** Confirma las franjas propuestas como bloqueos presenciales o aperturas online, revalidando su disponibilidad. */
-    public function crear(string $tipo, ?int $especialidadId, array $bloques, User $responsable, ?int $cantidad = null): array
+    public function crear(string $tipo, ?int $especialidadId, array $bloques, Usuario $responsable, ?int $cantidad = null): array
     {
         return DB::transaction(function () use ($tipo, $especialidadId, $bloques, $responsable, $cantidad) {
             $lote = $tipo === 'presential_block' ? (string) Str::uuid() : null;
-            $medicos = Doctor::whereIn('id', array_column($bloques, 'doctor_id'))->orderBy('id')->lockForUpdate()->get()->keyBy('id');
-            if ($tipo === 'presential_block' && ! Specialty::whereKey($especialidadId)->where('status', 'Activo')->exists()) {
+            $medicos = Medico::whereIn('id', array_column($bloques, 'doctor_id'))->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            if ($tipo === 'presential_block' && ! Especialidad::whereKey($especialidadId)->where('status', 'Activo')->exists()) {
                 $this->rechazar('Seleccione una especialidad activa.');
             }
             $creados = [];
@@ -77,7 +77,7 @@ class AjustesAgenda
                     || ($tipo === 'online_opening' && ! $bloque['protected'])) {
                     $this->rechazar('Una franja ya no está libre o no admite la operación. Consulte nuevamente.');
                 }
-                $creados[] = AgendaAdjustment::create($datos + ['specialty_id' => $especialidadId, 'kind' => $tipo, 'created_by' => $responsable->id,
+                $creados[] = AjusteAgenda::create($datos + ['specialty_id' => $especialidadId, 'kind' => $tipo, 'created_by' => $responsable->id,
                     'demand_batch' => $lote, 'demand_quantity' => $lote ? ($cantidad ?? count($bloques)) : null]);
             }
 
@@ -86,12 +86,12 @@ class AjustesAgenda
     }
 
     /** Libera un bloqueo autorizado conservando el registro de la operación. */
-    public function liberar(int $id, User $responsable): AgendaAdjustment
+    public function liberar(int $id, Usuario $responsable): AjusteAgenda
     {
         return DB::transaction(function () use ($id, $responsable) {
-            $registro = AgendaAdjustment::findOrFail($id);
-            Doctor::whereKey($registro->doctor_id)->lockForUpdate()->firstOrFail();
-            $registro = AgendaAdjustment::whereKey($id)->lockForUpdate()->firstOrFail();
+            $registro = AjusteAgenda::findOrFail($id);
+            Medico::whereKey($registro->doctor_id)->lockForUpdate()->firstOrFail();
+            $registro = AjusteAgenda::whereKey($id)->lockForUpdate()->firstOrFail();
             if ($registro->kind !== 'presential_block') {
                 $this->rechazar('CU25 no permite retirar una habilitación online.');
             }
@@ -99,8 +99,8 @@ class AjustesAgenda
             if ($registro->status !== 'active') {
                 $this->rechazar('El movimiento ya no está activo. Actualice la consulta.');
             }
-            if (Appointment::where('doctor_id', $registro->doctor_id)->where('date', $registro->date)
-                ->whereIn('status', Appointment::ACTIVE)->where('start_time', '<', $registro->end_time)->where('end_time', '>', $registro->start_time)->exists()) {
+            if (Cita::where('doctor_id', $registro->doctor_id)->where('date', $registro->date)
+                ->whereIn('status', Cita::ACTIVE)->where('start_time', '<', $registro->end_time)->where('end_time', '>', $registro->start_time)->exists()) {
                 $this->rechazar('El bloqueo está asociado a una cita vigente y no puede liberarse.');
             }
             $registro->update(['status' => 'released', 'released_by' => $responsable->id, 'released_at' => now()]);
@@ -110,14 +110,14 @@ class AjustesAgenda
     }
 
     /** Libera los bloqueos seleccionados después de validar sus estados y permisos. */
-    public function liberarSeleccionados(array $ids, User $responsable): array
+    public function liberarSeleccionados(array $ids, Usuario $responsable): array
     {
         return DB::transaction(function () use ($ids, $responsable) {
-            $registros = AgendaAdjustment::whereIn('id', $ids)->get();
+            $registros = AjusteAgenda::whereIn('id', $ids)->get();
             if ($registros->count() !== count($ids)) {
                 $this->rechazar('Uno de los bloqueos ya no existe. Actualice la consulta.');
             }
-            Doctor::whereIn('id', $registros->pluck('doctor_id'))->orderBy('id')->lockForUpdate()->get();
+            Medico::whereIn('id', $registros->pluck('doctor_id'))->orderBy('id')->lockForUpdate()->get();
 
             return array_map(fn ($id) => $this->liberar($id, $responsable), $ids);
         });

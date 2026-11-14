@@ -2,10 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Models\AuditEvent;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\User;
+use App\Models\EventoAuditoria;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\Usuario;
 use App\Paquetes\P01_UsuariosYAcceso\CU03_GestionarUsuariosYRoles\Http\ControladorGestionCuentas;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\Request;
@@ -16,26 +16,26 @@ class AccountManagementTest extends TestCase
 {
     use DatabaseTransactions;
 
-    private User $superadmin;
+    private Usuario $superadmin;
 
-    private User $patientUser;
+    private Usuario $patientUser;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->assertSame('clinica_vida_salud_test', config('database.connections.pgsql.database'));
         $this->superadmin = $this->account('Superadmin');
-        $patient = Patient::create(['first_name' => 'Ana', 'last_name' => 'Prueba', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000000', 'status' => 'Activo']);
+        $patient = Paciente::create(['first_name' => 'Ana', 'last_name' => 'Prueba', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000000', 'status' => 'Activo']);
         $this->patientUser = $this->verifiedAccount(['name' => 'Ana paciente', 'email' => 'paciente@access.test', 'password' => 'AnteriorSegura2026',
             'role' => 'Paciente', 'patient_id' => $patient->id, 'status' => 'Activo']);
         $this->patientUser->forceFill(['email_verified_at' => now()])->save();
     }
 
-    private function account(string $role): User
+    private function account(string $role): Usuario
     {
-        $doctorId = $role === 'Médico' ? Doctor::create(['registration' => 'ACCESS-01', 'first_name' => 'Ana', 'last_name' => 'Médica', 'email' => 'doctor@access.test', 'phone' => '70000001', 'status' => 'Activo'])->id : null;
+        $doctorId = $role === 'Médico' ? Medico::create(['registration' => 'ACCESS-01', 'first_name' => 'Ana', 'last_name' => 'Médica', 'email' => 'doctor@access.test', 'phone' => '70000001', 'status' => 'Activo'])->id : null;
 
-        return $this->verifiedAccount(['name' => $role, 'email' => 'cuenta'.User::count().'@access.test', 'password' => 'AnteriorSegura2026', 'role' => $role, 'doctor_id' => $doctorId, 'status' => 'Activo']);
+        return $this->verifiedAccount(['name' => $role, 'email' => 'cuenta'.Usuario::count().'@access.test', 'password' => 'AnteriorSegura2026', 'role' => $role, 'doctor_id' => $doctorId, 'status' => 'Activo']);
     }
 
     public function test_superadmin_lists_staff_and_patient_accounts_without_passwords_or_hashes(): void
@@ -68,7 +68,7 @@ class AccountManagementTest extends TestCase
             $response->assertJsonMissingPath('password')->assertJsonMissingPath('password_hash');
             $this->assertDatabaseHas('audit_events', ['user_id' => $this->superadmin->id, 'action' => 'password_reset_by_superadmin', 'record_id' => $target->id]);
         }
-        $this->assertStringNotContainsString('NuevaSegura2026', AuditEvent::all()->toJson());
+        $this->assertStringNotContainsString('NuevaSegura2026', EventoAuditoria::all()->toJson());
     }
 
     public function test_password_confirmation_strength_and_existing_target_are_required(): void
@@ -85,7 +85,7 @@ class AccountManagementTest extends TestCase
     {
         $this->actingAs($this->superadmin)->postJson('/api/supervision/accounts/'.$this->patientUser->id.'/password', ['password' => '123456', 'password_confirmation' => '123456'])->assertOk();
         $this->assertTrue(Hash::check('123456', $this->patientUser->fresh()->password));
-        $this->assertStringNotContainsString('123456', AuditEvent::all()->toJson());
+        $this->assertStringNotContainsString('123456', EventoAuditoria::all()->toJson());
         $this->postJson('/api/logout')->assertOk();
         $this->postJson('/api/login', ['email' => $this->patientUser->username, 'password' => '123456'])->assertOk();
     }

@@ -4,8 +4,8 @@
 
 namespace App\Paquetes\P07_ReservasPagosYSeguimientos\CU21_RegistrarCitaDeSeguimiento\Servicios;
 
-use App\Models\Appointment;
-use App\Models\Patient;
+use App\Models\Cita;
+use App\Models\Paciente;
 use Carbon\CarbonImmutable;
 use Illuminate\Validation\ValidationException;
 
@@ -13,12 +13,12 @@ use Illuminate\Validation\ValidationException;
 class ReglasSeguimiento
 {
     /** Evalúa la política aplicable a la operación sin sustituir la autorización del actor. */
-    public function evaluar(array $datos, ?int $id, Patient $paciente, int $especialidadId): array
+    public function evaluar(array $datos, ?int $id, Paciente $paciente, int $especialidadId): array
     {
         $citaOrigen = null;
         $esGratuita = false;
         if (! $id && ! empty($datos['parent_appointment_id'])) {
-            $citaOrigen = Appointment::whereKey($datos['parent_appointment_id'])->lockForUpdate()->firstOrFail();
+            $citaOrigen = Cita::whereKey($datos['parent_appointment_id'])->lockForUpdate()->firstOrFail();
             if ($citaOrigen->status !== 'Atendida' || $citaOrigen->patient_id !== $paciente->id || $citaOrigen->specialty_id !== $especialidadId || ! $citaOrigen->followup_suggested_at) {
                 throw ValidationException::withMessages(['appointment' => 'El seguimiento requiere una consulta atendida y una recomendación médica de la misma especialidad.']);
             }

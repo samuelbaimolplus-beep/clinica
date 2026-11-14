@@ -4,7 +4,7 @@
 
 namespace App\Compartido\Catalogos\Servicios;
 
-use App\Models\Appointment;
+use App\Models\Cita;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
@@ -14,8 +14,8 @@ class ImpactoCatalogos
     /** Calcula las citas afectadas por el cambio conservando su programación y estado. */
     public function citasAfectadas(?int $medicoId = null, ?int $especialidadId = null): Collection
     {
-        return Appointment::query()->with(['doctor:id,status', 'doctor.specialties:id', 'specialty:id,status'])
-            ->whereIn('status', Appointment::ACTIVE)
+        return Cita::query()->with(['doctor:id,status', 'doctor.specialties:id', 'specialty:id,status'])
+            ->whereIn('status', Cita::ACTIVE)
             ->whereRaw('(date + start_time) >= ?::timestamp', [now()->format('Y-m-d H:i:s')])
             ->when($medicoId, fn ($consultaDatos) => $consultaDatos->where('doctor_id', $medicoId))
             ->when($especialidadId, fn ($consultaDatos) => $consultaDatos->where('specialty_id', $especialidadId))
@@ -26,7 +26,7 @@ class ImpactoCatalogos
                         ->whereColumn('doctor_specialty.doctor_id', 'appointments.doctor_id')
                         ->whereColumn('doctor_specialty.specialty_id', 'appointments.specialty_id'));
             })->orderBy('date')->orderBy('start_time')->get()
-            ->map(function (Appointment $cita) {
+            ->map(function (Cita $cita) {
                 $motivos = [];
                 $origenes = [];
                 if ($cita->doctor->status !== 'Activo') {

@@ -5,8 +5,8 @@
 namespace App\Paquetes\P05_CitasMedicas\Compartido\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\Appointment;
-use App\Models\Unavailability;
+use App\Models\AusenciaMedica;
+use App\Models\Cita;
 use App\Paquetes\P05_CitasMedicas\Compartido\Servicios\ServicioCitas;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -17,7 +17,7 @@ class ControladorConsultaCitas extends Controller
     /** Consulta el listado y sus filtros; la ruta aplica los permisos del módulo. */
     public function listar(Request $peticion)
     {
-        $criterios = $peticion->validate(['mode' => ['required', Rule::in(['agenda', 'history', 'affected', 'active', 'today', 'attend'])], 'date' => 'nullable|date_format:Y-m-d', 'doctor_id' => 'nullable|integer|exists:doctors,id', 'status' => ['nullable', Rule::in(Appointment::STATES)], 'q' => 'nullable|string|max:150']);
+        $criterios = $peticion->validate(['mode' => ['required', Rule::in(['agenda', 'history', 'affected', 'active', 'today', 'attend'])], 'date' => 'nullable|date_format:Y-m-d', 'doctor_id' => 'nullable|integer|exists:doctors,id', 'status' => ['nullable', Rule::in(Cita::STATES)], 'q' => 'nullable|string|max:150']);
         $rol = $peticion->user()->role;
         $filtroPaciente = $peticion->validate(['patient_id' => 'nullable|integer|exists:patients,id']);
         $permitidos = match ($rol) {
@@ -27,7 +27,7 @@ class ControladorConsultaCitas extends Controller
         $relaciones = $rol === 'Médico'
             ? ['patient:id,first_name,last_name', 'doctor:id,first_name,last_name', 'specialty:id,name', 'events']
             : ['patient', 'doctor', 'specialty', 'events', 'payment'];
-        $consulta = Appointment::with($relaciones)->orderBy('date')->orderBy('start_time')->orderBy('id');
+        $consulta = Cita::with($relaciones)->orderBy('date')->orderBy('start_time')->orderBy('id');
         if ($rol === 'Paciente') {
             abort_if(! empty($filtroPaciente['patient_id']) && (int) $filtroPaciente['patient_id'] !== $peticion->user()->patient_id, 403);
             $consulta->where('patient_id', $peticion->user()->patient_id);
@@ -48,7 +48,7 @@ class ControladorConsultaCitas extends Controller
             $consulta->where('date', $criterios['date']);
         }
         if (in_array($criterios['mode'], ['active', 'affected'])) {
-            $consulta->whereIn('status', Appointment::ACTIVE);
+            $consulta->whereIn('status', Cita::ACTIVE);
         }
         if (! empty($criterios['status'])) {
             $consulta->where('status', $criterios['status']);
@@ -74,20 +74,20 @@ class ControladorConsultaCitas extends Controller
                 $citaActual->arrival_late ? $citaActual->attendance_at : $citaActual->start_time, $citaActual->id])->values();
         }
         if ($criterios['mode'] === 'affected') {
-            $bloques = Unavailability::active()->get();
+            $bloques = AusenciaMedica::active()->get();
             foreach ($filas as $citaActual) {
                 $citaActual->setAttribute('blocks', $bloques->filter(fn ($elemento) => $elemento->doctor_id === $citaActual->doctor_id && $citaActual->date.' '.$citaActual->start_time < $elemento->ends_at && $citaActual->date.' '.$citaActual->end_time > $elemento->starts_at)->values());
             }
         }
         if ($rol === 'Médico') {
-            $filas->each(fn (Appointment $cita) => $this->limitarDatosMedico($cita));
+            $filas->each(fn (Cita $cita) => $this->limitarDatosMedico($cita));
         }
 
         return $filas;
     }
 
     /** Retira datos de contacto y de pago que no necesita la atención médica. */
-    private function limitarDatosMedico(Appointment $cita): void
+    private function limitarDatosMedico(Cita $cita): void
     {
         $cita->unsetRelation('payment');
         $cita->makeHidden(['payment_id', 'booking_request_id', 'created_by', 'clinical_slot_id', 'modality']);

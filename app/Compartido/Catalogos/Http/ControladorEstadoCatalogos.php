@@ -6,10 +6,10 @@ namespace App\Compartido\Catalogos\Http;
 
 use App\Compartido\Catalogos\Servicios\ServicioCatalogos;
 use App\Http\Controllers\Controller;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\Specialty;
-use App\Models\User;
+use App\Models\Especialidad;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\Usuario;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -20,7 +20,7 @@ class ControladorEstadoCatalogos extends Controller
     {
         $catalogo = $solicitud->route('catalog');
         $modelo = match ($catalogo) {
-            'users' => User::class, 'doctors' => Doctor::class, 'specialties' => Specialty::class, 'patients' => Patient::class,
+            'users' => Usuario::class, 'doctors' => Medico::class, 'specialties' => Especialidad::class, 'patients' => Paciente::class,
             default => abort(404),
         };
         abort_unless($solicitud->user()->can('manage-'.$catalogo), 403);

@@ -2,12 +2,12 @@
 
 namespace Tests\Feature;
 
-use App\Models\AuditEvent;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\Specialty;
-use App\Models\User;
-use App\Notifications\VerifyClinicEmail;
+use App\Models\Especialidad;
+use App\Models\EventoAuditoria;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\Usuario;
+use App\Notifications\VerificarCorreoClinica;
 use App\Paquetes\P01_UsuariosYAcceso\CU23_RegistrarCuentaDePaciente\Servicios\CrearCuentaPaciente;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -35,15 +35,15 @@ class FoundationModulesTest extends TestCase
             'username' => 'ana.paciente', 'identity_verified' => true, 'terms_accepted' => true, 'terms_version' => config('clinic.terms_version')], $overrides);
     }
 
-    private function staff(string $role = 'Recepcionista'): User
+    private function staff(string $role = 'Recepcionista'): Usuario
     {
         return $this->verifiedAccount(['name' => $role, 'email' => strtolower($role).'@example.test',
             'role' => $role, 'status' => 'Activo', 'password' => 'PruebaSegura2026']);
     }
 
-    private function patient(array $overrides = []): Patient
+    private function patient(array $overrides = []): Paciente
     {
-        return Patient::create(array_replace(['first_name' => 'Ana', 'last_name' => 'Pérez', 'identity' => 'CI-123',
+        return Paciente::create(array_replace(['first_name' => 'Ana', 'last_name' => 'Pérez', 'identity' => 'CI-123',
             'birth_date' => '1999-03-15', 'sex' => 'Femenino', 'phone' => '70000000', 'status' => 'Activo'], $overrides));
     }
 
@@ -53,7 +53,7 @@ class FoundationModulesTest extends TestCase
         $response = $this->actingAs($actor)->postJson('/api/patients/with-account', $this->registration(['email' => '  ANA@EXAMPLE.TEST  ',
             'identity' => ' ci-123 ', 'role' => 'Administrador', 'status' => 'Inactivo', 'patient_id' => 999]));
         $response->assertCreated()->assertJsonPath('account.username', 'ana.paciente')->assertJsonPath('status', 'Activo');
-        $user = User::findOrFail($response->json('account.id'));
+        $user = Usuario::findOrFail($response->json('account.id'));
         $this->assertSame('Paciente', $user->role);
         $this->assertNull($user->email_verified_at);
         $this->assertNotNull($user->terms_accepted_at);
@@ -61,7 +61,7 @@ class FoundationModulesTest extends TestCase
         $this->assertSame('ana@example.test', $user->email);
         $this->assertSame('CI-123', $user->patient->identity);
         $code = null;
-        Notification::assertSentTo($user, VerifyClinicEmail::class, function ($notification) use (&$code) {
+        Notification::assertSentTo($user, VerificarCorreoClinica::class, function ($notification) use (&$code) {
             $code = $notification->code;
 
             return true;
@@ -86,7 +86,7 @@ class FoundationModulesTest extends TestCase
         $this->patient();
         $this->postJson('/api/patients/with-account', $this->registration(['identity' => ' ci-123 ']))->assertUnprocessable()->assertJsonValidationErrors('identity');
         $this->assertDatabaseCount('patients', 1);
-        $this->assertSame(0, User::where('role', 'Paciente')->count());
+        $this->assertSame(0, Usuario::where('role', 'Paciente')->count());
     }
 
     public function test_patient_cannot_download_catalogs_or_use_undocumented_contact_updates(): void
@@ -96,7 +96,7 @@ class FoundationModulesTest extends TestCase
         $response = $this->postJson('/api/patients/with-account', $this->registration())->assertCreated();
         $this->postJson('/api/logout')->assertOk();
         $id = $response->json('id');
-        User::findOrFail($response->json('account.id'))->forceFill(['email_verified_at' => now()])->save();
+        Usuario::findOrFail($response->json('account.id'))->forceFill(['email_verified_at' => now()])->save();
         $this->postJson('/api/login', ['email' => 'ana@example.test', 'password' => 'PruebaSegura2026'])->assertOk();
         $this->getJson('/api/profile?patient_id='.$other->id)->assertNotFound();
         $this->getJson('/api/references')->assertExactJson(['doctors' => [], 'patients' => [], 'specialties' => []]);
@@ -109,13 +109,13 @@ class FoundationModulesTest extends TestCase
             'patient_id' => $other->id, 'identity' => 'HACK', 'status' => 'Inactivo'])
             ->assertNotFound();
         $this->assertSame('70000000', $other->fresh()->phone);
-        $this->assertSame('Activo', Patient::findOrFail($id)->status);
+        $this->assertSame('Activo', Paciente::findOrFail($id)->status);
     }
 
     public function test_database_failure_rolls_back_patient_account_and_audit(): void
     {
         $existing = $this->staff();
-        $auditCount = AuditEvent::count();
+        $auditCount = EventoAuditoria::count();
         try {
             app(CrearCuentaPaciente::class)->registrar($this->registration(['email' => $existing->email]), $existing);
             $this->fail('La unicidad del correo debió impedir la cuenta.');
@@ -124,7 +124,7 @@ class FoundationModulesTest extends TestCase
         }
         $this->assertDatabaseCount('patients', 0);
         $this->assertDatabaseCount('users', 1);
-        $this->assertSame($auditCount, AuditEvent::count());
+        $this->assertSame($auditCount, EventoAuditoria::count());
     }
 
     public function test_database_constraints_prevent_duplicate_identity_and_exact_undocumented_patients(): void
@@ -147,9 +147,9 @@ class FoundationModulesTest extends TestCase
         $this->actingAs($this->staff());
         $response = $this->postJson('/api/patients/with-account', $this->registration())->assertCreated();
         $this->postJson('/api/logout')->assertOk();
-        User::findOrFail($response->json('account.id'))->forceFill(['email_verified_at' => now()])->save();
+        Usuario::findOrFail($response->json('account.id'))->forceFill(['email_verified_at' => now()])->save();
         $this->postJson('/api/login', ['email' => 'ana@example.test', 'password' => 'PruebaSegura2026'])->assertOk();
-        Patient::findOrFail($response->json('id'))->update(['status' => 'Inactivo']);
+        Paciente::findOrFail($response->json('id'))->update(['status' => 'Inactivo']);
         $this->getJson('/api/references')->assertUnauthorized();
         $this->postJson('/api/login', ['email' => 'ana@example.test', 'password' => 'PruebaSegura2026'])->assertUnprocessable();
         $this->getJson('/api/session')->assertJsonPath('user', null);
@@ -161,11 +161,11 @@ class FoundationModulesTest extends TestCase
         $reception = $this->staff();
         $this->actingAs($reception)->postJson('/api/patients/'.$patient->id.'/account', [])->assertUnprocessable();
         $response = $this->postJson('/api/patients/'.$patient->id.'/account', $this->registration())->assertCreated()->assertJsonPath('user.patient_id', $patient->id);
-        $this->assertNull(User::findOrFail($response->json('user.id'))->email_verified_at);
+        $this->assertNull(Usuario::findOrFail($response->json('user.id'))->email_verified_at);
         $this->assertDatabaseCount('patients', 1);
         $this->postJson('/api/patients/'.$patient->id.'/account', $this->registration(['email' => 'otra@example.test', 'username' => 'otra.paciente']))->assertUnprocessable();
-        $this->assertSame(1, User::where('role', 'Paciente')->count());
-        $this->assertStringNotContainsString('PruebaSegura2026', AuditEvent::all()->toJson());
+        $this->assertSame(1, Usuario::where('role', 'Paciente')->count());
+        $this->assertStringNotContainsString('PruebaSegura2026', EventoAuditoria::all()->toJson());
     }
 
     public function test_link_rejects_wrong_identity_expired_and_revoked_codes(): void
@@ -173,7 +173,7 @@ class FoundationModulesTest extends TestCase
         $patient = $this->patient();
         $this->postJson('/api/register', $this->registration())->assertNotFound();
         $this->actingAs($this->staff())->postJson('/api/patients/'.$patient->id.'/account-invitation', ['identity_verified' => true])->assertNotFound();
-        $this->assertSame(0, User::where('role', 'Paciente')->count());
+        $this->assertSame(0, Usuario::where('role', 'Paciente')->count());
     }
 
     public function test_audit_tracks_authentication_and_catalog_changes_without_secrets(): void
@@ -187,7 +187,7 @@ class FoundationModulesTest extends TestCase
         foreach ([['auth', 'login', 'failure'], ['auth', 'login', 'success'], ['auth', 'logout', 'success'], ['specialties', 'updated', 'success']] as [$module, $action, $result]) {
             $this->assertDatabaseHas('audit_events', compact('module', 'action', 'result'));
         }
-        $json = AuditEvent::all()->toJson();
+        $json = EventoAuditoria::all()->toJson();
         foreach (['PruebaSegura2026', 'Incorrecta', $admin->password, 'remember_token', 'password'] as $secret) {
             $this->assertStringNotContainsString($secret, $json);
         }
@@ -197,7 +197,7 @@ class FoundationModulesTest extends TestCase
     public function test_audit_database_rejects_update_delete_and_truncate(): void
     {
         $this->staff();
-        $event = AuditEvent::firstOrFail();
+        $event = EventoAuditoria::firstOrFail();
         foreach (['UPDATE audit_events SET result = \'failure\'', 'DELETE FROM audit_events', 'TRUNCATE audit_events'] as $sql) {
             try {
                 DB::transaction(fn () => DB::statement($sql));
@@ -211,17 +211,17 @@ class FoundationModulesTest extends TestCase
 
     public function test_transaction_rolls_back_audit_together_with_business_changes(): void
     {
-        $before = AuditEvent::count();
+        $before = EventoAuditoria::count();
         try {
             DB::transaction(function () {
-                Specialty::create(['name' => 'Rollback', 'status' => 'Activo']);
+                Especialidad::create(['name' => 'Rollback', 'status' => 'Activo']);
                 throw new \RuntimeException('rollback esperado');
             });
         } catch (\RuntimeException $exception) {
             $this->assertSame('rollback esperado', $exception->getMessage());
         }
         $this->assertDatabaseMissing('specialties', ['name' => 'Rollback']);
-        $this->assertSame($before, AuditEvent::count());
+        $this->assertSame($before, EventoAuditoria::count());
     }
 
     public function test_patients_without_identity_are_supported_and_exact_duplicates_rejected(): void
@@ -249,7 +249,7 @@ class FoundationModulesTest extends TestCase
 
     public function test_inactive_doctor_cannot_log_in_even_when_account_is_active(): void
     {
-        $doctor = Doctor::create(['registration' => 'DOC-1', 'first_name' => 'Médico', 'last_name' => 'Prueba', 'email' => 'doctor@example.test', 'phone' => '70000000', 'status' => 'Inactivo']);
+        $doctor = Medico::create(['registration' => 'DOC-1', 'first_name' => 'Médico', 'last_name' => 'Prueba', 'email' => 'doctor@example.test', 'phone' => '70000000', 'status' => 'Inactivo']);
         $user = $this->verifiedAccount(['name' => 'Médico', 'email' => 'medico@example.test', 'password' => 'PruebaSegura2026', 'role' => 'Médico', 'doctor_id' => $doctor->id, 'status' => 'Activo']);
         $this->postJson('/api/login', ['email' => $user->email, 'password' => 'PruebaSegura2026'])->assertUnprocessable();
         $this->assertGuest();

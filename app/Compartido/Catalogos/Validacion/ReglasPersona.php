@@ -7,7 +7,7 @@ namespace App\Compartido\Catalogos\Validacion;
 use App\Paquetes\P02_PersonalMedicoYEspecialidades\CU04_GestionarMedicos\Validacion\SolicitudGuardarMedico;
 use App\Paquetes\P02_PersonalMedicoYEspecialidades\CU05_GestionarEspecialidades\Validacion\SolicitudGuardarEspecialidad;
 use App\Paquetes\P03_Pacientes\CU06_GestionarPacientes\Validacion\SolicitudGuardarPaciente;
-use App\Support\SpecialtyName;
+use App\Support\NombreEspecialidad;
 use Illuminate\Validation\Rule;
 
 trait ReglasPersona
@@ -26,7 +26,7 @@ trait ReglasPersona
             if (is_string($this->input($campo))) {
                 $valor = trim($this->input($campo));
                 $valor = match ($campo) {
-                    'name' => $this instanceof SolicitudGuardarEspecialidad ? SpecialtyName::display($valor) : $valor,
+                    'name' => $this instanceof SolicitudGuardarEspecialidad ? NombreEspecialidad::presentar($valor) : $valor,
                     'email', 'username' => mb_strtolower($valor),
                     'identity', 'registration' => mb_strtoupper($valor),
                     default => $valor,

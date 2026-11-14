@@ -6,7 +6,7 @@ namespace App\Paquetes\P03_Pacientes\CU06_GestionarPacientes\Http;
 
 use App\Compartido\Catalogos\Servicios\ServicioCatalogos;
 use App\Http\Controllers\Controller;
-use App\Models\Patient;
+use App\Models\Paciente;
 use App\Paquetes\P03_Pacientes\CU06_GestionarPacientes\Validacion\SolicitudGuardarPaciente;
 use Illuminate\Http\Request;
 
@@ -15,7 +15,7 @@ class ControladorPacientes extends Controller
     /** Recupera el detalle autorizado del registro sin modificar su persistencia. */
     public function consultarDetalle(int $id)
     {
-        return Patient::with('account:id,patient_id,username,email,status,email_verified_at')->findOrFail($id);
+        return Paciente::with('account:id,patient_id,username,email,status,email_verified_at')->findOrFail($id);
     }
 
     /** Consulta el listado y sus filtros; la ruta aplica los permisos del módulo. */
@@ -24,7 +24,7 @@ class ControladorPacientes extends Controller
         $datos = $solicitud->validate(['search' => 'nullable|string|max:150']);
         $busqueda = mb_strtolower(trim($datos['search'] ?? ''));
 
-        return Patient::with('account:id,patient_id,username,email,status,email_verified_at')->when($busqueda !== '', fn ($consulta) => $consulta->where(function ($consulta) use ($busqueda) {
+        return Paciente::with('account:id,patient_id,username,email,status,email_verified_at')->when($busqueda !== '', fn ($consulta) => $consulta->where(function ($consulta) use ($busqueda) {
             // strpos interpreta la búsqueda literalmente, sin comodines SQL proporcionados por el usuario.
             $consulta->whereRaw('strpos(lower(coalesce(identity, ?)), ?) > 0', ['', $busqueda])
                 ->orWhereRaw('strpos(lower(first_name), ?) > 0', [$busqueda])
@@ -35,7 +35,7 @@ class ControladorPacientes extends Controller
     /** Coordina la validación y persistencia de esta operación; delega las reglas del dominio al servicio correspondiente. */
     public function guardar(SolicitudGuardarPaciente $solicitud, ServicioCatalogos $servicio, ?int $id = null)
     {
-        $registro = $id ? Patient::findOrFail($id) : new Patient;
+        $registro = $id ? Paciente::findOrFail($id) : new Paciente;
 
         return response()->json($servicio->guardar($registro, $solicitud->validated(), $solicitud->user()), $id ? 200 : 201);
     }

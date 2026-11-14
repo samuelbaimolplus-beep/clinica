@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
+use App\Models\Usuario;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -15,8 +15,8 @@ class ConfirmDemoEmailsTest extends TestCase
     public function test_only_known_fictitious_accounts_are_confirmed_without_emails_or_password_changes(): void
     {
         $this->assertSame('clinica_vida_salud_test', config('database.connections.pgsql.database'));
-        $demo = User::create(['name' => 'Demo', 'username' => 'demo.admin', 'email' => 'demo.admin@example.test', 'role' => 'Administrador', 'status' => 'Activo', 'birth_date' => '1990-01-01', 'password' => 'ClaveOriginal2026']);
-        $ordinary = User::create(['name' => 'Personal real', 'username' => 'personal.real', 'email' => 'personal@example.test', 'role' => 'Administrador', 'status' => 'Activo', 'birth_date' => '1990-01-01', 'password' => 'ClaveOriginal2026']);
+        $demo = Usuario::create(['name' => 'Demo', 'username' => 'demo.admin', 'email' => 'demo.admin@example.test', 'role' => 'Administrador', 'status' => 'Activo', 'birth_date' => '1990-01-01', 'password' => 'ClaveOriginal2026']);
+        $ordinary = Usuario::create(['name' => 'Personal real', 'username' => 'personal.real', 'email' => 'personal@example.test', 'role' => 'Administrador', 'status' => 'Activo', 'birth_date' => '1990-01-01', 'password' => 'ClaveOriginal2026']);
         $hash = $demo->password;
         DB::table('users')->where('id', $demo->id)->update(['birth_date' => null]);
         DB::table('users')->where('id', $ordinary->id)->update(['birth_date' => null]);

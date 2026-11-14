@@ -5,9 +5,9 @@
 namespace App\Paquetes\P01_UsuariosYAcceso\Compartido\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Models\Usuario;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\SeguridadSesion;
-use App\Support\Username;
+use App\Support\NombreUsuario;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -21,14 +21,14 @@ class ControladorNombreUsuario extends Controller
             $solicitud->merge(['username' => mb_strtolower(trim($solicitud->input('username')))]);
         }
         $datos = $solicitud->validate([
-            'username' => ['required', 'string', 'min:3', 'max:50', 'regex:'.Username::PATTERN, Rule::unique('users', 'username')->ignore($solicitud->user()->id)],
+            'username' => ['required', 'string', 'min:3', 'max:50', 'regex:'.NombreUsuario::PATTERN, Rule::unique('users', 'username')->ignore($solicitud->user()->id)],
             'current_password' => ['required', 'string', 'max:255', 'current_password'],
         ], ['current_password.current_password' => 'La contraseña actual no es correcta.',
             'username.unique' => 'Ese usuario de acceso ya está ocupado. Elige otro.',
             'username.regex' => 'Usa letras sin acentos, números, punto, guion o guion bajo; comienza con una letra o número.']);
 
         $usuario = DB::transaction(function () use ($solicitud, $datos) {
-            $usuario = User::whereKey($solicitud->user()->id)->lockForUpdate()->firstOrFail();
+            $usuario = Usuario::whereKey($solicitud->user()->id)->lockForUpdate()->firstOrFail();
             $usuario->username = $datos['username'];
             $usuario->save();
 

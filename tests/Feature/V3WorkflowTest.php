@@ -2,14 +2,14 @@
 
 namespace Tests\Feature;
 
-use App\Models\Appointment;
-use App\Models\AuditEvent;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\Schedule;
-use App\Models\Specialty;
-use App\Models\Unavailability;
-use App\Models\User;
+use App\Models\AusenciaMedica;
+use App\Models\Cita;
+use App\Models\Especialidad;
+use App\Models\EventoAuditoria;
+use App\Models\Horario;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\Usuario;
 use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
@@ -22,19 +22,19 @@ class V3WorkflowTest extends TestCase
 {
     use DatabaseTransactions;
 
-    private User $admin;
+    private Usuario $admin;
 
-    private User $reception;
+    private Usuario $reception;
 
-    private User $patientUser;
+    private Usuario $patientUser;
 
-    private Doctor $doctor;
+    private Medico $doctor;
 
-    private Patient $patient;
+    private Paciente $patient;
 
-    private Specialty $specialty;
+    private Especialidad $specialty;
 
-    private Schedule $shift;
+    private Horario $shift;
 
     protected function setUp(): void
     {
@@ -44,13 +44,13 @@ class V3WorkflowTest extends TestCase
         config(['clinic.appointments_enabled' => false]);
         $this->admin = $this->verifiedAccount(['name' => 'Administración V3', 'email' => 'admin-v3@example.test', 'role' => 'Administrador', 'status' => 'Activo', 'password' => 'ClavePrueba2026']);
         $this->reception = $this->verifiedAccount(['name' => 'Recepción V3', 'email' => 'reception-v3@example.test', 'role' => 'Recepcionista', 'status' => 'Activo', 'password' => 'ClavePrueba2026']);
-        $this->doctor = Doctor::create(['registration' => 'V3-DOC', 'first_name' => 'Ana', 'last_name' => 'Médica', 'email' => 'doc-v3@example.test', 'phone' => '70000001', 'status' => 'Activo']);
-        $this->specialty = Specialty::create(['name' => 'Especialidad V3', 'status' => 'Activo']);
+        $this->doctor = Medico::create(['registration' => 'V3-DOC', 'first_name' => 'Ana', 'last_name' => 'Médica', 'email' => 'doc-v3@example.test', 'phone' => '70000001', 'status' => 'Activo']);
+        $this->specialty = Especialidad::create(['name' => 'Especialidad V3', 'status' => 'Activo']);
         $this->doctor->specialties()->attach($this->specialty);
-        $this->patient = Patient::create(['identity' => null, 'first_name' => 'Paciente', 'last_name' => 'V3', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000002', 'address' => 'Dirección privada', 'status' => 'Activo']);
+        $this->patient = Paciente::create(['identity' => null, 'first_name' => 'Paciente', 'last_name' => 'V3', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000002', 'address' => 'Dirección privada', 'status' => 'Activo']);
         $this->patientUser = $this->verifiedAccount(['name' => 'Paciente V3', 'email' => 'patient-v3@example.test', 'role' => 'Paciente', 'patient_id' => $this->patient->id, 'status' => 'Activo', 'password' => 'ClavePrueba2026']);
         $this->patientUser->forceFill(['email_verified_at' => now()])->save();
-        $this->shift = Schedule::create($this->shiftData());
+        $this->shift = Horario::create($this->shiftData());
     }
 
     private function shiftData(array $overrides = []): array
@@ -63,9 +63,9 @@ class V3WorkflowTest extends TestCase
         return ['doctor_id' => $this->doctor->id, 'date' => '2026-11-09', 'start_time' => $start, 'end_time' => $end];
     }
 
-    private function appointment(string $start = '08:00', string $end = '08:30'): Appointment
+    private function appointment(string $start = '08:00', string $end = '08:30'): Cita
     {
-        return Appointment::create($this->block($start, $end) + ['patient_id' => $this->patient->id, 'specialty_id' => $this->specialty->id, 'status' => 'Programada', 'created_by' => $this->reception->id]);
+        return Cita::create($this->block($start, $end) + ['patient_id' => $this->patient->id, 'specialty_id' => $this->specialty->id, 'status' => 'Programada', 'created_by' => $this->reception->id]);
     }
 
     private function availability(string $modality)
@@ -111,7 +111,7 @@ class V3WorkflowTest extends TestCase
     public function test_database_rejects_overlapping_shifts_even_without_service(): void
     {
         try {
-            DB::transaction(fn () => Schedule::create($this->shiftData(['start_time' => '09:00', 'end_time' => '13:00'])));
+            DB::transaction(fn () => Horario::create($this->shiftData(['start_time' => '09:00', 'end_time' => '13:00'])));
             $this->fail('PostgreSQL permitió turnos superpuestos.');
         } catch (QueryException $exception) {
             $this->assertSame('23P01', $exception->errorInfo[0]);
@@ -146,7 +146,7 @@ class V3WorkflowTest extends TestCase
     public function test_availability_filters_modality_busy_absence_and_private_data_without_booking(): void
     {
         $this->appointment('10:30', '11:00');
-        Unavailability::create(['doctor_id' => $this->doctor->id, 'starts_at' => '2026-11-09 11:40', 'ends_at' => '2026-11-09 11:50', 'reason' => 'Motivo privado']);
+        AusenciaMedica::create(['doctor_id' => $this->doctor->id, 'starts_at' => '2026-11-09 11:40', 'ends_at' => '2026-11-09 11:50', 'reason' => 'Motivo privado']);
         $this->actingAs($this->patientUser);
         $this->availability('presential')->assertUnprocessable();
         $this->availability('online')->assertOk()->assertJsonCount(0, 'blocks');
@@ -231,7 +231,7 @@ class V3WorkflowTest extends TestCase
 
     public function test_audit_filters_pagination_detail_and_permissions_do_not_expose_unknown_details(): void
     {
-        $event = AuditEvent::create(['occurred_at' => '2026-11-09 23:59:59-04:00', 'user_id' => $this->admin->id,
+        $event = EventoAuditoria::create(['occurred_at' => '2026-11-09 23:59:59-04:00', 'user_id' => $this->admin->id,
             'module' => 'v3', 'action' => 'test_event', 'result' => 'success', 'details' => ['fields' => ['status'], 'secret' => 'DoNotExpose']]);
         $query = http_build_query(['from' => '2026-11-09', 'to' => '2026-11-09', 'module' => 'v3', 'action' => 'test_event', 'user_id' => $this->admin->id, 'result' => 'success']);
         $this->actingAs($this->admin)->getJson('/api/audit?'.$query)->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.id', $event->id)
@@ -240,7 +240,7 @@ class V3WorkflowTest extends TestCase
         $this->getJson('/api/audit?to=2026-11-08&module=v3')->assertOk()->assertJsonPath('total', 0);
         $this->getJson('/api/audit?from=2026-11-10&to=2026-11-09')->assertUnprocessable();
         $this->getJson('/api/audit/filters')->assertOk()->assertJsonStructure(['users', 'actions', 'modules', 'results']);
-        AuditEvent::insert(array_fill(0, 51, ['occurred_at' => now(), 'user_id' => $this->admin->id,
+        EventoAuditoria::insert(array_fill(0, 51, ['occurred_at' => now(), 'user_id' => $this->admin->id,
             'module' => 'v3', 'action' => 'test_event', 'result' => 'success', 'details' => '{}']));
         $this->getJson('/api/audit?module=v3&page=1')->assertOk()->assertJsonCount(50, 'data')->assertJsonPath('total', 52);
         $this->getJson('/api/audit?module=v3&page=2')->assertOk()->assertJsonCount(2, 'data');

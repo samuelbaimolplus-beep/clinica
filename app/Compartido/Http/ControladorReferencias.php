@@ -5,9 +5,9 @@
 namespace App\Compartido\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\Specialty;
+use App\Models\Especialidad;
+use App\Models\Medico;
+use App\Models\Paciente;
 use Illuminate\Http\Request;
 
 class ControladorReferencias extends Controller
@@ -22,10 +22,10 @@ class ControladorReferencias extends Controller
         }
 
         return [
-            'doctors' => Doctor::with('specialties')->when($rol === 'Médico', fn ($consulta) => $consulta->whereKey($solicitud->user()->doctor_id))->orderBy('last_name')->get(),
-            'specialties' => Specialty::orderBy('name')->get(),
+            'doctors' => Medico::with('specialties')->when($rol === 'Médico', fn ($consulta) => $consulta->whereKey($solicitud->user()->doctor_id))->orderBy('last_name')->get(),
+            'specialties' => Especialidad::orderBy('name')->get(),
             'patients' => $solicitud->user()->can('manage-patients')
-                ? Patient::orderBy('last_name')->get() : [],
+                ? Paciente::orderBy('last_name')->get() : [],
         ];
     }
 }

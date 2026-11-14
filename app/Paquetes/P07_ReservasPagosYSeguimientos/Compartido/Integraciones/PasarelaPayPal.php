@@ -4,7 +4,7 @@
 
 namespace App\Paquetes\P07_ReservasPagosYSeguimientos\Compartido\Integraciones;
 
-use App\Models\Payment;
+use App\Models\Pago;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -65,19 +65,19 @@ class PasarelaPayPal
     }
 
     /** Construye la referencia que vincula inequívocamente pago, reserva e intento. */
-    public function referencia(Payment $pago): string
+    public function referencia(Pago $pago): string
     {
         return 'CVS-'.$pago->booking_request_id.'-'.$pago->attempt;
     }
 
     /** Convierte los centavos a la representación decimal que exige PayPal. */
-    public function importeUsd(Payment $pago): string
+    public function importeUsd(Pago $pago): string
     {
         return intdiv($pago->provider_amount_minor, 100).'.'.str_pad((string) ($pago->provider_amount_minor % 100), 2, '0', STR_PAD_LEFT);
     }
 
     /** Crea la orden de Sandbox vinculada al pago y comprueba la respuesta recibida. */
-    public function crearOrden(Payment $pago): array
+    public function crearOrden(Pago $pago): array
     {
         $referenciaDato = $this->referencia($pago);
         $orden = $this->clienteHttp()->withHeaders(['PayPal-Request-Id' => 'CVS-ORDER-'.$pago->id, 'Prefer' => 'return=representation'])
@@ -128,7 +128,7 @@ class PasarelaPayPal
     }
 
     /** Contrasta identidad, importe, moneda y referencias de la orden con el pago esperado. */
-    public function coincideConPago(array $orden, Payment $pago): bool
+    public function coincideConPago(array $orden, Pago $pago): bool
     {
         $unidades = $orden['purchase_units'] ?? [];
         $unidad = $unidades[0] ?? [];
@@ -144,7 +144,7 @@ class PasarelaPayPal
     }
 
     /** Solo una captura COMPLETED íntegra permite emitir la ficha. */
-    public function consultarEstado(Payment $pago, bool $descartarNoAprobado = false): array
+    public function consultarEstado(Pago $pago, bool $descartarNoAprobado = false): array
     {
         $creados = null;
         if (! $pago->reference) {

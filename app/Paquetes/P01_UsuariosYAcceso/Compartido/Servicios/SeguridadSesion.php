@@ -4,9 +4,9 @@
 
 namespace App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios;
 
-use App\Models\User;
+use App\Models\Usuario;
 use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
-use App\Support\ClinicAccess;
+use App\Support\AccesoClinica;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -14,14 +14,14 @@ use Illuminate\Support\Facades\Auth;
 class SeguridadSesion
 {
     /** Guarda la firma vigente de la cuenta autenticada para detectar cambios posteriores. */
-    public function registrarFirmaSesion(Request $solicitud, User $usuario): void
+    public function registrarFirmaSesion(Request $solicitud, Usuario $usuario): void
     {
         $solicitud->session()->put('clinic.auth_user_id', $usuario->id);
         $solicitud->session()->put('clinic.auth_fingerprint', $this->calcularFirma($usuario));
     }
 
     /** Calcula una firma de credenciales y permisos sin guardar su contenido en la sesión. */
-    public function calcularFirma(User $usuario): string
+    public function calcularFirma(Usuario $usuario): string
     {
         // La sesión guarda una firma; nunca una copia de la contraseña o su hash.
         return hash_hmac('sha256', json_encode([
@@ -37,7 +37,7 @@ class SeguridadSesion
         }
         $usuario = $solicitud->user()->fresh();
         $motivo = null;
-        if (! $usuario || ! ClinicAccess::isActive($usuario)) {
+        if (! $usuario || ! AccesoClinica::estaActivo($usuario)) {
             $motivo = 'inactive_account';
         } elseif (! $usuario->email_verified_at) {
             $motivo = 'email_unverified';

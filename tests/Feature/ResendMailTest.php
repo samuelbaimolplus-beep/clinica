@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
+use App\Models\Usuario;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\ActivacionPorCorreo;
 use GuzzleHttp\Client as HttpClient;
 use GuzzleHttp\Handler\MockHandler;
@@ -48,9 +48,9 @@ class ResendMailTest extends TestCase
         app('mail.manager')->extend('resend', fn () => new ResendTransport($client));
     }
 
-    private function account(): User
+    private function account(): Usuario
     {
-        return User::create(['name' => 'Prueba de correo', 'username' => 'resend.prueba', 'email' => 'owner@example.test',
+        return Usuario::create(['name' => 'Prueba de correo', 'username' => 'resend.prueba', 'email' => 'owner@example.test',
             'password' => 'ClavePrueba2026', 'role' => 'Recepcionista', 'status' => 'Activo', 'birth_date' => '1990-01-01']);
     }
 

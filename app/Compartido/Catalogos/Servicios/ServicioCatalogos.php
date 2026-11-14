@@ -4,12 +4,12 @@
 
 namespace App\Compartido\Catalogos\Servicios;
 
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\Specialty;
-use App\Models\User;
+use App\Models\Especialidad;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\Usuario;
 use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
-use App\Support\SpecialtyName;
+use App\Support\NombreEspecialidad;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -18,23 +18,23 @@ use Illuminate\Validation\ValidationException;
 class ServicioCatalogos
 {
     /** Coordina la validación y persistencia de esta operación; delega las reglas del dominio al servicio correspondiente. */
-    public function guardar(Model $registro, array $datos, ?User $responsable = null): Model
+    public function guardar(Model $registro, array $datos, ?Usuario $responsable = null): Model
     {
         return DB::transaction(function () use ($registro, $datos, $responsable) {
-            if ($registro instanceof User) {
+            if ($registro instanceof Usuario) {
                 // Orden estable para impedir que cambios simultáneos eliminen todos los administradores.
-                User::orderBy('id')->lockForUpdate()->get();
+                Usuario::orderBy('id')->lockForUpdate()->get();
                 $actual = $responsable?->fresh();
-                abort_unless($actual?->status === 'Activo' && $actual?->hasStaffRole('Administrador'), 403);
+                abort_unless($actual?->status === 'Activo' && $actual?->tieneRolPersonal('Administrador'), 403);
                 abort_if($registro->exists && $registro->fresh()->role === 'Paciente', 403);
                 abort_if($actual->role !== 'Superadmin' && ($datos['role'] === 'Superadmin' || ($registro->exists && $registro->fresh()->role === 'Superadmin')), 403);
                 if ($registro->getKey() === $responsable->id && ($datos['status'] !== 'Activo' || $datos['role'] !== $responsable->role)) {
                     throw ValidationException::withMessages(['status' => 'No puede desactivar su propia cuenta ni cambiar su propio rol.']);
                 }
-                if ($registro->exists && $registro->fresh()->role === 'Administrador' && ($datos['status'] !== 'Activo' || $datos['role'] !== 'Administrador') && User::where('role', 'Administrador')->where('status', 'Activo')->count() <= 1) {
+                if ($registro->exists && $registro->fresh()->role === 'Administrador' && ($datos['status'] !== 'Activo' || $datos['role'] !== 'Administrador') && Usuario::where('role', 'Administrador')->where('status', 'Activo')->count() <= 1) {
                     throw ValidationException::withMessages(['status' => 'Debe conservar al menos un administrador activo.']);
                 }
-                if ($registro->exists && $registro->fresh()->role === 'Superadmin' && ($datos['status'] !== 'Activo' || $datos['role'] !== 'Superadmin') && User::where('role', 'Superadmin')->where('status', 'Activo')->count() <= 1) {
+                if ($registro->exists && $registro->fresh()->role === 'Superadmin' && ($datos['status'] !== 'Activo' || $datos['role'] !== 'Superadmin') && Usuario::where('role', 'Superadmin')->where('status', 'Activo')->count() <= 1) {
                     throw ValidationException::withMessages(['status' => 'Debe conservar al menos un Superadmin activo.']);
                 }
                 if (empty($datos['password'])) {
@@ -44,13 +44,13 @@ class ServicioCatalogos
             } elseif ($registro->exists) {
                 $registro = $registro->newQuery()->whereKey($registro->getKey())->lockForUpdate()->firstOrFail();
             }
-            if ($registro instanceof Specialty && isset($datos['name']) && Specialty::whereRaw("lower(trim(regexp_replace(name, '[[:space:]]+', ' ', 'g'))) = ?", [SpecialtyName::key($datos['name'])])->when($registro->exists, fn ($consulta) => $consulta->whereKeyNot($registro->id))->exists()) {
+            if ($registro instanceof Especialidad && isset($datos['name']) && Especialidad::whereRaw("lower(trim(regexp_replace(name, '[[:space:]]+', ' ', 'g'))) = ?", [NombreEspecialidad::clave($datos['name'])])->when($registro->exists, fn ($consulta) => $consulta->whereKeyNot($registro->id))->exists()) {
                 throw ValidationException::withMessages(['name' => 'Ya existe una especialidad con ese nombre.']);
             }
-            if ($registro instanceof Patient && array_key_exists('identity', $datos) && empty($datos['identity'])) {
+            if ($registro instanceof Paciente && array_key_exists('identity', $datos) && empty($datos['identity'])) {
                 $datos['identity'] = null;
                 // Sin CI no se fusionan personas automáticamente; recepción revisa coincidencias exactas.
-                $duplicado = Patient::whereRaw('lower(first_name) = ?', [mb_strtolower($datos['first_name'])])
+                $duplicado = Paciente::whereRaw('lower(first_name) = ?', [mb_strtolower($datos['first_name'])])
                     ->whereRaw('lower(last_name) = ?', [mb_strtolower($datos['last_name'])])
                     ->where('birth_date', $datos['birth_date'])->where('phone', $datos['phone'])
                     ->when($registro->exists, fn ($consulta) => $consulta->whereKeyNot($registro->id))->exists();
@@ -60,18 +60,18 @@ class ServicioCatalogos
             }
             $especialidades = $datos['specialty_ids'] ?? null;
             if ($especialidades !== null) {
-                $seleccionados = Specialty::whereIn('id', $especialidades)->orderBy('id')->lockForUpdate()->get();
+                $seleccionados = Especialidad::whereIn('id', $especialidades)->orderBy('id')->lockForUpdate()->get();
                 if ($seleccionados->count() !== count($especialidades) || $seleccionados->contains(fn ($especialidad) => $especialidad->status !== 'Activo')) {
                     throw ValidationException::withMessages(['specialty_ids' => 'Seleccione únicamente especialidades registradas y activas.']);
                 }
             }
             unset($datos['specialty_ids']);
             $registro->fill($datos);
-            if ($registro instanceof User && $registro->isDirty('email')) {
+            if ($registro instanceof Usuario && $registro->isDirty('email')) {
                 $registro->email_verified_at = null;
             }
             $registro->save();
-            if ($registro instanceof Doctor && $especialidades !== null) {
+            if ($registro instanceof Medico && $especialidades !== null) {
                 $antes = $registro->specialties()->orderBy('specialties.id')->get(['specialties.id', 'specialties.name'])
                     ->map(fn ($especialidad) => ['id' => $especialidad->id, 'name' => $especialidad->name])->all();
                 $cambios = $registro->specialties()->sync($especialidades);
@@ -85,11 +85,11 @@ class ServicioCatalogos
                 }
             }
 
-            $registro = $registro->fresh($registro instanceof Doctor ? ['specialties'] : []);
-            if ($registro instanceof Doctor || $registro instanceof Specialty) {
+            $registro = $registro->fresh($registro instanceof Medico ? ['specialties'] : []);
+            if ($registro instanceof Medico || $registro instanceof Especialidad) {
                 $registro->setAttribute('affected_appointments', app(ImpactoCatalogos::class)->citasAfectadas(
-                    $registro instanceof Doctor ? $registro->id : null,
-                    $registro instanceof Specialty ? $registro->id : null,
+                    $registro instanceof Medico ? $registro->id : null,
+                    $registro instanceof Especialidad ? $registro->id : null,
                 ));
             }
 
@@ -98,14 +98,14 @@ class ServicioCatalogos
     }
 
     /** Cambia el estado conservando el registro y sus relaciones históricas. */
-    public function cambiarEstado(Model $registro, string $estado, User $responsable): Model
+    public function cambiarEstado(Model $registro, string $estado, Usuario $responsable): Model
     {
         return DB::transaction(function () use ($registro, $estado, $responsable) {
-            if ($registro instanceof User) {
-                User::orderBy('id')->lockForUpdate()->get();
+            if ($registro instanceof Usuario) {
+                Usuario::orderBy('id')->lockForUpdate()->get();
             }
             $registro = $registro->newQuery()->whereKey($registro->id)->lockForUpdate()->firstOrFail();
-            $datos = $registro instanceof User ? $registro->only(['name', 'email', 'role', 'doctor_id', 'birth_date']) : [];
+            $datos = $registro instanceof Usuario ? $registro->only(['name', 'email', 'role', 'doctor_id', 'birth_date']) : [];
 
             return $this->guardar($registro, $datos + ['status' => $estado], $responsable);
         });

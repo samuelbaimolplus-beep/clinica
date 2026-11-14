@@ -4,15 +4,15 @@
 
 namespace App\Paquetes\P05_CitasMedicas\Compartido\Servicios;
 
-use App\Models\AgendaAdjustment;
-use App\Models\Appointment;
-use App\Models\BookingRequest;
-use App\Models\ClinicalSlot;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\RescheduleRequest;
-use App\Models\Specialty;
-use App\Models\User;
+use App\Models\AjusteAgenda;
+use App\Models\Cita;
+use App\Models\Especialidad;
+use App\Models\FranjaClinica;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\SolicitudReprogramacion;
+use App\Models\SolicitudReserva;
+use App\Models\Usuario;
 use App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios\ServicioCuposMedico;
 use App\Paquetes\P07_ReservasPagosYSeguimientos\CU19_VerificarPagoOExencion\Servicios\VerificadorPago;
 use App\Paquetes\P07_ReservasPagosYSeguimientos\CU21_RegistrarCitaDeSeguimiento\Servicios\ReglasSeguimiento;
@@ -28,13 +28,13 @@ class ServicioCitas
     /** Devuelve franjas con su estado, descontando ocupación, retenciones y horarios pasados. */
     public function franjasDisponibles(int $medicoId, string $fecha, ?int $excluirId = null, string $modalidad = 'presential', ?int $retencion = null): array
     {
-        if (Doctor::findOrFail($medicoId)->status !== 'Activo') {
+        if (Medico::findOrFail($medicoId)->status !== 'Activo') {
             return [];
         }
-        $ocupadas = Appointment::where('doctor_id', $medicoId)->where('date', $fecha)->whereIn('status', Appointment::ACTIVE)
+        $ocupadas = Cita::where('doctor_id', $medicoId)->where('date', $fecha)->whereIn('status', Cita::ACTIVE)
             ->when($excluirId, fn ($consulta) => $consulta->whereKeyNot($excluirId))->get();
         // Un pago pendiente o desconocido conserva su franja aunque venza el temporizador local (RN43).
-        $retenciones = BookingRequest::where('doctor_id', $medicoId)->where('date', $fecha)->whereIn('status', ['held', 'processing'])
+        $retenciones = SolicitudReserva::where('doctor_id', $medicoId)->where('date', $fecha)->whereIn('status', ['held', 'processing'])
             ->when($retencion, fn ($consulta) => $consulta->whereKeyNot($retencion))->get();
 
         return array_map(function ($bloque) use ($fecha, $modalidad, $ocupadas, $retenciones) {
@@ -47,22 +47,22 @@ class ServicioCitas
     }
 
     /** Crea o reprograma la cita de forma atómica: cupo, paciente, pago, identidad de franja e historial. */
-    public function programar(array $datos, User $responsable, ?int $id = null): Appointment
+    public function programar(array $datos, Usuario $responsable, ?int $id = null): Cita
     {
-        abort_unless($responsable->hasStaffRole('Recepcionista'), 403);
+        abort_unless($responsable->tieneRolPersonal('Recepcionista'), 403);
 
         return DB::transaction(function () use ($datos, $responsable, $id) {
-            $original = $id ? Appointment::findOrFail($id) : null;
-            $paciente = Patient::whereKey($original?->patient_id ?? $datos['patient_id'])->lockForUpdate()->firstOrFail();
+            $original = $id ? Cita::findOrFail($id) : null;
+            $paciente = Paciente::whereKey($original?->patient_id ?? $datos['patient_id'])->lockForUpdate()->firstOrFail();
             // El orden estable de bloqueo también protege los cambios de un médico a otro.
             $medicosIds = array_unique(array_filter([$original?->doctor_id, (int) $datos['doctor_id']]));
-            Doctor::whereIn('id', $medicosIds)->orderBy('id')->lockForUpdate()->get();
-            $medico = Doctor::findOrFail($datos['doctor_id']);
-            $citaActual = $id ? Appointment::whereKey($id)->lockForUpdate()->firstOrFail() : new Appointment;
+            Medico::whereIn('id', $medicosIds)->orderBy('id')->lockForUpdate()->get();
+            $medico = Medico::findOrFail($datos['doctor_id']);
+            $citaActual = $id ? Cita::whereKey($id)->lockForUpdate()->firstOrFail() : new Cita;
             $especialidadId = $original?->specialty_id ?? $datos['specialty_id'];
             if (! $id) {
                 validator($datos, ['idempotency_key' => 'required|uuid'])->validate();
-                $existente = BookingRequest::where('idempotency_key', $datos['idempotency_key'])->first();
+                $existente = SolicitudReserva::where('idempotency_key', $datos['idempotency_key'])->first();
                 if ($existente) {
                     if ($existente->created_by !== $responsable->id || $existente->patient_id !== $paciente->id || $existente->doctor_id !== $medico->id
                         || $existente->specialty_id !== (int) $especialidadId || $existente->date !== $datos['date'] || substr($existente->start_time, 0, 5) !== $datos['start_time']) {
@@ -72,7 +72,7 @@ class ServicioCitas
                     return $existente->appointment()->with('patient', 'doctor', 'specialty', 'events', 'payment')->firstOrFail();
                 }
             }
-            if ($id && ! in_array($citaActual->status, Appointment::ACTIVE)) {
+            if ($id && ! in_array($citaActual->status, Cita::ACTIVE)) {
                 $this->rechazar('Solo se reprograman citas vigentes.');
             }
             if ($id) {
@@ -90,12 +90,12 @@ class ServicioCitas
                 ? app(VerificadorPago::class)->verificarPagoPresencial($datos, app(VerificadorPago::class)->tarifa($especialidadId), $responsable) : null;
             $citaActual->fill(['patient_id' => $paciente->id, 'doctor_id' => $medico->id, 'specialty_id' => $especialidadId,
                 'date' => $datos['date'], 'start_time' => $franja['start'], 'end_time' => $franja['end']]);
-            $citaActual->clinical_slot_id = ClinicalSlot::identify($medico->id, $datos['date'], $franja['start'], $franja['end']);
+            $citaActual->clinical_slot_id = FranjaClinica::identificar($medico->id, $datos['date'], $franja['start'], $franja['end']);
             if ($id) {
                 $citaActual->fill(['status' => 'Programada', 'attendance_at' => null, 'missed_call_at' => null]);
             }
             if (! $id) {
-                $solicitud = BookingRequest::create(['idempotency_key' => $datos['idempotency_key'], 'patient_id' => $paciente->id, 'doctor_id' => $medico->id,
+                $solicitud = SolicitudReserva::create(['idempotency_key' => $datos['idempotency_key'], 'patient_id' => $paciente->id, 'doctor_id' => $medico->id,
                     'specialty_id' => $especialidadId, 'created_by' => $responsable->id, 'date' => $datos['date'], 'start_time' => $franja['start'], 'end_time' => $franja['end'],
                     'modality' => 'presential', 'clinical_slot_id' => $citaActual->clinical_slot_id, 'amount_minor' => $pago?->amount_minor ?? 0, 'status' => 'completed', 'expires_at' => now(), 'deadline_at' => now()]);
                 if ($pago) {
@@ -110,7 +110,7 @@ class ServicioCitas
             $citaActual->save();
             $this->consumirBloqueoDemanda($citaActual);
             if ($id) {
-                RescheduleRequest::where('appointment_id', $id)->where('status', 'pending')->get()->each->update([
+                SolicitudReprogramacion::where('appointment_id', $id)->where('status', 'pending')->get()->each->update([
                     'status' => 'accepted', 'response' => $datos['change_reason'], 'resolved_by' => $responsable->id, 'resolved_at' => now()]);
             }
             $this->registrarEvento($citaActual, $responsable, $id ? 'Reprogramación' : 'Creación', ['before' => $antes, 'after' => $citaActual->only(['doctor_id', 'date', 'start_time', 'end_time']),
@@ -121,9 +121,9 @@ class ServicioCitas
     }
 
     /** Revalida médico, especialidad, paciente, horario y superposiciones dentro de la operación del servidor. */
-    public function validarSeleccion(Patient $paciente, Doctor $medico, int $especialidadId, string $fecha, string $inicio, string $modalidad, ?int $excluirId = null, ?int $retencion = null): array
+    public function validarSeleccion(Paciente $paciente, Medico $medico, int $especialidadId, string $fecha, string $inicio, string $modalidad, ?int $excluirId = null, ?int $retencion = null): array
     {
-        $especialidad = Specialty::findOrFail($especialidadId);
+        $especialidad = Especialidad::findOrFail($especialidadId);
         if ($paciente->status !== 'Activo' || $medico->status !== 'Activo' || $especialidad->status !== 'Activo' || ! $medico->specialties()->whereKey($especialidadId)->exists()) {
             $this->rechazar('Paciente, médico y especialidad deben estar activos y vinculados.');
         }
@@ -131,14 +131,14 @@ class ServicioCitas
         if (! $franja || $franja['status'] !== 'Disponible') {
             $this->rechazar('El cupo ya no está disponible para esta modalidad.');
         }
-        $bloqueoDemanda = AgendaAdjustment::where('doctor_id', $medico->id)->where('date', $fecha)->where('status', 'active')->where('kind', 'presential_block')
+        $bloqueoDemanda = AjusteAgenda::where('doctor_id', $medico->id)->where('date', $fecha)->where('status', 'active')->where('kind', 'presential_block')
             ->where('start_time', '<', $franja['end'])->where('end_time', '>', $franja['start'])->first();
         if ($bloqueoDemanda && ($modalidad !== 'presential' || $bloqueoDemanda->specialty_id !== $especialidadId || $fecha !== today()->toDateString())) {
             $this->rechazar('El bloqueo presencial corresponde a otra especialidad.');
         }
         $filtrarSuperposicion = fn ($consulta) => $consulta->where('patient_id', $paciente->id)->where('date', $fecha)->where('start_time', '<', $franja['end'])->where('end_time', '>', $franja['start']);
-        if (Appointment::where($filtrarSuperposicion)->whereIn('status', Appointment::ACTIVE)->when($excluirId, fn ($consulta) => $consulta->whereKeyNot($excluirId))->exists()
-            || BookingRequest::where($filtrarSuperposicion)->whereIn('status', ['held', 'processing'])->when($retencion, fn ($consulta) => $consulta->whereKeyNot($retencion))->exists()) {
+        if (Cita::where($filtrarSuperposicion)->whereIn('status', Cita::ACTIVE)->when($excluirId, fn ($consulta) => $consulta->whereKeyNot($excluirId))->exists()
+            || SolicitudReserva::where($filtrarSuperposicion)->whereIn('status', ['held', 'processing'])->when($retencion, fn ($consulta) => $consulta->whereKeyNot($retencion))->exists()) {
             $this->rechazar('El paciente tiene una cita o retención que se superpone.');
         }
 
@@ -146,25 +146,25 @@ class ServicioCitas
     }
 
     /** Marca como consumido el bloqueo presencial utilizado por una cita real. */
-    public function consumirBloqueoDemanda(Appointment $citaActual): void
+    public function consumirBloqueoDemanda(Cita $citaActual): void
     {
         if ($citaActual->modality !== 'presential') {
             return;
         }
-        AgendaAdjustment::where('doctor_id', $citaActual->doctor_id)->where('date', $citaActual->date)->where('start_time', $citaActual->start_time)->where('end_time', $citaActual->end_time)
+        AjusteAgenda::where('doctor_id', $citaActual->doctor_id)->where('date', $citaActual->date)->where('start_time', $citaActual->start_time)->where('end_time', $citaActual->end_time)
             ->where('specialty_id', $citaActual->specialty_id)->where('kind', 'presential_block')->where('status', 'active')->get()
             ->each->update(['status' => 'consumed', 'appointment_id' => $citaActual->id]);
     }
 
     /** Aplica una transición de estado válida; conserva el historial y evita operaciones incompatibles. */
-    public function cambiarEstado(int $id, string $accion, User $responsable, ?string $motivo = null, array $datos = []): Appointment
+    public function cambiarEstado(int $id, string $accion, Usuario $responsable, ?string $motivo = null, array $datos = []): Cita
     {
         return DB::transaction(function () use ($id, $accion, $responsable, $motivo, $datos) {
-            $citaActual = Appointment::whereKey($id)->lockForUpdate()->firstOrFail();
+            $citaActual = Cita::whereKey($id)->lockForUpdate()->firstOrFail();
             if ($responsable->role === 'Médico' && $citaActual->doctor_id !== $responsable->doctor_id) {
                 abort(403, 'Solo puede operar su propia agenda.');
             }
-            if (! in_array($citaActual->status, Appointment::ACTIVE)) {
+            if (! in_array($citaActual->status, Cita::ACTIVE)) {
                 $this->rechazar('La cita ya no está vigente.');
             }
             if (in_array($accion, ['attendance', 'absent', 'attend', 'missed-call']) && $citaActual->date !== today()->toDateString()) {
@@ -175,7 +175,7 @@ class ServicioCitas
                 case 'cancel':
                     validator($datos, ['cause' => 'required|in:patient,clinic'])->validate();
                     $citaActual->fill(['status' => 'Cancelada', 'cancellation_reason' => $motivo, 'cancellation_cause' => $datos['cause'], 'cancelled_at' => now()]);
-                    RescheduleRequest::where('appointment_id', $citaActual->id)->where('status', 'pending')->get()->each->update(['status' => 'closed', 'response' => 'Cita cancelada por Recepción.', 'resolved_by' => $responsable->id, 'resolved_at' => now()]);
+                    SolicitudReprogramacion::where('appointment_id', $citaActual->id)->where('status', 'pending')->get()->each->update(['status' => 'closed', 'response' => 'Cita cancelada por Recepción.', 'resolved_by' => $responsable->id, 'resolved_at' => now()]);
                     break;
                 case 'attendance':
                     $requierePago = $this->requierePago($citaActual);
@@ -221,7 +221,7 @@ class ServicioCitas
     }
 
     /** Añade el cambio al historial de la cita con actor y datos permitidos. */
-    public function registrarEvento(Appointment $citaActual, User $responsable, string $accion, array $detalles): void
+    public function registrarEvento(Cita $citaActual, Usuario $responsable, string $accion, array $detalles): void
     {
         DB::statement('CALL public.registrar_evento_cita(?, ?, ?, ?::jsonb)', [
             $citaActual->id, $responsable->id, $accion, json_encode((object) $detalles, JSON_THROW_ON_ERROR),
@@ -243,7 +243,7 @@ class ServicioCitas
     }
 
     /** Comprueba si el pago confirmado o la exención vigente permiten continuar la atención. */
-    public function requierePago(Appointment $citaActual): bool
+    public function requierePago(Cita $citaActual): bool
     {
         if ($citaActual->complimentary) {
             $llegada = $citaActual->attendance_at ? CarbonImmutable::parse($citaActual->attendance_at) : now();

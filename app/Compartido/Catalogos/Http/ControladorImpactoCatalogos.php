@@ -13,7 +13,7 @@ class ControladorImpactoCatalogos extends Controller
     /** Atiende la operación única de esta clase usando las dependencias resueltas por Laravel. */
     public function __invoke(Request $solicitud, ImpactoCatalogos $impacto)
     {
-        abort_unless($solicitud->user()->hasStaffRole('Administrador', 'Recepcionista'), 403);
+        abort_unless($solicitud->user()->tieneRolPersonal('Administrador', 'Recepcionista'), 403);
 
         return $impacto->citasAfectadas();
     }

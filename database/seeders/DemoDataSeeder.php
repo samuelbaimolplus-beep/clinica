@@ -4,13 +4,13 @@
 
 namespace Database\Seeders;
 
-use App\Models\Appointment;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\Schedule;
-use App\Models\Specialty;
-use App\Models\Unavailability;
-use App\Models\User;
+use App\Models\AusenciaMedica;
+use App\Models\Cita;
+use App\Models\Especialidad;
+use App\Models\Horario;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\Usuario;
 use App\Paquetes\P05_CitasMedicas\Compartido\Servicios\ServicioCitas;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
@@ -25,26 +25,26 @@ class DemoDataSeeder extends Seeder
         $credentials = [];
         DB::transaction(function () use (&$credentials) {
             DB::select('SELECT pg_advisory_xact_lock(?)', [20261024]);
-            $admin = User::where('role', 'Administrador')->where('status', 'Activo')->firstOrFail();
+            $admin = Usuario::where('role', 'Administrador')->where('status', 'Activo')->firstOrFail();
             $specialties = collect([
                 ['Medicina General', 'Atención primaria y controles generales.'],
                 ['Pediatría', 'Atención y seguimiento infantil.'],
                 ['Ginecología', 'Controles de salud de la mujer.'],
                 ['Odontología', 'Prevención y salud bucal.'],
-            ])->map(fn ($s) => Specialty::firstOrCreate(['name' => $s[0]], ['description' => $s[1], 'status' => 'Activo', 'fee_minor' => 10000]));
+            ])->map(fn ($s) => Especialidad::firstOrCreate(['name' => $s[0]], ['description' => $s[1], 'status' => 'Activo', 'fee_minor' => 10000]));
 
             $doctors = collect([
                 ['Carlos', 'Rojas Vaca', [0]], ['Lucía', 'Fernández Soliz', [1]],
                 ['Ana', 'Mendoza Ribera', [2]], ['Jorge', 'Peña Arce', [3]],
                 ['Marcela', 'Justiniano Egüez', [0, 1]],
             ])->map(function ($d, $i) use ($specialties) {
-                $doctor = Doctor::firstOrCreate(['registration' => 'DEMO-RP-'.($i + 1)], [
+                $doctor = Medico::firstOrCreate(['registration' => 'DEMO-RP-'.($i + 1)], [
                     'first_name' => $d[0], 'last_name' => $d[1], 'phone' => '7000000'.($i + 1),
                     'email' => 'medico'.($i + 1).'@demo.example', 'status' => 'Activo',
                 ]);
                 $doctor->specialties()->syncWithoutDetaching(collect($d[2])->map(fn ($index) => $specialties[$index]->id)->all());
                 foreach (range(1, 6) as $day) {
-                    Schedule::firstOrCreate(['doctor_id' => $doctor->id, 'weekday' => $day], [
+                    Horario::firstOrCreate(['doctor_id' => $doctor->id, 'weekday' => $day], [
                         'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30,
                     ]);
                 }
@@ -63,17 +63,17 @@ class DemoDataSeeder extends Seeder
                 ['Valeria', 'Molina Paz', '1988-12-03', 'Femenino'],
                 ['Andrés', 'Roca Suárez', '1970-06-25', 'Masculino'],
                 ['Daniela', 'Quispe López', '2002-02-14', 'Femenino'],
-            ])->map(fn ($p, $i) => Patient::firstOrCreate(['identity' => 'DEMO-CI-'.str_pad($i + 1, 3, '0', STR_PAD_LEFT)], [
+            ])->map(fn ($p, $i) => Paciente::firstOrCreate(['identity' => 'DEMO-CI-'.str_pad($i + 1, 3, '0', STR_PAD_LEFT)], [
                 'first_name' => $p[0], 'last_name' => $p[1], 'birth_date' => $p[2], 'sex' => $p[3],
                 'phone' => '710000'.str_pad($i + 1, 2, '0', STR_PAD_LEFT), 'email' => 'paciente'.($i + 1).'@demo.example',
                 'address' => 'Dirección ficticia de demostración, Santa Cruz', 'status' => 'Activo',
             ]));
 
             $account = function (string $email, string $name, string $role, ?int $doctorId = null) use (&$credentials) {
-                $user = User::where('email', $email)->first();
+                $user = Usuario::where('email', $email)->first();
                 if (! $user) {
                     $password = Str::password(20, symbols: false);
-                    $user = User::create(['birth_date' => '1990-01-01', 'name' => $name, 'email' => $email, 'password' => $password, 'role' => $role, 'doctor_id' => $doctorId, 'status' => 'Activo']);
+                    $user = Usuario::create(['birth_date' => '1990-01-01', 'name' => $name, 'email' => $email, 'password' => $password, 'role' => $role, 'doctor_id' => $doctorId, 'status' => 'Activo']);
                     $credentials[] = "Rol: {$role}\nCorreo: {$email}\nContraseña: {$password}\n";
                 }
 
@@ -86,7 +86,7 @@ class DemoDataSeeder extends Seeder
             };
             $reception = $account('recepcion@demo.example', 'Rosa Quispe (demo)', 'Recepcionista');
             foreach ($doctors as $i => $doctor) {
-                if (! User::where('doctor_id', $doctor->id)->exists()) {
+                if (! Usuario::where('doctor_id', $doctor->id)->exists()) {
                     $account('medico'.($i + 1).'@demo.example', $doctor->first_name.' '.$doctor->last_name.' (demo)', 'Médico', $doctor->id);
                 }
             }
@@ -100,7 +100,7 @@ class DemoDataSeeder extends Seeder
             // Future appointments go through the same availability rules as the application.
             foreach (range(0, 9) as $i) {
                 $reason = '[DEMO-'.str_pad($i + 1, 2, '0', STR_PAD_LEFT).'] '.['Control general', 'Consulta de seguimiento', 'Control preventivo', 'Revisión de rutina', 'Consulta inicial'][$i % 5];
-                if (Appointment::where('reason', 'like', $reason.'%')->exists()) {
+                if (Cita::where('reason', 'like', $reason.'%')->exists()) {
                     continue;
                 }
                 $doctor = $doctors[$i % 5];
@@ -132,7 +132,7 @@ class DemoDataSeeder extends Seeder
             $historyDate = today()->isSunday() ? today()->subDay() : today();
             foreach (range(0, 5) as $i) {
                 $reason = '[DEMO-HIST-'.($i + 1).'] Consulta ficticia de demostración';
-                if (Appointment::where('reason', $reason)->exists()) {
+                if (Cita::where('reason', $reason)->exists()) {
                     continue;
                 }
                 $doctor = $doctors[$i % 5];
@@ -144,7 +144,7 @@ class DemoDataSeeder extends Seeder
                     }
                 }
                 $status = ['Atendida', 'Cancelada', 'Inasistencia'][$i % 3];
-                $a = Appointment::create(['patient_id' => $patients[$i]->id, 'doctor_id' => $doctor->id,
+                $a = Cita::create(['patient_id' => $patients[$i]->id, 'doctor_id' => $doctor->id,
                     'specialty_id' => $doctor->specialties()->firstOrFail()->id, 'date' => $start->toDateString(),
                     'start_time' => $start->format('H:i'), 'end_time' => $start->copy()->addMinutes(30)->format('H:i'),
                     'status' => $status, 'reason' => $reason, 'created_by' => $admin->id,
@@ -154,9 +154,9 @@ class DemoDataSeeder extends Seeder
                 $service->registrarEvento($a, $admin, 'Datos de demostración', ['after' => $status, 'reason' => 'Registro completamente ficticio para probar el sistema.']);
             }
 
-            $affected = Appointment::where('reason', 'like', '[DEMO-01]%')->first();
+            $affected = Cita::where('reason', 'like', '[DEMO-01]%')->first();
             if ($affected) {
-                Unavailability::firstOrCreate(['doctor_id' => $affected->doctor_id, 'reason' => '[DEMO] Permiso para mostrar citas afectadas'], [
+                AusenciaMedica::firstOrCreate(['doctor_id' => $affected->doctor_id, 'reason' => '[DEMO] Permiso para mostrar citas afectadas'], [
                     'starts_at' => $affected->date.' '.$affected->start_time,
                     'ends_at' => $affected->date.' '.$affected->end_time,
                 ]);

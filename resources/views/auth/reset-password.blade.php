@@ -1,6 +1,6 @@
 {{-- Vista de reset-password. Blade escapa datos; la interfaz usa los endpoints autorizados de Laravel. --}}
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Recuperar contraseña · Clínica Vida Salud</title>@include('partials.theme-head')@vite(['resources/css/app.css', 'resources/js/lib/password-visibility.js'])</head>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Recuperar contraseña · Clínica Vida Salud</title>@include('partials.theme-head')@vite(['resources/css/app.css', 'resources/js/lib/visibilidad-contrasena.js'])</head>
 <body><div class="page-tools">@include('partials.theme-toggle')</div><main class="login-wrap"><section class="panel"><h1>Recuperar contraseña</h1><form id="reset-form">
 @csrf
 <input type="hidden" name="token" value="{{ $token }}"><input type="hidden" name="email" value="{{ request('email') }}">

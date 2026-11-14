@@ -4,7 +4,7 @@
 
 namespace App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios;
 
-use App\Models\User;
+use App\Models\Usuario;
 use Carbon\CarbonImmutable;
 use Illuminate\Validation\ValidationException;
 
@@ -12,7 +12,7 @@ use Illuminate\Validation\ValidationException;
 class RequisitosCuenta
 {
     /** Obtiene la fecha autoritativa: la ficha del paciente cuando existe, o la fecha del personal. */
-    public function fechaNacimiento(User $usuario): ?string
+    public function fechaNacimiento(Usuario $usuario): ?string
     {
         $fecha = $usuario->role === 'Paciente' ? $usuario->patient()->value('birth_date') : $usuario->birth_date;
 
@@ -43,13 +43,13 @@ class RequisitosCuenta
     }
 
     /** Comprueba si falta la aceptación del paciente o si corresponde renovar la versión de términos. */
-    public function requiereConsentimiento(User $usuario): bool
+    public function requiereConsentimiento(Usuario $usuario): bool
     {
         return $usuario->role === 'Paciente' && (! $usuario->terms_accepted_at || $usuario->terms_version !== config('clinic.terms_version'));
     }
 
     /** Reúne mayoría de edad y consentimiento; la verificación de correo se comprueba separadamente. */
-    public function cumpleRequisitos(User $usuario): bool
+    public function cumpleRequisitos(Usuario $usuario): bool
     {
         return $this->esMayorDeEdad($this->fechaNacimiento($usuario)) && ! $this->requiereConsentimiento($usuario);
     }

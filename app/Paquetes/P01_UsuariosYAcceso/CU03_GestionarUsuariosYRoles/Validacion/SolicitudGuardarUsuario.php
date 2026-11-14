@@ -5,8 +5,8 @@
 namespace App\Paquetes\P01_UsuariosYAcceso\CU03_GestionarUsuariosYRoles\Validacion;
 
 use App\Compartido\Catalogos\Validacion\ReglasPersona;
-use App\Models\User;
-use App\Support\Username;
+use App\Models\Usuario;
+use App\Support\NombreUsuario;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -24,7 +24,7 @@ class SolicitudGuardarUsuario extends FormRequest
     public function rules(): array
     {
         $id = $this->route('id');
-        $registro = $id ? User::findOrFail($id) : null;
+        $registro = $id ? Usuario::findOrFail($id) : null;
         // CU03 administra personal. CU23 administra el alta de cuentas de pacientes.
         abort_if($registro?->role === 'Paciente', 403, 'La cuenta está vinculada al módulo de pacientes.');
         abort_if($registro?->role === 'Superadmin' && $this->user()->role !== 'Superadmin', 403);
@@ -32,7 +32,7 @@ class SolicitudGuardarUsuario extends FormRequest
         return [
             'name' => 'required|string|max:150',
             'birth_date' => 'required|date_format:Y-m-d|before_or_equal:'.today()->subYearsNoOverflow(18)->toDateString(),
-            'username' => ['sometimes', 'required', 'string', 'min:3', 'max:50', 'regex:'.Username::PATTERN, Rule::unique('users', 'username')->ignore($id)],
+            'username' => ['sometimes', 'required', 'string', 'min:3', 'max:50', 'regex:'.NombreUsuario::PATTERN, Rule::unique('users', 'username')->ignore($id)],
             'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($id)],
             'password' => [$id ? 'nullable' : 'required', 'string', 'min:10', 'max:128'],
             'role' => ['required', Rule::in($this->user()->role === 'Superadmin'

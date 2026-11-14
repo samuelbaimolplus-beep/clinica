@@ -13,7 +13,7 @@ class ControladorFranjasDisponibles extends Controller
     /** Consulta disponibilidad para los criterios validados sin retener ni cobrar. */
     public function consultarDisponibilidad(Request $peticion, ServicioCitas $servicio)
     {
-        abort_unless($peticion->user()->hasStaffRole('Recepcionista'), 403);
+        abort_unless($peticion->user()->tieneRolPersonal('Recepcionista'), 403);
         $criterios = $peticion->validate(['doctor_id' => 'required|integer|exists:doctors,id', 'date' => 'required|date_format:Y-m-d', 'exclude' => 'nullable|integer|exists:appointments,id', 'modality' => 'nullable|in:presential,online']);
 
         return $servicio->franjasDisponibles($criterios['doctor_id'], $criterios['date'], $criterios['exclude'] ?? null, $criterios['modality'] ?? 'presential');

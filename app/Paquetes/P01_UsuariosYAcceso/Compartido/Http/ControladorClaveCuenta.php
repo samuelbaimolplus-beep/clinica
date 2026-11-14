@@ -5,7 +5,7 @@
 namespace App\Paquetes\P01_UsuariosYAcceso\Compartido\Http;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Models\Usuario;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\SeguridadSesion;
 use App\Paquetes\P08_Auditoria\CU22_ConsultarBitacoraDeAuditoria\Servicios\RegistroAuditoria;
 use Illuminate\Http\Request;
@@ -24,7 +24,7 @@ class ControladorClaveCuenta extends Controller
             'password' => 'required|string|min:10|max:128|confirmed|different:current_password',
         ]);
         $usuario = DB::transaction(function () use ($solicitud, $datos) {
-            $usuario = User::whereKey($solicitud->user()->id)->lockForUpdate()->firstOrFail();
+            $usuario = Usuario::whereKey($solicitud->user()->id)->lockForUpdate()->firstOrFail();
             if (! Hash::check($datos['current_password'], $usuario->password)) {
                 throw ValidationException::withMessages(['current_password' => 'La contraseña actual no es correcta.']);
             }

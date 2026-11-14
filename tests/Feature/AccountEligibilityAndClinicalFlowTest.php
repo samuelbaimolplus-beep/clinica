@@ -2,11 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\Schedule;
-use App\Models\Specialty;
-use App\Models\User;
+use App\Models\Especialidad;
+use App\Models\Horario;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\Usuario;
 use App\Paquetes\P01_UsuariosYAcceso\Compartido\Servicios\RequisitosCuenta;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -26,15 +26,15 @@ class AccountEligibilityAndClinicalFlowTest extends TestCase
         config(['clinic.appointments_enabled' => true]);
     }
 
-    private function staff(string $role = 'Recepcionista', ?int $doctor = null): User
+    private function staff(string $role = 'Recepcionista', ?int $doctor = null): Usuario
     {
         return $this->verifiedAccount(['name' => 'Personal '.Str::random(6), 'email' => Str::random(10).'@flow.test',
             'password' => 'ClaveDePrueba2026', 'role' => $role, 'status' => 'Activo', 'doctor_id' => $doctor]);
     }
 
-    private function patient(string $birth = '2000-01-01'): Patient
+    private function patient(string $birth = '2000-01-01'): Paciente
     {
-        return Patient::create(['first_name' => 'Paciente', 'last_name' => Str::random(8), 'birth_date' => $birth,
+        return Paciente::create(['first_name' => 'Paciente', 'last_name' => Str::random(8), 'birth_date' => $birth,
             'sex' => 'Femenino', 'phone' => '70000000', 'status' => 'Activo']);
     }
 
@@ -77,8 +77,8 @@ class AccountEligibilityAndClinicalFlowTest extends TestCase
         $id = $response->json('id');
         $this->postJson('/api/patients/'.$id.'/account', $this->consent() + ['birth_date' => '1990-01-01', 'role' => 'Administrador'])
             ->assertUnprocessable()->assertJsonValidationErrors('birth_date');
-        $this->assertTrue(Patient::whereKey($id)->exists());
-        $this->assertFalse(User::where('patient_id', $id)->exists());
+        $this->assertTrue(Paciente::whereKey($id)->exists());
+        $this->assertFalse(Usuario::where('patient_id', $id)->exists());
     }
 
     public function test_portal_is_optional_and_requires_explicit_current_consent(): void
@@ -90,9 +90,9 @@ class AccountEligibilityAndClinicalFlowTest extends TestCase
             ->assertUnprocessable()->assertJsonValidationErrors('terms_accepted');
         $this->postJson('/api/patients/'.$patient->id.'/account', array_replace($data, ['terms_version' => 'antigua']))
             ->assertUnprocessable()->assertJsonValidationErrors('terms_version');
-        $this->assertFalse(User::where('patient_id', $patient->id)->exists());
+        $this->assertFalse(Usuario::where('patient_id', $patient->id)->exists());
         $r = $this->postJson('/api/patients/'.$patient->id.'/account', $data)->assertCreated()->assertJsonPath('user.email_verified_at', null);
-        $account = User::findOrFail($r->json('user.id'));
+        $account = Usuario::findOrFail($r->json('user.id'));
         $this->assertNotNull($account->terms_accepted_at);
         $this->assertSame(config('clinic.terms_version'), $account->terms_version);
     }
@@ -117,16 +117,16 @@ class AccountEligibilityAndClinicalFlowTest extends TestCase
         $patient->update(['birth_date' => '2018-01-01']);
         $this->getJson('/api/workspace')->assertUnauthorized();
         $this->assertGuest();
-        $this->assertTrue(Patient::whereKey($patient->id)->exists());
+        $this->assertTrue(Paciente::whereKey($patient->id)->exists());
     }
 
     public function test_full_clinic_flow_for_a_child_without_email_or_portal_account(): void
     {
-        $specialty = Specialty::create(['name' => 'Atención infantil flujo', 'status' => 'Activo', 'fee_minor' => 10000]);
-        $doctor = Doctor::create(['registration' => 'FLOW-DOCTOR', 'first_name' => 'Andrea', 'last_name' => 'Flujo', 'email' => 'doctor@flow.test', 'phone' => '70000000', 'status' => 'Activo']);
+        $specialty = Especialidad::create(['name' => 'Atención infantil flujo', 'status' => 'Activo', 'fee_minor' => 10000]);
+        $doctor = Medico::create(['registration' => 'FLOW-DOCTOR', 'first_name' => 'Andrea', 'last_name' => 'Flujo', 'email' => 'doctor@flow.test', 'phone' => '70000000', 'status' => 'Activo']);
         $doctor->specialties()->attach($specialty->id);
         foreach ([1, 2] as $weekday) {
-            Schedule::create(['doctor_id' => $doctor->id, 'weekday' => $weekday, 'start_time' => '08:00', 'end_time' => '14:00', 'duration' => 30]);
+            Horario::create(['doctor_id' => $doctor->id, 'weekday' => $weekday, 'start_time' => '08:00', 'end_time' => '14:00', 'duration' => 30]);
         }
         $patient = $this->patient('2018-01-01');
         $reception = $this->staff();
@@ -142,7 +142,7 @@ class AccountEligibilityAndClinicalFlowTest extends TestCase
             ->assertOk()->assertJsonPath('status', 'Atendida');
         $this->actingAs($reception)->postJson('/api/appointments', ['parent_appointment_id' => $id, 'patient_id' => $patient->id, 'doctor_id' => $doctor->id, 'specialty_id' => $specialty->id,
             'date' => '2026-11-10', 'start_time' => '08:00', 'idempotency_key' => (string) Str::uuid()])->assertCreated()->assertJsonPath('complimentary', true);
-        $this->assertFalse(User::where('patient_id', $patient->id)->exists());
+        $this->assertFalse(Usuario::where('patient_id', $patient->id)->exists());
         $this->assertNull($patient->fresh()->email);
     }
 

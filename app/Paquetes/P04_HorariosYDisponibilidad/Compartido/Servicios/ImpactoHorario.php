@@ -4,8 +4,8 @@
 
 namespace App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios;
 
-use App\Models\Appointment;
-use App\Models\Unavailability;
+use App\Models\AusenciaMedica;
+use App\Models\Cita;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -15,9 +15,9 @@ class ImpactoHorario
     /** Calcula las citas afectadas por el cambio conservando su programación y estado. */
     public function citasAfectadas(?int $medicoId = null): Collection
     {
-        $citas = Appointment::whereIn('status', Appointment::ACTIVE)
+        $citas = Cita::whereIn('status', Cita::ACTIVE)
             ->when($medicoId, fn ($consulta) => $consulta->where('doctor_id', $medicoId))->orderBy('date')->orderBy('start_time')->get();
-        $ausencias = Unavailability::active()->whereIn('doctor_id', $citas->pluck('doctor_id')->unique())->get()->groupBy('doctor_id');
+        $ausencias = AusenciaMedica::active()->whereIn('doctor_id', $citas->pluck('doctor_id')->unique())->get()->groupBy('doctor_id');
         $intervalos = [];
 
         return $citas->map(function ($cita) use (&$intervalos, $ausencias) {
@@ -48,8 +48,8 @@ class ImpactoHorario
     /** Una cita pendiente no deja de estar afectada porque ya pasó su hora de inicio. */
     public function citasSuperpuestas(int $medicoId, string $iniciaEl, string $terminaEl): Collection
     {
-        return Appointment::with(['patient:id,first_name,last_name,phone', 'doctor:id,first_name,last_name', 'specialty:id,name'])
-            ->where('doctor_id', $medicoId)->whereIn('status', Appointment::ACTIVE)
+        return Cita::with(['patient:id,first_name,last_name,phone', 'doctor:id,first_name,last_name', 'specialty:id,name'])
+            ->where('doctor_id', $medicoId)->whereIn('status', Cita::ACTIVE)
             ->whereRaw('(date + start_time) < ?::timestamp AND (date + end_time) > ?::timestamp', [$terminaEl, $iniciaEl])
             ->orderBy('date')->orderBy('start_time')->orderBy('id')->get();
     }

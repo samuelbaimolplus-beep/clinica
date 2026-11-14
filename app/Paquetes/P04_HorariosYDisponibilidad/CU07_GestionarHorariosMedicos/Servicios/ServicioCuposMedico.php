@@ -4,11 +4,11 @@
 
 namespace App\Paquetes\P04_HorariosYDisponibilidad\CU07_GestionarHorariosMedicos\Servicios;
 
-use App\Models\AgendaAdjustment;
-use App\Models\BookingRequest;
-use App\Models\Doctor;
-use App\Models\DoctorQuota;
-use App\Models\Unavailability;
+use App\Models\AjusteAgenda;
+use App\Models\AusenciaMedica;
+use App\Models\CupoMedico;
+use App\Models\Medico;
+use App\Models\SolicitudReserva;
 use App\Paquetes\P04_HorariosYDisponibilidad\Compartido\Servicios\ModalidadesTurno;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -17,22 +17,22 @@ use Illuminate\Validation\ValidationException;
 class ServicioCuposMedico
 {
     /** Coordina la validación y persistencia de esta operación; delega las reglas del dominio al servicio correspondiente. */
-    public function guardar(array $datos): DoctorQuota
+    public function guardar(array $datos): CupoMedico
     {
         if ($this->puntosBase($datos['presential_percent']) + $this->puntosBase($datos['online_percent']) !== 10000) {
             throw ValidationException::withMessages(['presential_percent' => 'Los porcentajes presenciales y online deben sumar exactamente 100%.']);
         }
 
         return DB::transaction(function () use ($datos) {
-            $medico = Doctor::whereKey($datos['doctor_id'])->lockForUpdate()->firstOrFail();
-            if (BookingRequest::where('doctor_id', $medico->id)->whereIn('status', ['held', 'processing'])->exists()) {
+            $medico = Medico::whereKey($datos['doctor_id'])->lockForUpdate()->firstOrFail();
+            if (SolicitudReserva::where('doctor_id', $medico->id)->whereIn('status', ['held', 'processing'])->exists()) {
                 throw ValidationException::withMessages(['quota' => 'Concilie los pagos online retenidos antes de cambiar la distribución.']);
             }
             if ($medico->status !== 'Activo') {
                 throw ValidationException::withMessages(['doctor_id' => 'El médico debe estar activo.']);
             }
 
-            return DoctorQuota::updateOrCreate(['doctor_id' => $medico->id], $datos);
+            return CupoMedico::updateOrCreate(['doctor_id' => $medico->id], $datos);
         });
     }
 
@@ -41,9 +41,9 @@ class ServicioCuposMedico
     {
         $intervalos = app(ModalidadesTurno::class)->franjasParaFecha($medicoId, $fecha);
         $dia = CarbonImmutable::parse($fecha);
-        $bloques = Unavailability::active()->where('doctor_id', $medicoId)->where('starts_at', '<', $dia->addDay())->where('ends_at', '>', $dia)->get();
+        $bloques = AusenciaMedica::active()->where('doctor_id', $medicoId)->where('starts_at', '<', $dia->addDay())->where('ends_at', '>', $dia)->get();
         $utilizables = array_filter($intervalos, fn ($intervalo) => ! $bloques->contains(fn ($bloque) => CarbonImmutable::parse($bloque->starts_at) < $intervalo['end'] && CarbonImmutable::parse($bloque->ends_at) > $intervalo['start']));
-        $ajustes = AgendaAdjustment::where('doctor_id', $medicoId)->where('date', $fecha)->where('status', 'active')
+        $ajustes = AjusteAgenda::where('doctor_id', $medicoId)->where('date', $fecha)->where('status', 'active')
             ->when($fecha !== today()->toDateString(), fn ($consultaDatos) => $consultaDatos->where('kind', 'online_opening'))->get();
         $utilizables = array_map(function ($bloque) use ($ajustes) {
             $ajuste = $ajustes->first(fn ($elementoLista) => $elementoLista->start_time === $bloque['start']->format('H:i:s') && $elementoLista->end_time === $bloque['end']->format('H:i:s'));
@@ -56,7 +56,7 @@ class ServicioCuposMedico
             return $bloque;
         }, $utilizables);
         $total = count($utilizables);
-        $distribucion = DoctorQuota::where('doctor_id', $medicoId)->first();
+        $distribucion = CupoMedico::where('doctor_id', $medicoId)->first();
         $presencial = count(array_filter($utilizables, fn ($bloque) => $bloque['modality'] === 'presential'));
         $enLinea = $total - $presencial;
 

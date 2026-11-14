@@ -2,14 +2,14 @@
 
 namespace Tests\Feature;
 
-use App\Models\Appointment;
-use App\Models\AuditEvent;
-use App\Models\Doctor;
-use App\Models\Patient;
-use App\Models\Schedule;
-use App\Models\Specialty;
-use App\Models\Unavailability;
-use App\Models\User;
+use App\Models\AusenciaMedica;
+use App\Models\Cita;
+use App\Models\Especialidad;
+use App\Models\EventoAuditoria;
+use App\Models\Horario;
+use App\Models\Medico;
+use App\Models\Paciente;
+use App\Models\Usuario;
 use App\Paquetes\P05_CitasMedicas\Compartido\Servicios\ServicioCitas;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -19,17 +19,17 @@ class MedicalAbsenceTest extends TestCase
 {
     use DatabaseTransactions;
 
-    private User $admin;
+    private Usuario $admin;
 
-    private User $superadmin;
+    private Usuario $superadmin;
 
-    private User $reception;
+    private Usuario $reception;
 
-    private Doctor $doctor;
+    private Medico $doctor;
 
-    private Patient $patient;
+    private Paciente $patient;
 
-    private Specialty $specialty;
+    private Especialidad $specialty;
 
     protected function setUp(): void
     {
@@ -40,11 +40,11 @@ class MedicalAbsenceTest extends TestCase
         foreach (['admin' => 'Administrador', 'superadmin' => 'Superadmin', 'reception' => 'Recepcionista'] as $property => $role) {
             $this->$property = $this->verifiedAccount(['name' => $role, 'email' => $property.'@absence.test', 'password' => 'PruebaAusencia2026', 'role' => $role, 'status' => 'Activo']);
         }
-        $this->doctor = Doctor::create(['registration' => 'ABS-01', 'first_name' => 'Ana', 'last_name' => 'Prueba', 'email' => 'doctor@absence.test', 'phone' => '70000000', 'status' => 'Activo']);
-        $this->specialty = Specialty::create(['name' => 'Especialidad ausencias', 'status' => 'Activo', 'fee_minor' => 10000]);
+        $this->doctor = Medico::create(['registration' => 'ABS-01', 'first_name' => 'Ana', 'last_name' => 'Prueba', 'email' => 'doctor@absence.test', 'phone' => '70000000', 'status' => 'Activo']);
+        $this->specialty = Especialidad::create(['name' => 'Especialidad ausencias', 'status' => 'Activo', 'fee_minor' => 10000]);
         $this->doctor->specialties()->attach($this->specialty);
-        Schedule::create(['doctor_id' => $this->doctor->id, 'weekday' => 4, 'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30]);
-        $this->patient = Patient::create(['first_name' => 'Paciente', 'last_name' => 'Prueba', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000001', 'status' => 'Activo']);
+        Horario::create(['doctor_id' => $this->doctor->id, 'weekday' => 4, 'start_time' => '08:00', 'end_time' => '12:00', 'duration' => 30]);
+        $this->patient = Paciente::create(['first_name' => 'Paciente', 'last_name' => 'Prueba', 'birth_date' => '2000-01-01', 'sex' => 'Femenino', 'phone' => '70000001', 'status' => 'Activo']);
     }
 
     private function absence(array $overrides = []): array
@@ -52,9 +52,9 @@ class MedicalAbsenceTest extends TestCase
         return $overrides + ['doctor_id' => $this->doctor->id, 'starts_at' => '2026-11-12T08:00', 'ends_at' => '2026-11-12T10:00', 'reason' => 'Permiso'];
     }
 
-    private function appointment(string $start = '08:00', string $end = '08:30', array $overrides = []): Appointment
+    private function appointment(string $start = '08:00', string $end = '08:30', array $overrides = []): Cita
     {
-        return Appointment::create($overrides + ['patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id, 'specialty_id' => $this->specialty->id,
+        return Cita::create($overrides + ['patient_id' => $this->patient->id, 'doctor_id' => $this->doctor->id, 'specialty_id' => $this->specialty->id,
             'date' => '2026-11-12', 'start_time' => $start, 'end_time' => $end, 'status' => 'Programada', 'created_by' => $this->reception->id, 'modality' => 'presential', 'complimentary' => true]);
     }
 
@@ -71,8 +71,8 @@ class MedicalAbsenceTest extends TestCase
                 ->assertJsonPath('unavailability.cancelled_by', $actor->id)->assertJsonPath('unavailability.cancellation_reason', 'Confirmó que sí atenderá')->assertJsonCount(0, 'affected');
             $this->getJson('/api/schedules/capacity?doctor_id='.$this->doctor->id.'&date=2026-11-12')->assertOk()->assertJsonPath('total_capacity', 8);
             $this->getJson('/api/unavailabilities/'.$id.'/impacts')->assertOk()->assertJsonCount(0, 'affected');
-            $this->assertNotNull(Unavailability::findOrFail($id)->cancelled_at);
-            $event = AuditEvent::where('record_type', 'Unavailability')->where('record_id', $id)->where('action', 'updated')->latest('id')->firstOrFail();
+            $this->assertNotNull(AusenciaMedica::findOrFail($id)->cancelled_at);
+            $event = EventoAuditoria::where('record_type', 'Unavailability')->where('record_id', $id)->where('action', 'updated')->latest('id')->firstOrFail();
             $this->assertSame($actor->id, $event->user_id);
             $this->assertSame('Confirmó que sí atenderá', $event->details['changes']['cancellation_reason']['after']);
         }
@@ -129,7 +129,7 @@ class MedicalAbsenceTest extends TestCase
         $this->actingAs($this->admin)->postJson('/api/unavailabilities/'.$id.'/cancel', [])->assertUnprocessable();
         $this->postJson('/api/unavailabilities/'.$id.'/cancel', ['reason' => 'El médico atenderá'])->assertOk();
         $this->postJson('/api/unavailabilities/'.$id.'/cancel', ['reason' => 'Otro motivo'])->assertStatus(409);
-        $this->assertSame('El médico atenderá', Unavailability::findOrFail($id)->cancellation_reason);
+        $this->assertSame('El médico atenderá', AusenciaMedica::findOrFail($id)->cancellation_reason);
         $this->postJson('/api/unavailabilities/999999999/cancel', ['reason' => 'No existe'])->assertNotFound();
     }
 }

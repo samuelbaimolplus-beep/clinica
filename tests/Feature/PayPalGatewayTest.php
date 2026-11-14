@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Models\Payment;
+use App\Models\Pago;
 use App\Paquetes\P07_ReservasPagosYSeguimientos\Compartido\Integraciones\PasarelaPayPal;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
@@ -17,9 +17,9 @@ class PayPalGatewayTest extends TestCase
         Http::preventStrayRequests();
     }
 
-    private function payment(): Payment
+    private function payment(): Pago
     {
-        return (new Payment)->forceFill(['id' => 71, 'booking_request_id' => 31, 'attempt' => 1, 'method' => 'paypal',
+        return (new Pago)->forceFill(['id' => 71, 'booking_request_id' => 31, 'attempt' => 1, 'method' => 'paypal',
             'reference' => 'ORDER-31', 'provider_amount_minor' => 1255, 'provider_currency' => 'USD', 'exchange_rate' => '10']);
     }
 
